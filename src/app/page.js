@@ -7,7 +7,7 @@ import EducatorsSection from "@/components/sections/EducatorsSection";
 import TestimonialsSection from "@/components/sections/TestimonialsSection";
 import FAQSection from "@/components/sections/FAQSection";
 import CTASection from "@/components/sections/CTASection";
-
+import WhyOurEducatorsSection from "@/components/sections/WhyOurEducatorsSection";
 import BenefitsSection from "@/components/sections/BenefitsSection";
 import PartnershipCard from "@/components/cards/PartnershipCard";
 
@@ -19,6 +19,7 @@ export default function HomePage() {
       <MarqueeSection />
       {/* <StatsSection /> */}
       <BenefitsSection/>
+      <WhyOurEducatorsSection />
       {/* <CountriesSection /> */}
     
      

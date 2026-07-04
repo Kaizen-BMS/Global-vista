@@ -18,23 +18,24 @@ export default function HeroSection() {
             </span>
           </motion.div>
 
-          <motion.h1
-            {...fadeUp(0.12)}
-            className="mt-7 font-display text-4xl leading-[1.1] text-offwhite sm:text-5xl lg:text-6xl"
-          >
-            Connecting  Students
-            <br />
-            with <span className="text-gold">UK Educators</span>
-          </motion.h1>
+        <motion.h1
+  {...fadeUp(0.12)}
+  className="mt-7 font-display text-4xl leading-[1.05] text-offwhite sm:text-5xl lg:text-6xl"
+>
+  Global <span className="text-gold">Expertise.</span>
+  <br />
+  Personalised <span className="text-gold">Guidance.</span>
+</motion.h1>
 
-          <motion.p
-            {...fadeUp(0.24)}
-            className="mt-6 max-w-lg text-base leading-relaxed text-muted sm:text-lg"
-          >
-            Unlock world-class academic support, mentorship and global
-            opportunities — guided by educators who know what it takes to
-            succeed across borders.
-          </motion.p>
+         <motion.p
+  {...fadeUp(0.24)}
+  className="mt-8 max-w-xl text-lg leading-relaxed text-slate-300"
+>
+  Empowering students. Shaping futures.
+  <br />
+  Connecting ambitious learners with experienced UK educators,
+  academic mentors and global opportunities.
+</motion.p>
 
           <motion.div {...fadeUp(0.36)} className="mt-10 flex flex-wrap gap-4">
             <Button as="a" href="/contact" variant="primary">

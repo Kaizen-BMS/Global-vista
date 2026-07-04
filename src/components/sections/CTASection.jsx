@@ -7,7 +7,7 @@ import { fadeUp } from "@/animations/fadeUp";
 
 export default function CTASection() {
   return (
-    <section className="relative px-6 py-24 lg:px-10">
+    <section className="relative px-6 py-14 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <motion.div
           {...fadeUp(0)}
