@@ -4,10 +4,10 @@ import {
   Globe2,
   Mail,
   Phone,
-  Send,
   MessageCircle,
-  Github,
 } from "lucide-react";
+
+import { FaLinkedinIn } from "react-icons/fa";
 
 const quickLinks = [
   { href: "/", label: "Home" },
@@ -81,18 +81,39 @@ export default function Footer() {
               <p className="mt-4 text-xs uppercase tracking-[0.25em] text-gold">
                 Explore • Educate • Empower
               </p>
-              <div className="mt-6 flex items-center gap-3">
-              {[Mail, Send, MessageCircle].map((Icon, i) => (
-                  <a
-                    key={i}
-                    href="#"
-                    aria-label="Social link"
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted transition-all hover:border-gold/40 hover:text-gold"
-                  >
-                    <Icon className="h-4 w-4" />
-                  </a>
-                ))}
-              </div>
+             <div className="mt-6 flex items-center gap-3">
+  <a
+    href="https://wa.me/9198145 61099"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted transition-all hover:border-green-500/50 hover:text-green-400"
+  >
+    <MessageCircle className="h-4 w-4" />
+  </a>
+
+  <a
+    href="mailto:GlobalVistaEducators@gmail.com"
+    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted transition-all hover:border-gold/40 hover:text-gold"
+  >
+    <Mail className="h-4 w-4" />
+  </a>
+
+  <a
+    href="https://linkedin.com/company/global-vista-educators"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted transition-all hover:border-blue-500/50 hover:text-blue-400"
+  >
+    <FaLinkedinIn className="h-4 w-4" />
+  </a>
+
+  <a
+    href="tel:+91998145 61099"
+    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted transition-all hover:border-gold/40 hover:text-gold"
+  >
+    <Phone className="h-4 w-4" />
+  </a>
+</div>
             </div>
 
             <div>
