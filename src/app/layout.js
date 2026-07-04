@@ -1,9 +1,11 @@
 import { Inter, Instrument_Serif } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import GalaxyBackground from "@/components/common/GalaxyBackground";
 import ScrollProgress from "@/components/common/ScrollProgress";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,6 +42,27 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${instrument.variable}`}>
+      <head>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-T71M3NLZCH"
+          strategy="afterInteractive"
+        />
+
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+
+            function gtag(){
+              dataLayer.push(arguments);
+            }
+
+            gtag('js', new Date());
+
+            gtag('config', 'G-T71M3NLZCH');
+          `}
+        </Script>
+      </head>
+
       <body className="relative min-h-screen font-body antialiased">
         <GalaxyBackground />
         <ScrollProgress />
