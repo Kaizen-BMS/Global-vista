@@ -17,7 +17,7 @@ export default function ContactPage() {
       <ContactHero />
       <ContactSplit />
       {/* <MapSection /> */}
-      <CTASection />
+      {/* <CTASection /> */}
     </>
   );
 }

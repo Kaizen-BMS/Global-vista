@@ -1,11 +1,13 @@
 import { Inter, Instrument_Serif } from "next/font/google";
 import Script from "next/script";
+import { Toaster } from "sonner";
+
 import "./globals.css";
+
 import GalaxyBackground from "@/components/common/GalaxyBackground";
 import ScrollProgress from "@/components/common/ScrollProgress";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,8 +43,12 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${inter.variable} ${instrument.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${instrument.variable}`}
+    >
       <head>
+        {/* Google Analytics */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-T71M3NLZCH"
           strategy="afterInteractive"
@@ -52,12 +58,11 @@ export default function RootLayout({ children }) {
           {`
             window.dataLayer = window.dataLayer || [];
 
-            function gtag(){
+            function gtag() {
               dataLayer.push(arguments);
             }
 
             gtag('js', new Date());
-
             gtag('config', 'G-T71M3NLZCH');
           `}
         </Script>
@@ -65,10 +70,34 @@ export default function RootLayout({ children }) {
 
       <body className="relative min-h-screen font-body antialiased">
         <GalaxyBackground />
+
         <ScrollProgress />
+
         <Navbar />
-        <main className="relative z-10">{children}</main>
+
+        <main className="relative z-10">
+          {children}
+        </main>
+
         <Footer />
+
+        {/* Toast Notifications */}
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          expand
+          visibleToasts={3}
+          duration={4000}
+          toastOptions={{
+            style: {
+              background: "#0A1330",
+              color: "#FFFFFF",
+              border: "1px solid rgba(216,155,29,0.35)",
+              borderRadius: "14px",
+            },
+          }}
+        />
       </body>
     </html>
   );
