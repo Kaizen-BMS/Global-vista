@@ -143,7 +143,7 @@ export default function Footer() {
               </ul>
               <div className="mt-6 flex items-center gap-2 text-sm text-muted">
                 <Phone className="h-4 w-4 text-gold" />
-                +91 998145 61099
+                +91 98145 61099
               </div>
             </div>
           </div>
