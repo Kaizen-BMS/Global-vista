@@ -9,10 +9,9 @@ import GlobalPartnershipSection from "@/components/sections/GlobalPartnershipSec
 export const metadata = buildMetadata({
   title: "About Us",
   description:
-    "Learn about Global Vista Educators' mission to connect Indian students with UK educators for mentorship and academic excellence.",
+    "Connecting students with UK educators for mentorship, exam preparation and global academic opportunity. +91 98145 61099",
   path: "/about",
 });
-
 export default function AboutPage() {
   return (
     <>
