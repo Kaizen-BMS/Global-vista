@@ -7,7 +7,7 @@ export async function listUserSessions(userId, currentJti) {
   return rows.map((r) => ({ ...r, is_current: r.jti === currentJti }));
 }
 export async function terminateSession(sessionRowId, userId) { await pool.query(`UPDATE user_sessions SET revoked_at = NOW() WHERE id = ? AND user_id = ?`, [sessionRowId, userId]); }
-export async function logoutAllDevices(userId, currentJti, actorId) {
+export async function logoutAllDevices(userId, currentJti, actorId, companyId) {
   await destroyAllSessions(userId, currentJti);
-  await logActivity({ userId: actorId, module: "auth", action: "logout_all_devices", entityType: "user", entityId: userId, description: "Logged out of all other devices" });
+  await logActivity({ userId: actorId, module: "auth", action: "logout_all_devices", entityType: "user", entityId: userId, description: "Logged out of all other devices", companyId });
 }

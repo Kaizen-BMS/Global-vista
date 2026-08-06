@@ -6,6 +6,6 @@ import { listImportHistory } from "@/lib/core/actions/userImport";
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!(await can(session, "users.import"))) return forbidden();
-  const history = await listImportHistory();
+  const history = await listImportHistory(session.company_id);
   return ok({ history });
 });

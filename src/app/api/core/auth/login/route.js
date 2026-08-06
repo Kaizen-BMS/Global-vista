@@ -20,7 +20,7 @@ export async function POST(request) {
     if (await isAccountLocked(user)) return NextResponse.json({ error: "Account locked. Try again in 15 minutes." }, { status: 423 });
 
     if (!(await verifyPassword(password, user.password_hash))) {
-      await recordFailedLogin(user.id);
+      await recordFailedLogin(user.id, user.company_id);
       await recordLoginEvent(user.id, "failed_login", { ipAddress: ip, userAgent: ua });
       return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
     }

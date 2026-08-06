@@ -8,6 +8,6 @@ export const DELETE = withCsrf(withErrorHandling(async (request, ctx) => {
   const { table, id } = await ctx.params;
   const session = await getSession();
   if (!(await can(session, "geography.manage"))) return forbidden();
-  await deleteGeoRecord(table, id, session.id);
+  await deleteGeoRecord(table, id, session.id, session.company_id);
   return ok();
 }));

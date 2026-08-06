@@ -13,6 +13,6 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   if (!session) return unauthorized();
   const body = await request.json();
   if (body.action === "terminate") { await terminateSession(body.sessionId, session.id); return ok(); }
-  if (body.action === "logout_all") { await logoutAllDevices(session.id, session.jti, session.id); return ok(); }
+  if (body.action === "logout_all") { await logoutAllDevices(session.id, session.jti, session.id, session.company_id); return ok(); }
   return ok();
 }));

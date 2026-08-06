@@ -6,6 +6,6 @@ import { withCsrf } from "@/lib/helpers/withCsrf";
 export const POST = withCsrf(withErrorHandling(async () => {
   const session = await getSession();
   if (!session) return unauthorized();
-  await logoutAllDevices(session.id, session.jti, session.id);
+  await logoutAllDevices(session.id, session.jti, session.id, session.company_id);
   return ok();
 }));

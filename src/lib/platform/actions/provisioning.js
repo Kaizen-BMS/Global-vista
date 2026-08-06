@@ -402,8 +402,8 @@ export async function provisionCompany(input, operatorId) {
 
     for (const setting of settings) {
       const [[exists]] = await conn.query(
-        `SELECT id FROM crm_settings WHERE company_id=? AND \`key\`=? LIMIT 1`,
-        [companyId, setting.key]
+        `SELECT id FROM crm_settings WHERE company_id=? AND \`group\`=? AND \`key\`=? LIMIT 1`,
+        [companyId, setting.group, setting.key]
       );
       if (!exists) {
         await conn.query(

@@ -240,9 +240,9 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
   }
 
   const [historyResult] = await pool.query(
-    `INSERT INTO user_import_history (file_name, total_rows, imported_count, skipped_count, failed_count, duplicate_count, error_report, imported_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [fileName, rows.length, importedCount, skippedCount, failedCount, rows.filter((r) => r.status === "duplicate").length, JSON.stringify(errorReport), importedBy]
+    `INSERT INTO user_import_history (company_id, file_name, total_rows, imported_count, skipped_count, failed_count, duplicate_count, error_report, imported_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [companyId, fileName, rows.length, importedCount, skippedCount, failedCount, rows.filter((r) => r.status === "duplicate").length, JSON.stringify(errorReport), importedBy]
   );
 
   await logActivity({
@@ -253,12 +253,13 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
   return { importedCount, skippedCount, failedCount, errorReport, historyId: historyResult.insertId };
 }
 
-export async function listImportHistory(limit = 20) {
+export async function listImportHistory(companyId, limit = 20) {
   const [rows] = await pool.query(
     `SELECT h.*, u.name AS imported_by_name FROM user_import_history h
      LEFT JOIN users u ON u.id = h.imported_by
+     WHERE h.company_id = ?
      ORDER BY h.created_at DESC LIMIT ?`,
-    [limit]
+    [companyId, limit]
   );
   return rows;
 }

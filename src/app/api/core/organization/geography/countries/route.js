@@ -14,5 +14,5 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   if (!(await can(session, "geography.manage"))) return forbidden();
   const body = await request.json();
   if (!body.name) return badRequest("Name required.");
-  return created({ id: await createCountry(body, session.id) });
+  return created({ id: await createCountry(body, session.id, session.company_id) });
 }));
