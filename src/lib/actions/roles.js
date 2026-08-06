@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { softDelete } from "@/lib/helpers/db";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function listRoles(session) {
   const [rows] = await pool.query(
@@ -67,4 +68,17 @@ export async function syncRolePermissions(session, roleId, permissionIds, update
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   await logActivity({ userId: updatedBy, module: "roles", action: "update_permissions", entityType: "role", entityId: roleId, description: `Updated permissions`, companyId: session.company_id });
+
+  const [affectedUsers] = await pool.query(
+    `SELECT id FROM users WHERE role_id=? AND company_id=? AND is_deleted=0 AND id != ?`,
+    [roleId, session.company_id, updatedBy]
+  );
+  for (const u of affectedUsers) {
+    await createNotification(session.company_id, u.id, {
+      title: "Your permissions were updated",
+      message: `Role "${role.name}" permissions changed`,
+      type: "role_updated",
+      link: `/workspace/profile`,
+    });
+  }
 }

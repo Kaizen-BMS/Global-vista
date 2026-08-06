@@ -10,14 +10,17 @@ import Link from "next/link";
 import { Pencil } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
+import LeadScoreBadge from "@/components/crm/badges/LeadScoreBadge";
 import LeadTabs from "@/components/crm/leads/LeadTabs";
 import LeadTimeline from "@/components/crm/leads/LeadTimeline";
 import LeadNotes from "@/components/crm/leads/LeadNotes";
 import LeadFollowups from "@/components/crm/leads/LeadFollowups";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
+import DuplicateBanner from "@/components/crm/leads/DuplicateBanner";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
+import { computeLeadScore } from "@/lib/modules/crm/leadScore";
 
 export default async function LeadDetailsPage({ params }) {
   const session = await getSession();
@@ -34,15 +37,32 @@ export default async function LeadDetailsPage({ params }) {
     can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"),
   ]);
 
+  const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
+  const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+
   return (
     <div>
+      {lead.is_duplicate && lead.duplicate_of && (
+        <DuplicateBanner
+          leadId={id}
+          duplicateOfId={lead.duplicate_of}
+          duplicateOfName={lead.duplicate_of_name}
+          duplicateOfNumber={lead.duplicate_of_number}
+          canMerge={canEdit}
+        />
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-neutral-500 text-xs mb-1">{lead.lead_number}</p>
           <h1 className="text-xl font-semibold text-white">{lead.name}</h1>
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <StageBadge stage={lead.stage} />
             <PriorityBadge priority={lead.priority} />
+            <LeadScoreBadge score={score} />
+            {tags.map((tag) => (
+              <span key={tag} className="px-2 py-1 rounded-full text-xs border bg-neutral-800 text-neutral-300 border-neutral-700">#{tag}</span>
+            ))}
           </div>
         </div>
         {canEdit && (

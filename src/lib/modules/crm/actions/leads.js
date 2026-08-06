@@ -60,14 +60,44 @@ export async function listLeads(session, {
   return { leads: rows, total, page: p, pageSize: size };
 }
 
-export async function getLeadById(session, id) {
+export async function listLeadsForExport(session, {
+  status = null, stage = null, sourceId = null, serviceId = null, search = null,
+} = {}) {
   const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const where = [`l.${NOT_DELETED}`, rlsWhere];
+  const params = [...rlsParams];
+  if (status) { where.push("l.status = ?"); params.push(status); }
+  if (stage) { where.push("l.stage = ?"); params.push(stage); }
+  if (sourceId) { where.push("l.lead_source_id = ?"); params.push(sourceId); }
+  if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
+  if (search) {
+    where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
+     ${whereSql}
+     ORDER BY l.created_at DESC LIMIT 5000`,
+    params
+  );
+  return rows;
+}
+
+export async function getLeadById(session, id) {
+  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const [rows] = await pool.query(
+    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name,
+            dup.name AS duplicate_of_name, dup.lead_number AS duplicate_of_number
+     FROM leads l
+     JOIN lead_sources s ON s.id = l.lead_source_id
+     JOIN services sv ON sv.id = l.service_id
+     LEFT JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN leads dup ON dup.id = l.duplicate_of
      WHERE l.id = ? AND l.${NOT_DELETED} AND ${rlsWhere}
      LIMIT 1`,
     [id, ...rlsParams]
@@ -109,6 +139,16 @@ export async function createLead(session, data, createdBy) {
     entityId: result.insertId, companyId: session.company_id,
     description: `Created lead ${data.name} (${leadNumber})${duplicate ? " — flagged duplicate" : ""}`,
   });
+
+  const [[creator]] = await pool.query(`SELECT reporting_manager_id FROM users WHERE id = ?`, [createdBy]);
+  if (creator?.reporting_manager_id) {
+    await createNotification(session.company_id, creator.reporting_manager_id, {
+      title: "New lead created",
+      message: `${data.name} (${leadNumber})`,
+      type: "lead_created",
+      link: `/workspace/lead-management/${result.insertId}`,
+    });
+  }
 
   return result.insertId;
 }
@@ -153,8 +193,54 @@ export async function updateLeadStage(session, id, stage, updatedBy) {
 }
 
 export async function updateLeadStatus(session, id, status, updatedBy) {
+  const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
   await pool.query(`UPDATE leads SET status = ?, updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [status, updatedBy, id, session.company_id]);
   await logActivity({ userId: updatedBy, module: "leads", action: "status_change", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} status set to ${status}` });
+  if (lead?.assigned_to && lead.assigned_to !== updatedBy) {
+    await createNotification(session.company_id, lead.assigned_to, {
+      title: "Lead status updated",
+      message: `${lead.name} is now ${status}`,
+      type: "lead_status_changed",
+      link: `/workspace/lead-management/${id}`,
+    });
+  }
+}
+
+/**
+ * Merges `sourceId` into `targetId`: moves every note/task/followup/
+ * document/assignment-history row over to the target lead, then marks
+ * the source as a duplicate (status='Duplicate', soft-deleted) rather
+ * than hard-deleting it, so the merge is auditable and reversible at
+ * the DB level if ever needed. Runs in a single transaction — a
+ * partial move (e.g. tasks moved but notes not) would corrupt history.
+ */
+export async function mergeLead(session, sourceId, targetId, actorId) {
+  if (String(sourceId) === String(targetId)) {
+    const e = new Error("Cannot merge a lead into itself."); e.status = 400; throw e;
+  }
+  const [[source]] = await pool.query(`SELECT id, name FROM leads WHERE id=? AND company_id=? AND ${NOT_DELETED}`, [sourceId, session.company_id]);
+  const [[target]] = await pool.query(`SELECT id, name FROM leads WHERE id=? AND company_id=? AND ${NOT_DELETED}`, [targetId, session.company_id]);
+  if (!source || !target) { const e = new Error("Lead not found in this company."); e.status = 404; throw e; }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(`UPDATE lead_notes SET lead_id=? WHERE lead_id=? AND company_id=?`, [targetId, sourceId, session.company_id]);
+    await conn.query(`UPDATE lead_tasks SET lead_id=? WHERE lead_id=? AND company_id=?`, [targetId, sourceId, session.company_id]);
+    await conn.query(`UPDATE lead_followups SET lead_id=? WHERE lead_id=? AND company_id=?`, [targetId, sourceId, session.company_id]);
+    await conn.query(`UPDATE lead_documents SET lead_id=? WHERE lead_id=? AND company_id=?`, [targetId, sourceId, session.company_id]);
+    await conn.query(`UPDATE lead_assignment_history SET lead_id=? WHERE lead_id=?`, [targetId, sourceId]);
+    await conn.query(
+      `UPDATE leads SET status='Duplicate', is_duplicate=1, duplicate_of=?, is_deleted=1, deleted_at=NOW(), deleted_by=?, updated_by=? WHERE id=? AND company_id=?`,
+      [targetId, actorId, actorId, sourceId, session.company_id]
+    );
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+
+  await logActivity({
+    userId: actorId, module: "leads", action: "merge", entityType: "lead", entityId: targetId,
+    companyId: session.company_id, description: `Merged "${source.name}" (#${sourceId}) into "${target.name}" (#${targetId})`,
+  });
 }
 
 export async function assignLead(session, id, assignedTo, assignedBy) {

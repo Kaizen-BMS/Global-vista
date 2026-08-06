@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth";
 import { logActivity } from "@/lib/activityLog";
 import { softDelete, paginate } from "@/lib/helpers/db";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
+import { createNotification } from "@/lib/actions/notifications";
 
 const VALID_STATUSES = new Set(["active", "inactive", "suspended"]);
 const SORTABLE = new Set(["name", "email", "created_at", "last_login_at", "status"]);
@@ -66,6 +67,14 @@ export async function createUser(session, data, createdBy) {
   if (sendWelcome) {
     const [[role]] = await pool.query(`SELECT name FROM roles WHERE id = ?`, [roleId]);
     sendWelcomeEmail({ to: email, userId: result.insertId, name, email, tempPassword, roleName: role?.name || "Employee", createdBy }).catch((e) => console.error("Welcome email failed:", e.message));
+  }
+  if (reportingManagerId && reportingManagerId !== createdBy) {
+    await createNotification(session.company_id, reportingManagerId, {
+      title: "New team member added",
+      message: `${name} now reports to you`,
+      type: "user_created",
+      link: `/workspace/users/${result.insertId}`,
+    });
   }
   return getUserById(session, result.insertId);
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function listCompanies() {
   const [rows] = await pool.query(
@@ -27,8 +28,19 @@ export async function updateCompanyBranding(id, { logoUrl, faviconUrl, primaryCo
   await logActivity({ userId: updatedBy, module: "platform", action: "branding_update", entityType: "company", entityId: id, description: "Updated branding", companyId: id });
 }
 export async function setCompanyStatus(id, status, updatedBy) {
+  const [[company]] = await pool.query(`SELECT name FROM companies WHERE id=?`, [id]);
   await pool.query(`UPDATE companies SET status=?, updated_by=? WHERE id=?`, [status, updatedBy, id]);
   await logActivity({ userId: updatedBy, module: "platform", action: `company_${status}`, entityType: "company", entityId: id, description: `Set to ${status}`, companyId: id });
+
+  const [operators] = await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0 AND id != ?`, [updatedBy]);
+  for (const op of operators) {
+    await createNotification(op.company_id, op.id, {
+      title: "Company status changed",
+      message: `${company?.name || `Company #${id}`} set to ${status}`,
+      type: "company_updated",
+      link: `/platform/companies/${id}`,
+    });
+  }
 }
 export async function setCompanyModule(companyId, moduleId, enabled, updatedBy) {
   await pool.query(`INSERT INTO company_modules (company_id, module_id, enabled, enabled_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), enabled_by=VALUES(enabled_by)`, [companyId, moduleId, enabled ? 1 : 0, updatedBy]);

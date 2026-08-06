@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
 import { logActivity } from "@/lib/activityLog";
+import { createNotification } from "@/lib/actions/notifications";
 
 /**
  * =====================================================================
@@ -528,6 +529,25 @@ export async function provisionCompany(input, operatorId) {
       });
     } catch (e) {
       console.error("Activity log failed:", e.message);
+    }
+
+    // -------------------------------------------------------------
+    // Platform operator notifications — same non-blocking guarantee as
+    // the activity log above; a notification failure must never be
+    // reported as a provisioning failure.
+    // -------------------------------------------------------------
+    try {
+      const [operators] = await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0 AND id != ?`, [operatorId]);
+      for (const op of operators) {
+        await createNotification(op.company_id, op.id, {
+          title: "Company provisioned",
+          message: `${companyName} was provisioned`,
+          type: "company_provisioned",
+          link: `/platform/companies/${companyId}`,
+        });
+      }
+    } catch (e) {
+      console.error("Provisioning notifications failed:", e.message);
     }
 
     // -------------------------------------------------------------

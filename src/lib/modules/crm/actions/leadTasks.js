@@ -32,6 +32,15 @@ export async function createTask(session, leadId, data, createdBy) {
 }
 
 export async function toggleTaskComplete(session, id, leadId, isCompleted, updatedBy) {
+  const [[task]] = await pool.query(`SELECT title, created_by FROM lead_tasks WHERE id = ? AND company_id = ?`, [id, session.company_id]);
   await pool.query(`UPDATE lead_tasks SET is_completed = ?, updated_by = ? WHERE id = ? AND company_id = ?`, [isCompleted ? 1 : 0, updatedBy, id, session.company_id]);
   await logActivity({ userId: updatedBy, module: "leads", action: isCompleted ? "task_complete" : "task_reopen", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Task #${id} marked ${isCompleted ? "complete" : "incomplete"}` });
+  if (isCompleted && task?.created_by && task.created_by !== updatedBy) {
+    await createNotification(session.company_id, task.created_by, {
+      title: "Task completed",
+      message: task.title,
+      type: "task_completed",
+      link: `/workspace/lead-management/${leadId}`,
+    });
+  }
 }

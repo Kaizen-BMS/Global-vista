@@ -74,11 +74,20 @@ export default function LeadFilters({ sources = [], services = [] }) {
       </select>
 
       <a
-        href="/api/leads/export"
+        href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=xlsx`}
         className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm transition"
+        title="Export current filtered view to Excel"
       >
         <Download className="h-4 w-4" />
-        Export
+        Excel
+      </a>
+      <a
+        href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=csv`}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm transition"
+        title="Export current filtered view to CSV"
+      >
+        <Download className="h-4 w-4" />
+        CSV
       </a>
     </div>
   );

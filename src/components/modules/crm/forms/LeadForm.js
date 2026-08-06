@@ -80,7 +80,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
       // Explicit navigation + refresh so the toast is followed by a real
       // redirect into the lead's details page and a fresh server render
       // (fixes "toast appears but user stays on same page").
-      router.push(`/crm/lead-management/${targetId}`);
+      router.push(`/workspace/lead-management/${targetId}`);
       router.refresh();
     } catch {
       toast.error("Something went wrong.");

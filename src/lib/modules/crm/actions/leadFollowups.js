@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function listLeadFollowups(session, leadId) {
   const [rows] = await pool.query(
@@ -39,6 +40,17 @@ export async function createFollowup(session, leadId, data, createdBy) {
   }
 
   await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Scheduled ${data.type} follow-up` });
+
+  const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
+  if (lead?.assigned_to && lead.assigned_to !== createdBy) {
+    await createNotification(session.company_id, lead.assigned_to, {
+      title: "Follow-up scheduled",
+      message: `${data.type} for ${lead.name}`,
+      type: "followup_created",
+      link: `/workspace/lead-management/${leadId}`,
+    });
+  }
+
   return result.insertId;
 }
 
