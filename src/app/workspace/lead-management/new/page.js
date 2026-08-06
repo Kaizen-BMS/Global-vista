@@ -2,8 +2,8 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
-import LeadForm from "@/components/crm/forms/LeadForm";
-import ForbiddenState from "@/components/crm/shared/ForbiddenState";
+import LeadForm from "@/components/modules/crm/forms/LeadForm";
+import ForbiddenState from "@/components/shared/ForbiddenState";
 
 export default async function NewLeadPage() {
   const session = await getSession();

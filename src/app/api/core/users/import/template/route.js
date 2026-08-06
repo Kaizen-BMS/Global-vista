@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { forbidden, withErrorHandling } from "@/lib/helpers/response";
-import { SAMPLE_TEMPLATE_CSV } from "@/lib/constants/userImport";
+import { SAMPLE_TEMPLATE_CSV } from "@/lib/core/import/userImport";
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession();

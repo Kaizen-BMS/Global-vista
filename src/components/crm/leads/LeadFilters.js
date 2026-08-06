@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { LEAD_STAGES, LEAD_TERMINAL_STAGES, LEAD_PRIORITIES } from "@/lib/constants/leadStages";
+import { LEAD_STAGES, LEAD_TERMINAL_STAGES, LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
 import { Search, Download } from "lucide-react";
 
 export default function LeadFilters({ sources = [], services = [] }) {

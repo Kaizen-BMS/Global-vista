@@ -26,3 +26,10 @@ export const roleValidators = {
   name: [(v) => required(v, "Role name")],
   slug: [(v) => required(v, "Role slug")],
 };
+export const leadValidators = {
+  name: [(v) => required(v, "Name")],
+  phone: [(v) => required(v, "Phone"), (v) => (v && !isPhone(v) ? "Invalid phone number." : null)],
+  email: [(v) => (v && !isEmail(v) ? "Invalid email address." : null)],
+  leadSourceId: [(v) => required(v, "Lead source")],
+  serviceId: [(v) => required(v, "Service")],
+};

@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, forbidden, withErrorHandling } from "@/lib/helpers/response";
-import { getLeadTimeline } from "@/lib/actions/leadTimeline";
+import { getLeadTimeline } from "@/lib/modules/crm/actions/leadTimeline";
 
 export const GET = withErrorHandling(async (request, context) => {
   const { id } = await context.params;

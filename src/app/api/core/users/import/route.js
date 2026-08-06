@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { parseSpreadsheet, validateImportRows, commitImport } from "@/lib/actions/userImport";
+import { parseSpreadsheet, validateImportRows, commitImport } from "@/lib/core/actions/userImport";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 // Single stateless endpoint handling all three import phases via
@@ -33,20 +33,21 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   const mapping = JSON.parse(mappingRaw);
 
   if (action === "validate") {
-    const validation = await validateImportRows(dataRows, mapping);
+    const validation = await validateImportRows(dataRows, mapping, session.company_id);
     return ok({ validation });
   }
 
   if (action === "commit") {
     const skipDuplicates = formData.get("skipDuplicates") === "true";
     const sendWelcomeEmails = formData.get("sendWelcomeEmails") === "true";
-    const validation = await validateImportRows(dataRows, mapping);
+    const validation = await validateImportRows(dataRows, mapping, session.company_id);
     const result = await commitImport({
       rows: validation.rows,
       fileName: file.name,
       skipDuplicates,
       sendWelcomeEmails,
       importedBy: session.id,
+      companyId: session.company_id,
     });
     return ok(result);
   }

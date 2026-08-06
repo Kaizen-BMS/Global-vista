@@ -1,10 +1,10 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
-import { getLeadById } from "@/lib/actions/leads";
+import { getLeadById } from "@/lib/modules/crm/actions/leads";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
-import LeadForm from "@/components/crm/forms/LeadForm";
-import ForbiddenState from "@/components/crm/shared/ForbiddenState";
+import LeadForm from "@/components/modules/crm/forms/LeadForm";
+import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 
 export default async function EditLeadPage({ params }) {

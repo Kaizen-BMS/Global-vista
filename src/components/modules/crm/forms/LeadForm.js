@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
-import { LEAD_PRIORITIES } from "@/lib/constants/leadStages";
+import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
 
 const SECTIONS = ["Personal", "Academic", "Study Preferences", "Passport", "Source & Assignment", "Notes"];
 

@@ -1,15 +1,15 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
-import { getVisibleLeadFilter } from "@/lib/helpers/rls";
+import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 
-export async function listLeadFollowups(leadId) {
+export async function listLeadFollowups(session, leadId) {
   const [rows] = await pool.query(
     `SELECT f.*, u.name AS created_by_name
      FROM lead_followups f
      LEFT JOIN users u ON u.id = f.created_by
-     WHERE f.lead_id = ? ORDER BY f.scheduled_at DESC`,
-    [leadId]
+     WHERE f.lead_id = ? AND f.company_id = ? ORDER BY f.scheduled_at DESC`,
+    [leadId, session.company_id]
   );
   return rows;
 }
@@ -27,28 +27,28 @@ export async function getTodaysFollowups(session) {
   return rows;
 }
 
-export async function createFollowup(leadId, data, createdBy) {
+export async function createFollowup(session, leadId, data, createdBy) {
   const [result] = await pool.query(
-    `INSERT INTO lead_followups (lead_id, type, status, scheduled_at, next_follow_up, notes, created_by, updated_by)
-     VALUES (?, ?, 'Scheduled', ?, ?, ?, ?, ?)`,
-    [leadId, data.type, data.scheduledAt, data.nextFollowUp || null, data.notes || null, createdBy, createdBy]
+    `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, next_follow_up, notes, created_by, updated_by)
+     VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?, ?)`,
+    [session.company_id, leadId, data.type, data.scheduledAt, data.nextFollowUp || null, data.notes || null, createdBy, createdBy]
   );
 
   if (data.nextFollowUp) {
-    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ?`, [data.nextFollowUp, leadId]);
+    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [data.nextFollowUp, leadId, session.company_id]);
   }
 
-  await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, description: `Scheduled ${data.type} follow-up` });
+  await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Scheduled ${data.type} follow-up` });
   return result.insertId;
 }
 
-export async function completeFollowup(id, leadId, { outcome, nextFollowUp }, updatedBy) {
+export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp }, updatedBy) {
   await pool.query(
-    `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, updated_by = ? WHERE id = ?`,
-    [outcome || null, nextFollowUp || null, updatedBy, id]
+    `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
+    [outcome || null, nextFollowUp || null, updatedBy, id, session.company_id]
   );
   if (nextFollowUp) {
-    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ?`, [nextFollowUp, leadId]);
+    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
   }
-  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, description: `Follow-up completed: ${outcome || "no outcome noted"}` });
+  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Follow-up completed: ${outcome || "no outcome noted"}` });
 }

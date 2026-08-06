@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
 import { validate, leadValidators } from "@/lib/helpers/validation";
-import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/actions/leads";
+import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/modules/crm/actions/leads";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request) => {

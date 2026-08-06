@@ -1,6 +1,6 @@
 "use client";
 
-import { DOCUMENT_TYPES } from "@/lib/constants/leadStages";
+import { DOCUMENT_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { FileText, Download, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";

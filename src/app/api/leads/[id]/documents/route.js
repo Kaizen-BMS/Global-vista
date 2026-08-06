@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { listLeadDocuments, addLeadDocument, deleteLeadDocument } from "@/lib/actions/leadDocuments";
+import { listLeadDocuments, addLeadDocument, deleteLeadDocument } from "@/lib/modules/crm/actions/leadDocuments";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request, context) => {

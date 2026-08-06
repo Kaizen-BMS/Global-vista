@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { listLeadTasks, createTask, toggleTaskComplete } from "@/lib/actions/leadTasks";
+import { listLeadTasks, createTask, toggleTaskComplete } from "@/lib/modules/crm/actions/leadTasks";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request, context) => {

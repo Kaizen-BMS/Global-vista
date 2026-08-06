@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
-import EmptyState from "@/components/crm/shared/EmptyState";
+import EmptyState from "@/components/shared/EmptyState";
 import { Contact2 } from "lucide-react";
 import { apiFetch } from "@/components/crm/shared/apiClient";
 

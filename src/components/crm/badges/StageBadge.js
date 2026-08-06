@@ -1,4 +1,4 @@
-import { STAGE_COLORS } from "@/lib/constants/leadStages";
+import { STAGE_COLORS } from "@/lib/modules/crm/constants/leadStages";
 
 export default function StageBadge({ stage }) {
   return (

@@ -1,16 +1,16 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
-import { softDelete, NOT_DELETED, paginate } from "@/lib/helpers/db";
-import { getVisibleLeadFilter } from "@/lib/helpers/rls";
-import { generateLeadNumber } from "@/lib/helpers/leadNumber";
+import { NOT_DELETED, paginate } from "@/lib/helpers/db";
+import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
+import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
 
-export async function findDuplicateLead({ phone, email }) {
+export async function findDuplicateLead(companyId, { phone, email }) {
   const [rows] = await pool.query(
     `SELECT id, name, phone, email, status FROM leads
-     WHERE ${NOT_DELETED} AND (phone = ? ${email ? "OR email = ?" : ""})
+     WHERE company_id = ? AND ${NOT_DELETED} AND (phone = ? ${email ? "OR email = ?" : ""})
      ORDER BY created_at DESC LIMIT 1`,
-    email ? [phone, email] : [phone]
+    email ? [companyId, phone, email] : [companyId, phone]
   );
   return rows[0] || null;
 }
@@ -74,21 +74,21 @@ export async function getLeadById(session, id) {
   return rows[0] || null;
 }
 
-export async function createLead(data, createdBy) {
-  const duplicate = await findDuplicateLead({ phone: data.phone, email: data.email });
+export async function createLead(session, data, createdBy) {
+  const duplicate = await findDuplicateLead(session.company_id, { phone: data.phone, email: data.email });
   const leadNumber = await generateLeadNumber();
 
   const [result] = await pool.query(
     `INSERT INTO leads (
-      lead_number, name, email, phone, whatsapp, country, state, city, address, gender, dob,
+      company_id, lead_number, name, email, phone, whatsapp, country, state, city, address, gender, dob,
       school, college, current_qualification, passing_year, percentage,
       english_test, ielts_score, pte_score,
       preferred_country, preferred_university, preferred_intake, budget, passport_status,
       lead_source_id, campaign, service_id, assigned_team, stage, priority, tags,
       status, is_duplicate, duplicate_of, remarks, notes, created_by, updated_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      leadNumber, data.name, data.email || null, data.phone, data.whatsapp || null,
+      session.company_id, leadNumber, data.name, data.email || null, data.phone, data.whatsapp || null,
       data.country || null, data.state || null, data.city || null, data.address || null,
       data.gender || null, data.dob || null,
       data.school || null, data.college || null, data.currentQualification || null,
@@ -105,14 +105,14 @@ export async function createLead(data, createdBy) {
 
   await logActivity({
     userId: createdBy, module: "leads", action: "create", entityType: "lead",
-    entityId: result.insertId,
+    entityId: result.insertId, companyId: session.company_id,
     description: `Created lead ${data.name} (${leadNumber})${duplicate ? " — flagged duplicate" : ""}`,
   });
 
   return result.insertId;
 }
 
-export async function updateLead(id, data, updatedBy) {
+export async function updateLead(session, id, data, updatedBy) {
   const fieldMap = {
     name: "name", email: "email", phone: "phone", whatsapp: "whatsapp",
     country: "country", state: "state", city: "city", address: "address",
@@ -136,55 +136,55 @@ export async function updateLead(id, data, updatedBy) {
   if (sets.length === 0) return;
 
   sets.push("updated_by = ?");
-  params.push(updatedBy, id);
+  params.push(updatedBy, id, session.company_id);
 
-  await pool.query(`UPDATE leads SET ${sets.join(", ")} WHERE id = ? AND ${NOT_DELETED}`, params);
+  await pool.query(`UPDATE leads SET ${sets.join(", ")} WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, params);
 
   await logActivity({
     userId: updatedBy, module: "leads", action: "update", entityType: "lead",
-    entityId: id, description: `Updated lead #${id}`,
+    entityId: id, companyId: session.company_id, description: `Updated lead #${id}`,
   });
 }
 
-export async function updateLeadStage(id, stage, updatedBy) {
-  await pool.query(`UPDATE leads SET stage = ?, updated_by = ? WHERE id = ? AND ${NOT_DELETED}`, [stage, updatedBy, id]);
-  await logActivity({ userId: updatedBy, module: "leads", action: "stage_change", entityType: "lead", entityId: id, description: `Lead #${id} stage set to ${stage}` });
+export async function updateLeadStage(session, id, stage, updatedBy) {
+  await pool.query(`UPDATE leads SET stage = ?, updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [stage, updatedBy, id, session.company_id]);
+  await logActivity({ userId: updatedBy, module: "leads", action: "stage_change", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} stage set to ${stage}` });
 }
 
-export async function updateLeadStatus(id, status, updatedBy) {
-  await pool.query(`UPDATE leads SET status = ?, updated_by = ? WHERE id = ? AND ${NOT_DELETED}`, [status, updatedBy, id]);
-  await logActivity({ userId: updatedBy, module: "leads", action: "status_change", entityType: "lead", entityId: id, description: `Lead #${id} status set to ${status}` });
+export async function updateLeadStatus(session, id, status, updatedBy) {
+  await pool.query(`UPDATE leads SET status = ?, updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [status, updatedBy, id, session.company_id]);
+  await logActivity({ userId: updatedBy, module: "leads", action: "status_change", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} status set to ${status}` });
 }
 
-export async function assignLead(id, assignedTo, assignedBy) {
-  const [[current]] = await pool.query(`SELECT assigned_to FROM leads WHERE id = ?`, [id]);
-  await pool.query(`UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ? WHERE id = ? AND ${NOT_DELETED}`, [assignedTo, assignedBy, id]);
+export async function assignLead(session, id, assignedTo, assignedBy) {
+  const [[current]] = await pool.query(`SELECT assigned_to FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
+  await pool.query(`UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [assignedTo, assignedBy, id, session.company_id]);
   await pool.query(
     `INSERT INTO lead_assignment_history (lead_id, assigned_from, assigned_to, assigned_by) VALUES (?, ?, ?, ?)`,
     [id, current?.assigned_to || null, assignedTo, assignedBy]
   );
-  await logActivity({ userId: assignedBy, module: "leads", action: "assign", entityType: "lead", entityId: id, description: `Lead #${id} assigned to user #${assignedTo}` });
+  await logActivity({ userId: assignedBy, module: "leads", action: "assign", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} assigned to user #${assignedTo}` });
 }
 
-export async function deleteLead(id, deletedBy) {
-  await softDelete("leads", id, deletedBy);
-  await logActivity({ userId: deletedBy, module: "leads", action: "delete", entityType: "lead", entityId: id, description: `Soft-deleted lead #${id}` });
+export async function deleteLead(session, id, deletedBy) {
+  await pool.query(`UPDATE leads SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, status = 'Cancelled' WHERE id = ? AND company_id = ?`, [deletedBy, id, session.company_id]);
+  await logActivity({ userId: deletedBy, module: "leads", action: "delete", entityType: "lead", entityId: id, companyId: session.company_id, description: `Soft-deleted lead #${id}` });
 }
 
-export async function bulkUpdateStatus(ids, status, updatedBy) {
+export async function bulkUpdateStatus(session, ids, status, updatedBy) {
   if (!ids.length) return;
   await pool.query(
-    `UPDATE leads SET status = ?, updated_by = ? WHERE id IN (?) AND ${NOT_DELETED}`,
-    [status, updatedBy, ids]
+    `UPDATE leads SET status = ?, updated_by = ? WHERE id IN (?) AND company_id = ? AND ${NOT_DELETED}`,
+    [status, updatedBy, ids, session.company_id]
   );
-  await logActivity({ userId: updatedBy, module: "leads", action: "bulk_status_change", entityType: "lead", description: `Bulk status update to ${status} for ${ids.length} leads`, meta: { ids, status } });
+  await logActivity({ userId: updatedBy, module: "leads", action: "bulk_status_change", entityType: "lead", companyId: session.company_id, description: `Bulk status update to ${status} for ${ids.length} leads`, meta: { ids, status } });
 }
 
-export async function bulkAssign(ids, assignedTo, assignedBy) {
+export async function bulkAssign(session, ids, assignedTo, assignedBy) {
   if (!ids.length) return;
   await pool.query(
-    `UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ? WHERE id IN (?) AND ${NOT_DELETED}`,
-    [assignedTo, assignedBy, ids]
+    `UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ? WHERE id IN (?) AND company_id = ? AND ${NOT_DELETED}`,
+    [assignedTo, assignedBy, ids, session.company_id]
   );
-  await logActivity({ userId: assignedBy, module: "leads", action: "bulk_assign", entityType: "lead", description: `Bulk assigned ${ids.length} leads to user #${assignedTo}`, meta: { ids, assignedTo } });
+  await logActivity({ userId: assignedBy, module: "leads", action: "bulk_assign", entityType: "lead", companyId: session.company_id, description: `Bulk assigned ${ids.length} leads to user #${assignedTo}`, meta: { ids, assignedTo } });
 }

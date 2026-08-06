@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { assignLead } from "@/lib/actions/leads";
+import { assignLead } from "@/lib/modules/crm/actions/leads";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const POST = withCsrf(withErrorHandling(async (request, context) => {

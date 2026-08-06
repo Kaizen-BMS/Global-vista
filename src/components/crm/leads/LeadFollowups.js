@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2 } from "lucide-react";
-import { FOLLOWUP_TYPES } from "@/lib/constants/leadStages";
+import { FOLLOWUP_TYPES } from "@/lib/modules/crm/constants/leadStages";
 
 export default function LeadFollowups({ leadId, followups, canManage }) {
   const router = useRouter();

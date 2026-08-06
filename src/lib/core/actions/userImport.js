@@ -4,7 +4,7 @@ import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { logActivity } from "@/lib/activityLog";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
-import { CANONICAL_FIELDS } from "@/lib/constants/userImport";
+import { CANONICAL_FIELDS } from "@/lib/core/import/userImport";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
@@ -37,12 +37,12 @@ export function parseSpreadsheet(buffer, fileSizeBytes) {
   return { headers, dataRows };
 }
 
-async function loadLookupMaps() {
+async function loadLookupMaps(companyId) {
   const [[roles], [departments], [designations], [branches], [employeeTypes]] = await Promise.all([
-    pool.query(`SELECT id, name FROM roles WHERE is_deleted = 0`),
-    pool.query(`SELECT id, name FROM departments WHERE is_deleted = 0`),
+    pool.query(`SELECT id, name FROM roles WHERE is_deleted = 0 AND (company_id = ? OR company_id IS NULL)`, [companyId]),
+    pool.query(`SELECT id, name FROM departments WHERE is_deleted = 0 AND company_id = ?`, [companyId]),
     pool.query(`SELECT id, name FROM designations WHERE is_deleted = 0`),
-    pool.query(`SELECT id, name FROM branches WHERE is_deleted = 0`),
+    pool.query(`SELECT id, name FROM branches WHERE is_deleted = 0 AND company_id = ?`, [companyId]),
     pool.query(`SELECT id, name FROM employee_types WHERE is_deleted = 0`),
   ]);
 
@@ -62,8 +62,8 @@ async function loadLookupMaps() {
  * name-based lookups (role/department/etc.) to IDs. Does NOT write
  * anything — pure validation pass.
  */
-export async function validateImportRows(dataRows, mapping) {
-  const lookups = await loadLookupMaps();
+export async function validateImportRows(dataRows, mapping, companyId) {
+  const lookups = await loadLookupMaps(companyId);
 
   const fieldByIndex = {};
   Object.entries(mapping).forEach(([index, key]) => {
@@ -182,7 +182,7 @@ export async function validateImportRows(dataRows, mapping) {
  * partial success is reported accurately in the summary rather than
  * silently losing valid imports to one unrelated failure.
  */
-export async function commitImport({ rows, fileName, skipDuplicates, sendWelcomeEmails, importedBy }) {
+export async function commitImport({ rows, fileName, skipDuplicates, sendWelcomeEmails, importedBy, companyId }) {
   let importedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
@@ -211,10 +211,10 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
       const employeeId = row.raw.employeeId || `GVE-EMP-${String(count + 1).padStart(5, "0")}`;
 
       const [result] = await conn.query(
-        `INSERT INTO users (employee_id, name, email, phone, password_hash, role_id, department_id, designation_id, branch_id, employee_type_id, joining_date, must_change_password, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO users (company_id, employee_id, name, email, phone, password_hash, role_id, department_id, designation_id, branch_id, employee_type_id, joining_date, must_change_password, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
         [
-          employeeId, row.raw.name, row.raw.email.trim().toLowerCase(), row.raw.phone || null, passwordHash,
+          companyId, employeeId, row.raw.name, row.raw.email.trim().toLowerCase(), row.raw.phone || null, passwordHash,
           row.resolved.roleId, row.resolved.departmentId, row.resolved.designationId, row.resolved.branchId, row.resolved.employeeTypeId,
           row.raw.joiningDate || null, importedBy, importedBy,
         ]
@@ -223,7 +223,7 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
       await conn.commit();
       importedCount++;
 
-      await logActivity({ userId: importedBy, module: "users", action: "import_create", entityType: "user", entityId: result.insertId, description: `Imported user ${row.raw.name} from ${fileName}` });
+      await logActivity({ userId: importedBy, module: "users", action: "import_create", entityType: "user", entityId: result.insertId, companyId, description: `Imported user ${row.raw.name} from ${fileName}` });
 
       if (sendWelcomeEmails) {
         const [[role]] = await pool.query(`SELECT name FROM roles WHERE id = ?`, [row.resolved.roleId]);
@@ -247,7 +247,7 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
 
   await logActivity({
     userId: importedBy, module: "users", action: "import_complete", entityType: "user_import_history",
-    entityId: historyResult.insertId, description: `Import complete: ${importedCount} imported, ${skippedCount} skipped, ${failedCount} failed`,
+    entityId: historyResult.insertId, companyId, description: `Import complete: ${importedCount} imported, ${skippedCount} skipped, ${failedCount} failed`,
   });
 
   return { importedCount, skippedCount, failedCount, errorReport, historyId: historyResult.insertId };

@@ -1,11 +1,11 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
-import { getLeadById } from "@/lib/actions/leads";
-import { listLeadNotes } from "@/lib/actions/leadNotes";
-import { listLeadFollowups } from "@/lib/actions/leadFollowups";
-import { listLeadTasks } from "@/lib/actions/leadTasks";
-import { listLeadDocuments } from "@/lib/actions/leadDocuments";
-import { getLeadTimeline } from "@/lib/actions/leadTimeline";
+import { getLeadById } from "@/lib/modules/crm/actions/leads";
+import { listLeadNotes } from "@/lib/modules/crm/actions/leadNotes";
+import { listLeadFollowups } from "@/lib/modules/crm/actions/leadFollowups";
+import { listLeadTasks } from "@/lib/modules/crm/actions/leadTasks";
+import { listLeadDocuments } from "@/lib/modules/crm/actions/leadDocuments";
+import { getLeadTimeline } from "@/lib/modules/crm/actions/leadTimeline";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
@@ -16,7 +16,7 @@ import LeadNotes from "@/components/crm/leads/LeadNotes";
 import LeadFollowups from "@/components/crm/leads/LeadFollowups";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
-import ForbiddenState from "@/components/crm/shared/ForbiddenState";
+import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 
 export default async function LeadDetailsPage({ params }) {

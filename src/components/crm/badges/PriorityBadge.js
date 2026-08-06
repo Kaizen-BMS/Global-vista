@@ -1,4 +1,4 @@
-import { PRIORITY_COLORS } from "@/lib/constants/leadStages";
+import { PRIORITY_COLORS } from "@/lib/modules/crm/constants/leadStages";
 
 export default function PriorityBadge({ priority }) {
   return (
