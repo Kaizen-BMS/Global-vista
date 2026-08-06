@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { FOLLOWUP_TYPES } from "@/lib/modules/crm/constants/leadStages";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function LeadFollowups({ leadId, followups, canManage }) {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function LeadFollowups({ leadId, followups, canManage }) {
     if (!scheduledAt) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/leads/${leadId}/followups`, {
+      const res = await apiFetch(`/api/leads/${leadId}/followups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, scheduledAt }),
@@ -37,7 +38,7 @@ export default function LeadFollowups({ leadId, followups, canManage }) {
   async function handleComplete(followupId) {
     setCompletingId(followupId);
     try {
-      const res = await fetch(`/api/leads/${leadId}/followups`, {
+      const res = await apiFetch(`/api/leads/${leadId}/followups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "complete", followupId, outcome: "Completed" }),

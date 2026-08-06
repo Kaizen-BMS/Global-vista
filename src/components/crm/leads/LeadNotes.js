@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pin, Loader2 } from "lucide-react";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function LeadNotes({ leadId, notes, canManage }) {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function LeadNotes({ leadId, notes, canManage }) {
     if (!content.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/leads/${leadId}/notes`, {
+      const res = await apiFetch(`/api/leads/${leadId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),

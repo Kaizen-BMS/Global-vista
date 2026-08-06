@@ -1,6 +1,17 @@
 import Link from "next/link";
+import { Plus, Pencil, Trash2, UserPlus, CheckCircle2, LogIn, Activity } from "lucide-react";
 
 function fmtDateTime(d) { return d ? new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"; }
+
+function actionIcon(action = "") {
+  if (action.includes("create") || action.includes("provision")) return { Icon: Plus, color: "text-emerald-400" };
+  if (action.includes("delete")) return { Icon: Trash2, color: "text-red-400" };
+  if (action.includes("assign")) return { Icon: UserPlus, color: "text-blue-400" };
+  if (action.includes("complete")) return { Icon: CheckCircle2, color: "text-green-400" };
+  if (action.includes("login")) return { Icon: LogIn, color: "text-cyan-400" };
+  if (action.includes("update") || action.includes("change")) return { Icon: Pencil, color: "text-amber-400" };
+  return { Icon: Activity, color: "text-neutral-500" };
+}
 
 const STATUS_COLORS = {
   New: "bg-blue-500/10 text-blue-400 border-blue-500/30",
@@ -64,12 +75,16 @@ export function RecentActivityTable({ logs }) {
   return (
     <TableCard title="Recent Activity" empty={!logs.length}>
       <div className="divide-y divide-neutral-800">
-        {logs.map((l) => (
-          <div key={l.id} className="flex items-center justify-between py-2.5">
-            <p className="text-neutral-300 text-sm truncate">{l.description || `${l.action} — ${l.module}`}</p>
-            <span className="text-neutral-600 text-xs shrink-0 ml-2">{fmtDateTime(l.created_at)}</span>
-          </div>
-        ))}
+        {logs.map((l) => {
+          const { Icon, color } = actionIcon(l.action);
+          return (
+            <div key={l.id} className="flex items-center gap-2.5 py-2.5 hover:bg-neutral-800/30 -mx-2 px-2 rounded-lg transition-colors">
+              <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+              <p className="text-neutral-300 text-sm truncate flex-1">{l.description || `${l.action} — ${l.module}`}</p>
+              <span className="text-neutral-600 text-xs shrink-0 ml-2">{fmtDateTime(l.created_at)}</span>
+            </div>
+          );
+        })}
       </div>
     </TableCard>
   );

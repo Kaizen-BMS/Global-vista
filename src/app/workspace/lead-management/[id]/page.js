@@ -11,6 +11,8 @@ import { Pencil } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import LeadScoreBadge from "@/components/crm/badges/LeadScoreBadge";
+import LeadScoreBar from "@/components/crm/badges/LeadScoreBar";
+import QuickActionBar from "@/components/crm/leads/QuickActionBar";
 import LeadTabs from "@/components/crm/leads/LeadTabs";
 import LeadTimeline from "@/components/crm/leads/LeadTimeline";
 import LeadNotes from "@/components/crm/leads/LeadNotes";
@@ -65,11 +67,14 @@ export default async function LeadDetailsPage({ params }) {
             ))}
           </div>
         </div>
-        {canEdit && (
-          <Link href={`/workspace/lead-management/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm transition">
-            <Pencil className="h-4 w-4" /> Edit
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <QuickActionBar lead={lead} canManage={canManageFollowups} />
+          {canEdit && (
+            <Link href={`/workspace/lead-management/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm transition cursor-pointer">
+              <Pencil className="h-4 w-4" /> Edit
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -81,6 +86,10 @@ export default async function LeadDetailsPage({ params }) {
         <InfoBlock label="Service" value={lead.service_name} />
         <InfoBlock label="Preferred Country" value={lead.preferred_country || "—"} />
         <InfoBlock label="Passport" value={lead.passport_status || "—"} />
+      </div>
+
+      <div className="mb-6">
+        <LeadScoreBar score={score} />
       </div>
 
       <LeadTabs>

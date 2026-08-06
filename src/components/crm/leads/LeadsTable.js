@@ -8,7 +8,7 @@ import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import { Contact2 } from "lucide-react";
-import { apiFetch } from "@/components/crm/shared/apiClient";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate }) {
   const router = useRouter();

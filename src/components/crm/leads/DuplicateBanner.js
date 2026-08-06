@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { apiFetch } from "@/components/crm/shared/apiClient";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function DuplicateBanner({ leadId, duplicateOfId, duplicateOfName, duplicateOfNumber, canMerge }) {
   const router = useRouter();

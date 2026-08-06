@@ -5,6 +5,7 @@ import { FileText, Download, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useState } from "react";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function LeadDocuments({ leadId, documents, canManage }) {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function LeadDocuments({ leadId, documents, canManage }) {
   async function handleDelete(docId) {
     setDeletingId(docId);
     try {
-      const res = await fetch(`/api/leads/${leadId}/documents?docId=${docId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/leads/${leadId}/documents?docId=${docId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success("Document removed.");
       router.refresh();

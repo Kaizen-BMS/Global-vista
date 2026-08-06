@@ -13,6 +13,10 @@ export const GET = withErrorHandling(async (request) => {
     status: searchParams.get("status") || null, stage: searchParams.get("stage") || null,
     priority: searchParams.get("priority") || null, sourceId: searchParams.get("sourceId") || null,
     serviceId: searchParams.get("serviceId") || null, search: searchParams.get("search") || null,
+    assignedTo: searchParams.get("assignedTo") || null, country: searchParams.get("country") || null,
+    tag: searchParams.get("tag") || null,
+    createdFrom: searchParams.get("createdFrom") || null, createdTo: searchParams.get("createdTo") || null,
+    followupFrom: searchParams.get("followupFrom") || null, followupTo: searchParams.get("followupTo") || null,
     sort: searchParams.get("sort") || "created_at", dir: searchParams.get("dir") || "DESC",
     page: searchParams.get("page") || 1, pageSize: searchParams.get("pageSize") || 20,
   });

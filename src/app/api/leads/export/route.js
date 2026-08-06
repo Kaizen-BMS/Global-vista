@@ -25,6 +25,12 @@ export const GET = withErrorHandling(async (request) => {
     sourceId: searchParams.get("sourceId") || null,
     serviceId: searchParams.get("serviceId") || null,
     search: searchParams.get("search") || null,
+    priority: searchParams.get("priority") || null,
+    assignedTo: searchParams.get("assignedTo") || null,
+    country: searchParams.get("country") || null,
+    tag: searchParams.get("tag") || null,
+    createdFrom: searchParams.get("createdFrom") || null,
+    createdTo: searchParams.get("createdTo") || null,
   });
 
   return buildExportResponse(leads, COLUMNS, { format, filenameBase: "leads-export", sheetName: "Leads" });

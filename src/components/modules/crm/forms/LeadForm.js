@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
+import TagInput from "@/components/shared/TagInput";
 
 const SECTIONS = ["Personal", "Academic", "Study Preferences", "Passport", "Source & Assignment", "Notes"];
 
@@ -20,7 +21,7 @@ function Field({ label, children }) {
 
 const inputClass = "w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
-export default function LeadForm({ sources = [], services = [], counsellors = [], initialData = null }) {
+export default function LeadForm({ sources = [], services = [], counsellors = [], tagSuggestions = [], initialData = null }) {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -216,7 +217,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
                 {LEAD_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </Field>
-            <Field label="Tags (comma separated)"><input className={inputClass} value={form.tags} onChange={(e) => setField("tags", e.target.value)} /></Field>
+            <Field label="Tags"><TagInput value={form.tags} onChange={(v) => setField("tags", v)} suggestions={tagSuggestions} /></Field>
           </div>
         )}
 

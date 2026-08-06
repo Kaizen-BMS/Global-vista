@@ -6,6 +6,19 @@ import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
 
+export async function listDistinctTags(session) {
+  const { where, params } = getVisibleLeadFilter(session);
+  const [rows] = await pool.query(
+    `SELECT DISTINCT tags FROM leads l WHERE ${where} AND l.${NOT_DELETED} AND l.tags IS NOT NULL AND l.tags != ''`,
+    params
+  );
+  const set = new Set();
+  for (const row of rows) {
+    for (const t of (row.tags || "").split(",")) { const trimmed = t.trim(); if (trimmed) set.add(trimmed); }
+  }
+  return Array.from(set).sort();
+}
+
 export async function findDuplicateLead(companyId, { phone, email }) {
   const [rows] = await pool.query(
     `SELECT id, name, phone, email, status FROM leads
@@ -18,7 +31,9 @@ export async function findDuplicateLead(companyId, { phone, email }) {
 
 export async function listLeads(session, {
   status = null, stage = null, priority = null, sourceId = null, serviceId = null,
-  assignedTo = null, country = null, search = null, sort = "created_at", dir = "DESC",
+  assignedTo = null, country = null, search = null, tag = null,
+  createdFrom = null, createdTo = null, followupFrom = null, followupTo = null,
+  sort = "created_at", dir = "DESC",
   page = 1, pageSize = 20,
 } = {}) {
   const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
@@ -32,6 +47,11 @@ export async function listLeads(session, {
   if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
   if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
   if (country) { where.push("l.country = ?"); params.push(country); }
+  if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
+  if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
+  if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
+  if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
+  if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
   if (search) {
     where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?)");
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
@@ -62,6 +82,8 @@ export async function listLeads(session, {
 
 export async function listLeadsForExport(session, {
   status = null, stage = null, sourceId = null, serviceId = null, search = null,
+  priority = null, assignedTo = null, country = null, tag = null,
+  createdFrom = null, createdTo = null,
 } = {}) {
   const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere];
@@ -70,6 +92,12 @@ export async function listLeadsForExport(session, {
   if (stage) { where.push("l.stage = ?"); params.push(stage); }
   if (sourceId) { where.push("l.lead_source_id = ?"); params.push(sourceId); }
   if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
+  if (priority) { where.push("l.priority = ?"); params.push(priority); }
+  if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+  if (country) { where.push("l.country = ?"); params.push(country); }
+  if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
+  if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
+  if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
   if (search) {
     where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?)");
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
@@ -83,6 +111,27 @@ export async function listLeadsForExport(session, {
      LEFT JOIN users u ON u.id = l.assigned_to
      ${whereSql}
      ORDER BY l.created_at DESC LIMIT 5000`,
+    params
+  );
+  return rows;
+}
+
+export async function listLeadsForKanban(session, { search = null, assignedTo = null, priority = null } = {}) {
+  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const where = [`l.${NOT_DELETED}`, rlsWhere, "l.stage NOT IN (?)"];
+  const params = [...rlsParams, ["Lost", "Cancelled", "Duplicate"]];
+  if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+  if (priority) { where.push("l.priority = ?"); params.push(priority); }
+  if (search) {
+    where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.lead_number LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const [rows] = await pool.query(
+    `SELECT l.id, l.lead_number, l.name, l.phone, l.stage, l.priority, l.tags, l.country, l.next_follow_up, l.updated_at,
+            u.name AS assigned_name
+     FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+     ${whereSql} ORDER BY l.updated_at DESC LIMIT 500`,
     params
   );
   return rows;

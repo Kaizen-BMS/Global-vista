@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
+import { apiFetch } from "@/components/shared/apiClient";
 
 export default function LeadTasks({ leadId, tasks, canManage }) {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
     if (!title.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/leads/${leadId}/tasks`, {
+      const res = await apiFetch(`/api/leads/${leadId}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
@@ -36,7 +37,7 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
   async function handleToggle(taskId, isCompleted) {
     setTogglingId(taskId);
     try {
-      const res = await fetch(`/api/leads/${leadId}/tasks`, {
+      const res = await apiFetch(`/api/leads/${leadId}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "toggle", taskId, isCompleted: !isCompleted }),

@@ -28,6 +28,21 @@ export async function getTodaysFollowups(session) {
   return rows;
 }
 
+export async function getFollowupDashboard(session) {
+  const { where, params } = getVisibleLeadFilter(session);
+  const base = `SELECT f.id, f.type, f.status, f.scheduled_at, l.id AS lead_id, l.name AS lead_name, l.phone AS lead_phone, l.priority, l.company_id, u.name AS assigned_name
+     FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0 AND ${where}
+     LEFT JOIN users u ON u.id = l.assigned_to`;
+
+  const [overdue] = await pool.query(`${base} WHERE f.status='Scheduled' AND f.scheduled_at < NOW() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [today] = await pool.query(`${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [upcoming] = await pool.query(`${base} WHERE f.status='Scheduled' AND f.scheduled_at > NOW() AND DATE(f.scheduled_at) > CURDATE() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [highPriority] = await pool.query(`${base} WHERE f.status='Scheduled' AND l.priority IN ('High','Urgent') ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [completedToday] = await pool.query(`${base} WHERE f.status='Completed' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at DESC LIMIT 100`, params);
+
+  return { overdue, today, upcoming, highPriority, completedToday };
+}
+
 export async function createFollowup(session, leadId, data, createdBy) {
   const [result] = await pool.query(
     `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, next_follow_up, notes, created_by, updated_by)
@@ -52,6 +67,49 @@ export async function createFollowup(session, leadId, data, createdBy) {
   }
 
   return result.insertId;
+}
+
+/**
+ * Records an interaction that already happened (Call/WhatsApp/Email/etc.)
+ * as a completed follow-up, and optionally schedules the next one in the
+ * same action — the "quick log" flow from the lead detail quick-action
+ * bar, so counsellors never have to open two separate forms for
+ * "what I just did" and "what's next."
+ */
+export async function logQuickActivity(session, leadId, { type, note, nextFollowUp }, actorId) {
+  const conn = await pool.getConnection();
+  let completedId;
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.query(
+      `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, outcome, notes, created_by, updated_by)
+       VALUES (?, ?, ?, 'Completed', NOW(), ?, ?, ?, ?)`,
+      [session.company_id, leadId, type, note || null, note || null, actorId, actorId]
+    );
+    completedId = result.insertId;
+    if (nextFollowUp) {
+      await conn.query(
+        `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, created_by, updated_by) VALUES (?, ?, ?, 'Scheduled', ?, ?, ?)`,
+        [session.company_id, leadId, type, nextFollowUp, actorId, actorId]
+      );
+      await conn.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
+    }
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+
+  await logActivity({ userId: actorId, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `${type}: ${note || "logged"}${nextFollowUp ? " — next follow-up scheduled" : ""}` });
+
+  const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
+  if (lead?.assigned_to && lead.assigned_to !== actorId && nextFollowUp) {
+    await createNotification(session.company_id, lead.assigned_to, {
+      title: "Next follow-up scheduled",
+      message: `${type} for ${lead.name}`,
+      type: "followup_created",
+      link: `/workspace/lead-management/${leadId}`,
+    });
+  }
+
+  return completedId;
 }
 
 export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp }, updatedBy) {
