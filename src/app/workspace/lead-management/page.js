@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeads, listDistinctTags } from "@/lib/modules/crm/actions/leads";
@@ -41,9 +41,14 @@ export default async function LeadManagementPage({ searchParams }) {
         <div className="flex items-center gap-2">
           <LeadViewToggle active="list" />
           {canCreate && (
-            <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
-              <Plus className="h-4 w-4" /> Add Lead
-            </Link>
+            <>
+              <Link href="/workspace/lead-management/import" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm font-medium transition cursor-pointer">
+                <Upload className="h-4 w-4" /> Import
+              </Link>
+              <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
+                <Plus className="h-4 w-4" /> Add Lead
+              </Link>
+            </>
           )}
         </div>
       </div>
