@@ -166,7 +166,7 @@ export default function Footer() {
   </Link>
 
   <Link
-    href="/login"
+    href="/crm"
     className="group flex items-center gap-2 rounded-full border border-[#D89B1D]/20 px-4 py-2 transition-all duration-300 hover:border-[#D89B1D] hover:bg-[#D89B1D]/10 hover:text-[#D89B1D]"
   >
     <Globe2 className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
