@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
+import { createNotification } from "@/lib/actions/notifications";
 import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
@@ -157,13 +158,21 @@ export async function updateLeadStatus(session, id, status, updatedBy) {
 }
 
 export async function assignLead(session, id, assignedTo, assignedBy) {
-  const [[current]] = await pool.query(`SELECT assigned_to FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
+  const [[current]] = await pool.query(`SELECT assigned_to, name, lead_number FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
   await pool.query(`UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [assignedTo, assignedBy, id, session.company_id]);
   await pool.query(
     `INSERT INTO lead_assignment_history (lead_id, assigned_from, assigned_to, assigned_by) VALUES (?, ?, ?, ?)`,
     [id, current?.assigned_to || null, assignedTo, assignedBy]
   );
   await logActivity({ userId: assignedBy, module: "leads", action: "assign", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} assigned to user #${assignedTo}` });
+  if (assignedTo !== current?.assigned_to) {
+    await createNotification(session.company_id, assignedTo, {
+      title: "Lead assigned to you",
+      message: current ? `${current.name} (${current.lead_number})` : `Lead #${id}`,
+      type: "lead_assigned",
+      link: `/workspace/lead-management/${id}`,
+    });
+  }
 }
 
 export async function deleteLead(session, id, deletedBy) {
@@ -187,4 +196,10 @@ export async function bulkAssign(session, ids, assignedTo, assignedBy) {
     [assignedTo, assignedBy, ids, session.company_id]
   );
   await logActivity({ userId: assignedBy, module: "leads", action: "bulk_assign", entityType: "lead", companyId: session.company_id, description: `Bulk assigned ${ids.length} leads to user #${assignedTo}`, meta: { ids, assignedTo } });
+  await createNotification(session.company_id, assignedTo, {
+    title: "Leads assigned to you",
+    message: `${ids.length} lead${ids.length === 1 ? "" : "s"} assigned to you`,
+    type: "lead_assigned",
+    link: "/workspace/lead-management",
+  });
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function listLeadTasks(session, leadId) {
   const [rows] = await pool.query(
@@ -19,6 +20,14 @@ export async function createTask(session, leadId, data, createdBy) {
     [session.company_id, leadId, data.title, data.description || null, data.assignedTo || null, data.priority || "Medium", data.dueDate || null, data.isRecurring ? 1 : 0, createdBy, createdBy]
   );
   await logActivity({ userId: createdBy, module: "leads", action: "task_create", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Created task: ${data.title}` });
+  if (data.assignedTo && data.assignedTo !== createdBy) {
+    await createNotification(session.company_id, data.assignedTo, {
+      title: "New task assigned to you",
+      message: data.title,
+      type: "task_assigned",
+      link: `/workspace/lead-management/${leadId}`,
+    });
+  }
   return result.insertId;
 }
 
