@@ -4,6 +4,7 @@ import { listAllTasks } from "@/lib/modules/crm/actions/leadTasks";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
+import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 
 const COLUMNS = [
   ["title", "Title"], ["lead_name", "Lead"], ["lead_number", "Lead #"], ["assigned_name", "Assigned To"],
@@ -17,10 +18,11 @@ export default async function TasksReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 print:mb-4">
+      <ReportPrintHeader session={session} title="Tasks Report" subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"}`} />
+      <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white print:text-black">Tasks Report</h1>
-          <p className="text-neutral-500 text-sm print:text-neutral-700">{tasks.length} task{tasks.length === 1 ? "" : "s"}</p>
+          <h1 className="text-xl font-semibold text-white">Tasks Report</h1>
+          <p className="text-neutral-500 text-sm">{tasks.length} task{tasks.length === 1 ? "" : "s"}</p>
         </div>
         <ReportToolbar exportBase="/api/reports/tasks/export" />
       </div>

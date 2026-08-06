@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { getDashboardStats } from "@/lib/actions/dashboard";
+import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getUserNotifications } from "@/lib/actions/notifications";
 import {
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
     teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
-    recentActivity, unreadNotifications,
+    recentActivity, unreadNotifications, branding,
   ] = await Promise.all([
     getDashboardStats(session),
     getLeadDashboardStats(session),
@@ -48,13 +49,14 @@ export default async function DashboardPage() {
     getDocumentUploadTrend(session),
     getActivityLogs({ limit: 8, companyId: session.company_id }),
     getUserNotifications(session, { unreadOnly: true, limit: 100 }),
+    getCompanyBranding(session),
   ]);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-white">Welcome, {session?.name}</h1>
-        <p className="text-neutral-500 text-sm">Here's what's happening across your workspace today.</p>
+        <h1 className="text-xl font-semibold text-white">{branding.dashboardGreeting || `Welcome, ${session?.name}`}</h1>
+        <p className="text-neutral-500 text-sm">{branding.companyDescription || "Here's what's happening across your workspace today."}</p>
       </div>
 
       <section className="space-y-4">

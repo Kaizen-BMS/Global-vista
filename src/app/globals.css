@@ -148,3 +148,32 @@
   animation: marquee 35s linear infinite;
   will-change: transform;
 }
+
+/*
+ * Workspace/Platform tenant-branding hooks. --brand-primary/--brand-secondary
+ * are set inline on the workspace shell root (see workspace/layout.js) from
+ * each tenant's companies.primary_color/secondary_color — never used by the
+ * public marketing site, which has no element setting these variables, so
+ * the fallbacks below (matching the app's existing indigo default) are what
+ * render there and everywhere branding hasn't been configured.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.btn-brand {
+  background-color: var(--brand-primary, #4f46e5);
+  transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+.btn-brand:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 8px 20px -8px var(--brand-primary, #4f46e5);
+}
+.text-brand { color: var(--brand-primary, #6366f1); }
+.border-brand { border-color: var(--brand-primary, #4f46e5); }
+.bg-brand-soft { background-color: color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, transparent); }

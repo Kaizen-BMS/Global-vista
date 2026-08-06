@@ -66,7 +66,7 @@ export async function createUser(session, data, createdBy) {
 
   if (sendWelcome) {
     const [[role]] = await pool.query(`SELECT name FROM roles WHERE id = ?`, [roleId]);
-    sendWelcomeEmail({ to: email, userId: result.insertId, name, email, tempPassword, roleName: role?.name || "Employee", createdBy }).catch((e) => console.error("Welcome email failed:", e.message));
+    sendWelcomeEmail({ to: email, userId: result.insertId, name, email, tempPassword, roleName: role?.name || "Employee", createdBy, companyId: session.company_id }).catch((e) => console.error("Welcome email failed:", e.message));
   }
   if (reportingManagerId && reportingManagerId !== createdBy) {
     await createNotification(session.company_id, reportingManagerId, {

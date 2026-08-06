@@ -4,6 +4,7 @@ import { listLeadsForExport } from "@/lib/modules/crm/actions/leads";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
+import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 
 const COLUMNS = [
   ["lead_number", "Lead #"], ["name", "Name"], ["phone", "Phone"], ["status", "Status"],
@@ -18,10 +19,11 @@ export default async function LeadsReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 print:mb-4">
+      <ReportPrintHeader session={session} title="Leads Report" subtitle={`${leads.length} lead${leads.length === 1 ? "" : "s"}`} />
+      <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white print:text-black">Leads Report</h1>
-          <p className="text-neutral-500 text-sm print:text-neutral-700">{leads.length} lead{leads.length === 1 ? "" : "s"}</p>
+          <h1 className="text-xl font-semibold text-white">Leads Report</h1>
+          <p className="text-neutral-500 text-sm">{leads.length} lead{leads.length === 1 ? "" : "s"}</p>
         </div>
         <ReportToolbar exportBase="/api/leads/export" />
       </div>

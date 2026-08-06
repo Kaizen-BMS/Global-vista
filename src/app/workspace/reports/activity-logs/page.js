@@ -4,6 +4,7 @@ import { getActivityLogs } from "@/lib/activityLog";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
+import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 
 const COLUMNS = [
   ["module", "Module"], ["action", "Action"], ["description", "Description"], ["user_name", "User"], ["created_at", "Date"],
@@ -16,10 +17,11 @@ export default async function ActivityLogsReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 print:mb-4">
+      <ReportPrintHeader session={session} title="Activity Log Report" subtitle={`${logs.length} entries (most recent 500)`} />
+      <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white print:text-black">Activity Log Report</h1>
-          <p className="text-neutral-500 text-sm print:text-neutral-700">{logs.length} entries (most recent 500)</p>
+          <h1 className="text-xl font-semibold text-white">Activity Log Report</h1>
+          <p className="text-neutral-500 text-sm">{logs.length} entries (most recent 500)</p>
         </div>
         <ReportToolbar exportBase="/api/reports/activity-logs/export" />
       </div>

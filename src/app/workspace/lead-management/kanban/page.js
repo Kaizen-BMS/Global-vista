@@ -26,7 +26,7 @@ export default async function LeadKanbanPage() {
         <div className="flex items-center gap-2">
           <LeadViewToggle active="kanban" />
           {canCreate && (
-            <Link href="/workspace/lead-management/new" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition cursor-pointer">
+            <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
               <Plus className="h-4 w-4" /> Add Lead
             </Link>
           )}

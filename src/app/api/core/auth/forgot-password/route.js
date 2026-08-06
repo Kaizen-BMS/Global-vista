@@ -21,7 +21,7 @@ export async function POST(request) {
     await pool.query(`UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?`, [hashedToken, new Date(Date.now() + 1800000), user.id]);
 
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    await sendPasswordResetEmail({ to: user.email, userId: user.id, name: user.name, resetUrl: `${appUrl}/reset-password?token=${rawToken}` });
+    await sendPasswordResetEmail({ to: user.email, userId: user.id, name: user.name, resetUrl: `${appUrl}/reset-password?token=${rawToken}`, companyId: user.company_id });
     await logActivity({ userId: user.id, module: "auth", action: "forgot_password_requested", entityType: "user", entityId: user.id, description: "Password reset requested", companyId: user.company_id });
     return NextResponse.json({ success: true });
   } catch (err) {

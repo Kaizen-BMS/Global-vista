@@ -4,6 +4,7 @@ import { listUsers } from "@/lib/actions/users";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
+import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 
 const COLUMNS = [
   ["employee_id", "Employee ID"], ["name", "Name"], ["email", "Email"], ["role_name", "Role"],
@@ -18,10 +19,11 @@ export default async function UsersReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 print:mb-4">
+      <ReportPrintHeader session={session} title="Users Report" subtitle={`${total} user${total === 1 ? "" : "s"}`} />
+      <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white print:text-black">Users Report</h1>
-          <p className="text-neutral-500 text-sm print:text-neutral-700">{total} user{total === 1 ? "" : "s"}</p>
+          <h1 className="text-xl font-semibold text-white">Users Report</h1>
+          <p className="text-neutral-500 text-sm">{total} user{total === 1 ? "" : "s"}</p>
         </div>
         <ReportToolbar exportBase="/api/reports/users/export" />
       </div>

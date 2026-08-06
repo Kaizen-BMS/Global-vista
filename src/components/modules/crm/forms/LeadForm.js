@@ -243,7 +243,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
           <button
             type="button"
             onClick={() => setActiveSection((s) => Math.min(SECTIONS.length - 1, s + 1))}
-            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
+            className="btn-brand px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer"
           >
             Next
           </button>
@@ -251,7 +251,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
           <button
             type="submit"
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60"
+            className="btn-brand flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? "Saving..." : initialData?.id ? "Update Lead" : "Create Lead"}

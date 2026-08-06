@@ -4,6 +4,7 @@ import { listAllDocuments } from "@/lib/actions/documentsReport";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
+import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 
 const COLUMNS = [
   ["source", "Type"], ["type", "Document Type"], ["file_name", "File Name"], ["related_to", "Related To"],
@@ -17,10 +18,11 @@ export default async function DocumentsReportPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 print:mb-4">
+      <ReportPrintHeader session={session} title="Documents Report" subtitle={`${docs.length} document${docs.length === 1 ? "" : "s"}`} />
+      <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white print:text-black">Documents Report</h1>
-          <p className="text-neutral-500 text-sm print:text-neutral-700">{docs.length} document{docs.length === 1 ? "" : "s"}</p>
+          <h1 className="text-xl font-semibold text-white">Documents Report</h1>
+          <p className="text-neutral-500 text-sm">{docs.length} document{docs.length === 1 ? "" : "s"}</p>
         </div>
         <ReportToolbar exportBase="/api/reports/documents/export" />
       </div>
