@@ -35,4 +35,12 @@ export async function setCompanyModule(companyId, moduleId, enabled, updatedBy) 
   await logActivity({ userId: updatedBy, module: "platform", action: enabled ? "module_enabled" : "module_disabled", entityType: "company_module", entityId: moduleId, description: `Module ${enabled ? "enabled" : "disabled"}`, companyId });
 }
 export async function listAllModules() { const [rows] = await pool.query(`SELECT * FROM modules ORDER BY sort_order`); return rows; }
+export async function listModuleAdoption() {
+  const [rows] = await pool.query(`
+    SELECT m.*, COUNT(cm.id) AS company_count
+    FROM modules m LEFT JOIN company_modules cm ON cm.module_id = m.id AND cm.enabled = 1
+    GROUP BY m.id ORDER BY m.sort_order
+  `);
+  return rows;
+}
 export async function listPlans() { const [rows] = await pool.query(`SELECT * FROM plans WHERE status='active' ORDER BY name`); return rows; }

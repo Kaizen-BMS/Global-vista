@@ -27,7 +27,7 @@ export default async function PlatformLayout({ children }) {
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 border-b border-neutral-900 px-6 flex items-center justify-between"><p className="text-neutral-500 text-xs">{session.name}</p></header>
-        <main className="flex-1 p-6 max-w-6xl mx-auto w-full overflow-y-auto">{children}</main>
+        <main className="flex-1 p-6 max-w-[1600px] mx-auto w-full overflow-y-auto">{children}</main>
       </div>
     </div>
   );

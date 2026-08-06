@@ -1,22 +1,48 @@
-import { getSession } from "@/lib/auth";
-import { listCompanies } from "@/lib/platform/actions/companies";
-import { getActivityLogs } from "@/lib/activityLog";
-import { Building2, Package, Users } from "lucide-react";
+import { getPlatformDashboard, resolveRange } from "@/lib/platform/actions/dashboard";
+import KpiGrid from "@/components/platform/dashboard/KpiGrid";
+import RangeFilter from "@/components/platform/dashboard/RangeFilter";
+import {
+  CompanyGrowthChart, LoginActivityChart, ProvisioningHistoryChart,
+  ModuleUsageChart, PlanDistributionChart, SubscriptionStatusChart,
+} from "@/components/platform/dashboard/PlatformCharts";
+import {
+  RecentCompaniesTable, RecentSubscriptionsTable, LatestPaymentsTable,
+  LatestErrorsTable, RecentPlatformEventsTable,
+} from "@/components/platform/dashboard/DashboardTables";
 
-export default async function PlatformDashboard() {
-  const [companies, logs] = await Promise.all([listCompanies(), getActivityLogs({ module: "platform", limit: 8 })]);
-  const totalUsers = companies.reduce((sum, c) => sum + c.user_count, 0);
+export default async function PlatformDashboard({ searchParams }) {
+  const sp = await searchParams;
+  const range = sp?.range || "month";
+  const { start, end, label } = resolveRange(range, sp?.from, sp?.to);
+  const { kpis, charts, tables } = await getPlatformDashboard({ start, end });
+
   return (
-    <div>
-      <h1 className="text-xl font-semibold text-white mb-6">Platform Dashboard</h1>
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex items-center justify-between"><div><p className="text-neutral-500 text-xs">Companies</p><p className="text-white text-2xl font-semibold">{companies.length}</p></div><Building2 className="h-8 w-8 text-indigo-400" /></div>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex items-center justify-between"><div><p className="text-neutral-500 text-xs">Total Users</p><p className="text-white text-2xl font-semibold">{totalUsers}</p></div><Users className="h-8 w-8 text-green-400" /></div>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex items-center justify-between"><div><p className="text-neutral-500 text-xs">Active Modules</p><p className="text-white text-2xl font-semibold">{companies.reduce((s, c) => s + c.enabled_module_count, 0)}</p></div><Package className="h-8 w-8 text-yellow-400" /></div>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-white">Platform Dashboard</h1>
+          <p className="text-neutral-500 text-sm">Executive overview across every tenant · {label}</p>
+        </div>
+        <RangeFilter active={range} from={sp?.from} to={sp?.to} />
       </div>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-        <p className="text-white font-medium mb-4">Recent Platform Activity</p>
-        {logs.map((l) => <div key={l.id} className="flex justify-between text-sm py-2 border-b border-neutral-800/60 last:border-0"><p className="text-neutral-300">{l.description}</p><span className="text-neutral-600 text-xs">{new Date(l.created_at).toLocaleString()}</span></div>)}
+
+      <KpiGrid kpis={kpis} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <CompanyGrowthChart data={charts.companyGrowth} />
+        <LoginActivityChart data={charts.loginActivity} />
+        <ProvisioningHistoryChart data={charts.provisioningHistory} />
+        <ModuleUsageChart data={charts.moduleUsage} />
+        <PlanDistributionChart data={charts.planDistribution} />
+        <SubscriptionStatusChart data={charts.subscriptionStatus} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <RecentCompaniesTable companies={tables.recentCompanies} />
+        <RecentSubscriptionsTable subscriptions={tables.recentSubscriptions} />
+        <LatestPaymentsTable />
+        <LatestErrorsTable errors={tables.recentErrors} />
+        <RecentPlatformEventsTable events={tables.recentPlatformEvents} />
       </div>
     </div>
   );
