@@ -15,7 +15,7 @@ export default function Topbar() {
     router.refresh();
   }
   return (
-    <header className="h-16 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3">
+    <header className="h-16 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3 print:hidden">
       <div className="hidden sm:block flex-1 max-w-md"><GlobalSearch /></div>
       <div className="flex items-center gap-4">
         <NotificationBell />

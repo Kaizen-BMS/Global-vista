@@ -1,11 +1,15 @@
 import { getActivityLogs } from "@/lib/activityLog";
+import ReportToolbar from "@/components/shared/ReportToolbar";
 
 export default async function PlatformActivityLogsPage() {
   const logs = await getActivityLogs({ module: "platform", limit: 100 });
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Platform Activity</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-semibold text-white">Platform Activity</h1>
+        <ReportToolbar exportBase="/api/platform/activity-logs/export" />
+      </div>
       <p className="text-neutral-500 text-sm mb-6">Every platform-level action across the system.</p>
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
         {logs.length === 0 ? (

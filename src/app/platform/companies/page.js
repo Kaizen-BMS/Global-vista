@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Building2, Users, Package, Plus } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import CreateCompanyWizard from "@/components/platform/CreateCompanyWizard";
+import ReportToolbar from "@/components/shared/ReportToolbar";
 
 const STATUS_STYLES = { active: "bg-green-500/10 text-green-400 border-green-500/30", suspended: "bg-orange-500/10 text-orange-400 border-orange-500/30", deleted: "bg-red-500/10 text-red-400 border-red-500/30" };
 
@@ -27,7 +28,13 @@ export default function CompaniesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6"><h1 className="text-xl font-semibold text-white">Companies</h1><button onClick={() => setWizardOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"><Plus className="h-4 w-4" />Create Company</button></div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold text-white">Companies</h1>
+        <div className="flex items-center gap-2">
+          <ReportToolbar exportBase="/api/reports/companies/export" />
+          <button onClick={() => setWizardOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"><Plus className="h-4 w-4" />Create Company</button>
+        </div>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {data.companies.map((c) => (
           <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">

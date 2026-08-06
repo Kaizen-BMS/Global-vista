@@ -1,23 +1,46 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
-import { listLeads } from "@/lib/actions/leads";
+import { listLeads } from "@/lib/modules/crm/actions/leads";
+import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import ForbiddenState from "@/components/shared/ForbiddenState";
-import EmptyState from "@/components/shared/EmptyState";
-import { Contact2 } from "lucide-react";
+import LeadFilters from "@/components/crm/leads/LeadFilters";
+import LeadsTable from "@/components/crm/leads/LeadsTable";
+import Pagination from "@/components/shared/Pagination";
 
-export default async function LeadManagementPage() {
+export default async function LeadManagementPage({ searchParams }) {
   const session = await getSession();
   if (!(await can(session, "leads.view"))) return <ForbiddenState />;
-  const result = await listLeads(session);
+
+  const sp = await searchParams;
+  const [result, sources, services, canCreate, canAssign, canUpdate] = await Promise.all([
+    listLeads(session, {
+      status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
+      sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
+      page: sp?.page || 1, pageSize: 20,
+    }),
+    listLeadSources(session),
+    listServices(session),
+    can(session, "leads.create"),
+    can(session, "leads.assign"),
+    can(session, "leads.update"),
+  ]);
+
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-6">Leads ({result.total})</h1>
-      {result.leads.length === 0 ? <EmptyState icon={Contact2} title="No leads yet" /> : (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-x-auto">
-          <table className="w-full text-sm"><thead><tr className="text-left text-neutral-500 border-b border-neutral-800"><th className="px-4 py-3">Name</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Status</th></tr></thead>
-          <tbody>{result.leads.map((l) => <tr key={l.id} className="border-b border-neutral-800/60"><td className="px-4 py-3 text-white">{l.name}</td><td className="px-4 py-3 text-neutral-300">{l.phone}</td><td className="px-4 py-3 text-neutral-300">{l.source_name}</td><td className="px-4 py-3 text-neutral-300">{l.status}</td></tr>)}</tbody></table>
-        </div>
-      )}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold text-white">Leads ({result.total})</h1>
+        {canCreate && (
+          <Link href="/workspace/lead-management/new" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition">
+            <Plus className="h-4 w-4" /> Add Lead
+          </Link>
+        )}
+      </div>
+
+      <LeadFilters sources={sources} services={services} />
+      <LeadsTable leads={result.leads} canBulkAssign={canAssign} canBulkUpdate={canUpdate} />
+      <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>
   );
 }

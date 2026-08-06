@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { forbidden, withErrorHandling } from "@/lib/helpers/response";
 import { listLeadsForExport } from "@/lib/modules/crm/actions/leads";
-import * as XLSX from "xlsx";
+import { buildExportResponse } from "@/lib/helpers/export";
 
 const COLUMNS = [
   ["lead_number", "Lead Number"], ["name", "Name"], ["email", "Email"], ["phone", "Phone"],
@@ -27,18 +27,5 @@ export const GET = withErrorHandling(async (request) => {
     search: searchParams.get("search") || null,
   });
 
-  const rows = leads.map((l) => Object.fromEntries(COLUMNS.map(([key, label]) => [label, l[key] ?? ""])));
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: COLUMNS.map(([, label]) => label) });
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "Leads");
-
-  const buffer = XLSX.write(book, { type: "buffer", bookType: format === "csv" ? "csv" : "xlsx" });
-  const filename = `leads-export-${new Date().toISOString().slice(0, 10)}.${format}`;
-
-  return new Response(buffer, {
-    headers: {
-      "Content-Type": format === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-    },
-  });
+  return buildExportResponse(leads, COLUMNS, { format, filenameBase: "leads-export", sheetName: "Leads" });
 });

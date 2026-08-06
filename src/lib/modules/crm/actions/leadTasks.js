@@ -2,6 +2,22 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
+import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
+
+export async function listAllTasks(session, { includeCompleted = true } = {}) {
+  const { where, params } = getVisibleLeadFilter(session);
+  const completedFilter = includeCompleted ? "" : "AND t.is_completed = 0";
+  const [rows] = await pool.query(
+    `SELECT t.*, l.name AS lead_name, l.lead_number, u.name AS assigned_name
+     FROM lead_tasks t
+     JOIN leads l ON l.id = t.lead_id AND l.is_deleted = 0 AND ${where}
+     LEFT JOIN users u ON u.id = t.assigned_to
+     WHERE t.company_id = ? ${completedFilter}
+     ORDER BY t.is_completed ASC, t.due_date ASC`,
+    [...params, session.company_id]
+  );
+  return rows;
+}
 
 export async function listLeadTasks(session, leadId) {
   const [rows] = await pool.query(

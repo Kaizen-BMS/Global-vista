@@ -6,7 +6,7 @@ import { ICON_MAP } from "@/lib/constants/navItems";
 export default function Sidebar({ session, navItems, company }) {
   const pathname = usePathname();
   return (
-    <aside className="hidden md:flex w-64 shrink-0 bg-neutral-950 border-r border-neutral-800 flex-col">
+    <aside className="hidden md:flex w-64 shrink-0 bg-neutral-950 border-r border-neutral-800 flex-col print:hidden">
       <div className="px-5 py-5 border-b border-neutral-800 flex items-center gap-3">
         {company?.logo_url ? <img src={company.logo_url} alt="" className="h-8 w-8 rounded object-contain" /> : <div className="h-8 w-8 rounded flex items-center justify-center font-semibold text-white" style={{ backgroundColor: company?.primary_color || "#4f46e5" }}>{(company?.short_name || company?.name || "W").charAt(0)}</div>}
         <div><p className="text-white font-semibold text-sm truncate">{company?.name || "Workspace"}</p></div>
