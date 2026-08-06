@@ -1,0 +1,26 @@
+"use client";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { LogOut } from "lucide-react";
+import { apiFetch } from "@/components/shared/apiClient";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import GlobalSearch from "@/components/shared/GlobalSearch";
+
+export default function Topbar() {
+  const router = useRouter();
+  async function handleLogout() {
+    await apiFetch("/api/core/auth/logout", { method: "POST" });
+    toast.success("Logged out.");
+    router.push("/login");
+    router.refresh();
+  }
+  return (
+    <header className="h-16 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3">
+      <div className="hidden sm:block flex-1 max-w-md"><GlobalSearch /></div>
+      <div className="flex items-center gap-4">
+        <NotificationBell />
+        <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white"><LogOut className="h-4 w-4" />Logout</button>
+      </div>
+    </header>
+  );
+}

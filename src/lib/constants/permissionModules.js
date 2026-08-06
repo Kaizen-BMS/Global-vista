@@ -1,0 +1,2 @@
+export const PERMISSION_MODULE_ORDER = ["dashboard", "users", "roles", "permissions", "activity_logs", "settings"];
+export const PERMISSION_MODULE_LABELS = { dashboard: "Dashboard", users: "Users", roles: "Roles", permissions: "Permissions", activity_logs: "Activity Logs", settings: "Settings" };

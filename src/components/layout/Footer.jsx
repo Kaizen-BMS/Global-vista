@@ -150,10 +150,29 @@ export default function Footer() {
 
           <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-muted sm:flex-row">
             <p>© {new Date().getFullYear()} Global Vista Educators. All rights reserved.</p>
-            <div className="flex gap-6">
-              <a href="#" className="hover:text-gold">Privacy Policy</a>
-              <a href="#" className="hover:text-gold">Terms of Service</a>
-            </div>
+           <div className="flex flex-wrap items-center gap-6">
+  <Link
+    href="/privacy-policy"
+    className="transition-colors hover:text-gold"
+  >
+    Privacy Policy
+  </Link>
+
+  <Link
+    href="/terms-of-service"
+    className="transition-colors hover:text-gold"
+  >
+    Terms of Service
+  </Link>
+
+  <Link
+    href="/login"
+    className="group flex items-center gap-2 rounded-full border border-[#D89B1D]/20 px-4 py-2 transition-all duration-300 hover:border-[#D89B1D] hover:bg-[#D89B1D]/10 hover:text-[#D89B1D]"
+  >
+    <Globe2 className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
+    <span>CRM Software</span>
+  </Link>
+</div>
           </div>
         </div>
       </div>

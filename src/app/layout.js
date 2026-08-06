@@ -4,11 +4,7 @@ import { Toaster } from "sonner";
 
 import "./globals.css";
 
-import GalaxyBackground from "@/components/common/GalaxyBackground";
-import ScrollProgress from "@/components/common/ScrollProgress";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
-
+import LayoutWrapper from "@/components/layout/LayoutWrapper";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -96,8 +92,7 @@ export default function RootLayout({ children }) {
   </Script>
 </head>
 
-      <body className="relative min-h-screen font-body antialiased">
-
+     <body className="relative min-h-screen font-body antialiased">
   <noscript>
     <img
       height="1"
@@ -107,36 +102,28 @@ export default function RootLayout({ children }) {
       alt=""
     />
   </noscript>
-        <GalaxyBackground />
 
-        <ScrollProgress />
+  <LayoutWrapper>
+    {children}
+  </LayoutWrapper>
 
-        <Navbar />
-
-        <main className="relative z-10">
-          {children}
-        </main>
-
-        <Footer />
-
-        {/* Toast Notifications */}
-        <Toaster
-          position="top-right"
-          richColors
-          closeButton
-          expand
-          visibleToasts={3}
-          duration={4000}
-          toastOptions={{
-            style: {
-              background: "#0A1330",
-              color: "#FFFFFF",
-              border: "1px solid rgba(216,155,29,0.35)",
-              borderRadius: "14px",
-            },
-          }}
-        />
-      </body>
+  <Toaster
+    position="top-right"
+    richColors
+    closeButton
+    expand
+    visibleToasts={3}
+    duration={4000}
+    toastOptions={{
+      style: {
+        background: "#0A1330",
+        color: "#FFFFFF",
+        border: "1px solid rgba(216,155,29,0.35)",
+        borderRadius: "14px",
+      },
+    }}
+  />
+</body>
     </html>
   );
 }

@@ -1,0 +1,2 @@
+export const COMMON_PASSWORDS = new Set(["password", "password1", "password123", "12345678", "123456789", "qwerty123", "letmein", "welcome1", "admin123", "changeme"]);
+export function isCommonPassword(password) { return COMMON_PASSWORDS.has(password.toLowerCase()); }
