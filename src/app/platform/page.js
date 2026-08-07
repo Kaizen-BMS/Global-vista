@@ -1,10 +1,7 @@
 import { getPlatformDashboard, resolveRange } from "@/lib/platform/actions/dashboard";
 import KpiGrid from "@/components/platform/dashboard/KpiGrid";
 import RangeFilter from "@/components/platform/dashboard/RangeFilter";
-import {
-  CompanyGrowthChart, LoginActivityChart, ProvisioningHistoryChart,
-  ModuleUsageChart, PlanDistributionChart, SubscriptionStatusChart,
-} from "@/components/platform/dashboard/PlatformCharts";
+import { PlatformChartsGrid } from "@/components/platform/dashboard/DynamicPlatformCharts";
 import {
   RecentCompaniesTable, RecentSubscriptionsTable, LatestPaymentsTable,
   LatestErrorsTable, RecentPlatformEventsTable,
@@ -28,14 +25,7 @@ export default async function PlatformDashboard({ searchParams }) {
 
       <KpiGrid kpis={kpis} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CompanyGrowthChart data={charts.companyGrowth} />
-        <LoginActivityChart data={charts.loginActivity} />
-        <ProvisioningHistoryChart data={charts.provisioningHistory} />
-        <ModuleUsageChart data={charts.moduleUsage} />
-        <PlanDistributionChart data={charts.planDistribution} />
-        <SubscriptionStatusChart data={charts.subscriptionStatus} />
-      </div>
+      <PlatformChartsGrid charts={charts} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <RecentCompaniesTable companies={tables.recentCompanies} />

@@ -13,11 +13,7 @@ import {
 } from "@/lib/actions/workspaceDashboard";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
 import { CrmKpiGrid, OrgKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
-import {
-  MonthlyLeadTrendChart, PipelineFunnelChart, LeadsBySourceChart, LeadsByServiceChart,
-  DepartmentDistributionChart, RoleDistributionChart, EmployeeGrowthChart,
-  DocumentUploadTrendChart, UnavailableChart,
-} from "@/components/workspace/dashboard/WorkspaceCharts";
+import { WorkspaceCrmChartsSection, WorkspaceOrgChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
 import {
   RecentLeadsTable, TeamPerformanceTable, RecentActivityTable,
   UpcomingAnniversariesTable, RecentLoginsTable,
@@ -62,12 +58,7 @@ export default async function DashboardPage() {
       <section className="space-y-4">
         <p className="text-neutral-400 text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
         <CrmKpiGrid crm={crmStats} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <MonthlyLeadTrendChart data={monthlyLeads} />
-          <PipelineFunnelChart data={leadsByStage} />
-          <LeadsBySourceChart data={leadsBySource} />
-          <LeadsByServiceChart data={leadsByService} />
-        </div>
+        <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <RecentLeadsTable leads={recentLeads} />
           <TeamPerformanceTable team={teamPerformance} />
@@ -85,14 +76,7 @@ export default async function DashboardPage() {
           unreadNotifications={unreadNotifications.length}
           recentLoginCount={recentLogins.length}
         />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <EmployeeGrowthChart data={employeeGrowth} />
-          <DepartmentDistributionChart data={departmentDistribution} />
-          <RoleDistributionChart data={roleDistribution} />
-          <DocumentUploadTrendChart data={documentTrend} />
-          <UnavailableChart title="Attendance Trend" reason="Attendance tracking is not part of the current schema — needs a dedicated attendance table before this can show real data." />
-          <UnavailableChart title="Leave Trend" reason="Leave management is not part of the current schema — needs a dedicated leave-requests table before this can show real data." />
-        </div>
+        <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <RecentActivityTable logs={recentActivity} />
           <UpcomingAnniversariesTable people={anniversaries} />
