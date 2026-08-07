@@ -2,20 +2,25 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Phone, MessageCircle, Mail, Loader2, X } from "lucide-react";
-import { FOLLOWUP_TYPES } from "@/lib/modules/crm/constants/leadStages";
+import { Phone, MessageCircle, Mail, Users, MessageSquare, Sparkles, Loader2, X } from "lucide-react";
+import { FOLLOWUP_DISPOSITIONS } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 
 const ACTIONS = [
-  { type: "Phone Call", icon: Phone, color: "hover:border-green-500/40 hover:bg-green-500/5", href: (l) => `tel:${l.phone}` },
-  { type: "WhatsApp", icon: MessageCircle, color: "hover:border-emerald-500/40 hover:bg-emerald-500/5", href: (l) => `https://wa.me/${(l.whatsapp || l.phone || "").replace(/\D/g, "")}` },
-  { type: "Email", icon: Mail, color: "hover:border-indigo-500/40 hover:bg-indigo-500/5", href: (l) => (l.email ? `mailto:${l.email}` : null) },
+  { type: "Phone Call", icon: Phone, color: "hover:border-green-500/40 hover:bg-green-500/5", hasHref: true, href: (l) => `tel:${l.phone}` },
+  { type: "WhatsApp", icon: MessageCircle, color: "hover:border-emerald-500/40 hover:bg-emerald-500/5", hasHref: true, href: (l) => `https://wa.me/${(l.whatsapp || l.phone || "").replace(/\D/g, "")}` },
+  { type: "Email", icon: Mail, color: "hover:border-indigo-500/40 hover:bg-indigo-500/5", hasHref: true, href: (l) => (l.email ? `mailto:${l.email}` : null) },
+  { type: "SMS", icon: MessageSquare, color: "hover:border-sky-500/40 hover:bg-sky-500/5", hasHref: true, href: (l) => `sms:${l.phone}` },
+  { type: "Meeting", icon: Users, color: "hover:border-purple-500/40 hover:bg-purple-500/5", hasHref: false, href: () => null },
+  { type: "Custom", icon: Sparkles, color: "hover:border-neutral-500/40 hover:bg-neutral-500/5", hasHref: false, href: () => null },
 ];
 
 export default function QuickActionBar({ lead, canManage }) {
   const router = useRouter();
   const [modalType, setModalType] = useState(null);
   const [note, setNote] = useState("");
+  const [disposition, setDisposition] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -31,21 +36,24 @@ export default function QuickActionBar({ lead, canManage }) {
     try {
       const res = await apiFetch(`/api/leads/${lead.id}/followups`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "quickLog", type: modalType, note, nextFollowUp: nextFollowUp || null }),
+        body: JSON.stringify({
+          action: "quickLog", type: modalType, note, nextFollowUp: nextFollowUp || null,
+          disposition: disposition || null, durationSeconds: durationMinutes ? Number(durationMinutes) * 60 : null,
+        }),
       });
       if (!res.ok) throw new Error();
       toast.success("Activity logged.");
-      setModalType(null); setNote(""); setNextFollowUp("");
+      setModalType(null); setNote(""); setNextFollowUp(""); setDisposition(""); setDurationMinutes("");
       router.refresh();
     } catch { toast.error("Failed to log activity."); } finally { setSaving(false); }
   }
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {ACTIONS.map((action) => {
           const Icon = action.icon;
-          const disabled = !action.href(lead);
+          const disabled = action.hasHref && !action.href(lead);
           return (
             <button
               key={action.type}
@@ -74,6 +82,23 @@ export default function QuickActionBar({ lead, canManage }) {
               placeholder="e.g. Interested in UK September intake, asked to call again tomorrow at 4 PM"
               className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1.5">Interested / Not Interested</label>
+                <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm cursor-pointer">
+                  <option value="">Not set</option>
+                  {FOLLOWUP_DISPOSITIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              {(modalType === "Phone Call" || modalType === "Meeting") && (
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1.5">Duration (minutes)</label>
+                  <input type="number" min="0" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+                </div>
+              )}
+            </div>
+
             <label className="block text-xs text-neutral-500 mb-1.5">Next follow-up (optional)</label>
             <input
               type="datetime-local" value={nextFollowUp} onChange={(e) => setNextFollowUp(e.target.value)}
@@ -81,7 +106,7 @@ export default function QuickActionBar({ lead, canManage }) {
             />
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm cursor-pointer">Cancel</button>
-              <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
+              <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save
               </button>
             </div>

@@ -23,7 +23,16 @@ export const LEAD_PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 
 export const DOCUMENT_TYPES = ["Passport", "IELTS", "PTE", "Academic", "Visa", "Offer Letter", "Invoice", "Other"];
 
-export const FOLLOWUP_TYPES = ["Phone Call", "WhatsApp", "Meeting", "Zoom", "Email", "Reminder"];
+export const FOLLOWUP_TYPES = ["Phone Call", "WhatsApp", "Meeting", "Zoom", "Email", "Reminder", "SMS", "Custom"];
+
+export const FOLLOWUP_DISPOSITIONS = ["Interested", "Not Interested", "No Response", "Follow-up Needed"];
+
+export const DISPOSITION_COLORS = {
+  Interested: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  "Not Interested": "bg-red-500/10 text-red-400 border-red-500/30",
+  "No Response": "bg-neutral-700/20 text-neutral-400 border-neutral-600/30",
+  "Follow-up Needed": "bg-amber-500/10 text-amber-400 border-amber-500/30",
+};
 
 export const STAGE_COLORS = {
   "New Lead": "bg-blue-500/10 text-blue-400 border-blue-500/30",

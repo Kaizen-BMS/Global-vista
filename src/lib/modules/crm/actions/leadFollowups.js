@@ -34,13 +34,19 @@ export async function getFollowupDashboard(session) {
      FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0 AND ${where}
      LEFT JOIN users u ON u.id = l.assigned_to`;
 
+  // Oldest-pending-first within each bucket, so nothing waits forever unnoticed.
   const [overdue] = await pool.query(`${base} WHERE f.status='Scheduled' AND f.scheduled_at < NOW() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
   const [today] = await pool.query(`${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
-  const [upcoming] = await pool.query(`${base} WHERE f.status='Scheduled' AND f.scheduled_at > NOW() AND DATE(f.scheduled_at) > CURDATE() ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [tomorrow] = await pool.query(`${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) = DATE_ADD(CURDATE(), INTERVAL 1 DAY) ORDER BY f.scheduled_at ASC LIMIT 100`, params);
+  const [thisWeek] = await pool.query(
+    `${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) > DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND DATE(f.scheduled_at) <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) ORDER BY f.scheduled_at ASC LIMIT 100`,
+    params
+  );
+  const [upcoming] = await pool.query(`${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) > DATE_ADD(CURDATE(), INTERVAL 7 DAY) ORDER BY f.scheduled_at ASC LIMIT 100`, params);
   const [highPriority] = await pool.query(`${base} WHERE f.status='Scheduled' AND l.priority IN ('High','Urgent') ORDER BY f.scheduled_at ASC LIMIT 100`, params);
   const [completedToday] = await pool.query(`${base} WHERE f.status='Completed' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at DESC LIMIT 100`, params);
 
-  return { overdue, today, upcoming, highPriority, completedToday };
+  return { overdue, today, tomorrow, thisWeek, upcoming, highPriority, completedToday };
 }
 
 export async function createFollowup(session, leadId, data, createdBy) {
@@ -76,15 +82,15 @@ export async function createFollowup(session, leadId, data, createdBy) {
  * bar, so counsellors never have to open two separate forms for
  * "what I just did" and "what's next."
  */
-export async function logQuickActivity(session, leadId, { type, note, nextFollowUp }, actorId) {
+export async function logQuickActivity(session, leadId, { type, note, nextFollowUp, durationSeconds, disposition }, actorId) {
   const conn = await pool.getConnection();
   let completedId;
   try {
     await conn.beginTransaction();
     const [result] = await conn.query(
-      `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, outcome, notes, created_by, updated_by)
-       VALUES (?, ?, ?, 'Completed', NOW(), ?, ?, ?, ?)`,
-      [session.company_id, leadId, type, note || null, note || null, actorId, actorId]
+      `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, outcome, notes, duration_seconds, disposition, created_by, updated_by)
+       VALUES (?, ?, ?, 'Completed', NOW(), ?, ?, ?, ?, ?, ?)`,
+      [session.company_id, leadId, type, note || null, note || null, durationSeconds || null, disposition || null, actorId, actorId]
     );
     completedId = result.insertId;
     if (nextFollowUp) {
@@ -97,7 +103,9 @@ export async function logQuickActivity(session, leadId, { type, note, nextFollow
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 
-  await logActivity({ userId: actorId, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `${type}: ${note || "logged"}${nextFollowUp ? " — next follow-up scheduled" : ""}` });
+  const dispositionNote = disposition ? ` — ${disposition}` : "";
+  const durationNote = durationSeconds ? ` (${Math.round(durationSeconds / 60)} min)` : "";
+  await logActivity({ userId: actorId, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `${type}: ${note || "logged"}${dispositionNote}${durationNote}${nextFollowUp ? " — next follow-up scheduled" : ""}` });
 
   const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
   if (lead?.assigned_to && lead.assigned_to !== actorId && nextFollowUp) {
@@ -112,13 +120,14 @@ export async function logQuickActivity(session, leadId, { type, note, nextFollow
   return completedId;
 }
 
-export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp }, updatedBy) {
+export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp, durationSeconds, disposition }, updatedBy) {
   await pool.query(
-    `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
-    [outcome || null, nextFollowUp || null, updatedBy, id, session.company_id]
+    `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, duration_seconds = ?, disposition = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
+    [outcome || null, nextFollowUp || null, durationSeconds || null, disposition || null, updatedBy, id, session.company_id]
   );
   if (nextFollowUp) {
     await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
   }
-  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Follow-up completed: ${outcome || "no outcome noted"}` });
+  const dispositionNote = disposition ? ` — ${disposition}` : "";
+  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Follow-up completed: ${outcome || "no outcome noted"}${dispositionNote}` });
 }

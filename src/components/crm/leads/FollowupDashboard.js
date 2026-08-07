@@ -3,12 +3,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Phone, MessageCircle, CheckCircle2, AlertTriangle, Clock, Star, CalendarCheck2, ChevronDown } from "lucide-react";
+import { Phone, MessageCircle, CheckCircle2, AlertTriangle, Clock, CalendarClock, CalendarDays, Star, CalendarCheck2, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import FollowupCompleteModal from "@/components/crm/leads/FollowupCompleteModal";
 
 const SECTIONS = [
   { key: "overdue", label: "Overdue", icon: AlertTriangle, color: "text-red-400", accent: "border-red-500/30 bg-red-500/5" },
   { key: "today", label: "Today", icon: Clock, color: "text-indigo-400", accent: "border-indigo-500/30 bg-indigo-500/5" },
+  { key: "tomorrow", label: "Tomorrow", icon: CalendarClock, color: "text-sky-400", accent: "border-sky-500/30 bg-sky-500/5" },
+  { key: "thisWeek", label: "This Week", icon: CalendarDays, color: "text-neutral-300", accent: "border-neutral-800 bg-neutral-900" },
   { key: "upcoming", label: "Upcoming", icon: CalendarCheck2, color: "text-neutral-400", accent: "border-neutral-800 bg-neutral-900" },
   { key: "highPriority", label: "High Priority", icon: Star, color: "text-amber-400", accent: "border-amber-500/30 bg-amber-500/5" },
   { key: "completedToday", label: "Completed Today", icon: CheckCircle2, color: "text-emerald-400", accent: "border-emerald-500/30 bg-emerald-500/5" },
@@ -16,26 +19,26 @@ const SECTIONS = [
 
 export default function FollowupDashboard({ data }) {
   const router = useRouter();
-  const [completingId, setCompletingId] = useState(null);
   const [collapsed, setCollapsed] = useState({});
   const [local, setLocal] = useState(data);
+  const [completingFollowup, setCompletingFollowup] = useState(null);
 
-  async function complete(followup) {
-    setCompletingId(followup.id);
+  async function complete(details) {
     try {
-      const res = await apiFetch(`/api/leads/${followup.lead_id}/followups`, {
+      const res = await apiFetch(`/api/leads/${completingFollowup.lead_id}/followups`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete", followupId: followup.id, outcome: "Completed from dashboard" }),
+        body: JSON.stringify({ action: "complete", followupId: completingFollowup.id, ...details }),
       });
       if (!res.ok) throw new Error();
       toast.success("Marked complete.");
       setLocal((prev) => {
         const next = { ...prev };
-        for (const key of ["overdue", "today", "upcoming", "highPriority"]) next[key] = next[key].filter((f) => f.id !== followup.id);
+        for (const key of ["overdue", "today", "tomorrow", "thisWeek", "upcoming", "highPriority"]) next[key] = next[key].filter((f) => f.id !== completingFollowup.id);
         return next;
       });
+      setCompletingFollowup(null);
       router.refresh();
-    } catch { toast.error("Failed to complete."); } finally { setCompletingId(null); }
+    } catch { toast.error("Failed to complete."); }
   }
 
   return (
@@ -69,7 +72,7 @@ export default function FollowupDashboard({ data }) {
                         <a href={`tel:${f.lead_phone}`} className="p-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800 text-neutral-400 hover:text-white cursor-pointer transition"><Phone className="h-3.5 w-3.5" /></a>
                         <a href={`https://wa.me/${(f.lead_phone || "").replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg bg-neutral-900/60 border border-neutral-800 text-neutral-400 hover:text-white cursor-pointer transition"><MessageCircle className="h-3.5 w-3.5" /></a>
                         {section.key !== "completedToday" && (
-                          <button onClick={() => complete(f)} disabled={completingId === f.id} className="ml-auto flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 cursor-pointer transition disabled:opacity-50">
+                          <button onClick={() => setCompletingFollowup(f)} className="ml-auto flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 cursor-pointer transition">
                             <CheckCircle2 className="h-3.5 w-3.5" /> Complete
                           </button>
                         )}
@@ -82,6 +85,14 @@ export default function FollowupDashboard({ data }) {
           </div>
         );
       })}
+
+      {completingFollowup && (
+        <FollowupCompleteModal
+          followupType={completingFollowup.type}
+          onClose={() => setCompletingFollowup(null)}
+          onSubmit={complete}
+        />
+      )}
     </div>
   );
 }
