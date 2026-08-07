@@ -44,11 +44,11 @@ export default function LeadDocuments({ leadId, documents, canManage }) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-white">
+              <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-white transition-colors cursor-pointer">
                 <Download className="h-4 w-4" />
               </a>
               {canManage && (
-                <button onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id} className="text-neutral-400 hover:text-red-400">
+                <button onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id} className="text-neutral-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}

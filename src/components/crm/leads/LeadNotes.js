@@ -46,7 +46,7 @@ export default function LeadNotes({ leadId, notes, canManage }) {
           <button
             type="submit"
             disabled={saving}
-            className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60"
+            className="btn-brand mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             Add Note

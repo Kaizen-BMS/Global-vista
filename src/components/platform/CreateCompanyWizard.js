@@ -46,16 +46,16 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
         {step === 2 && (
           <div>
             <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-4 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-800/60 border border-neutral-800 text-sm text-neutral-300"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} />{m.name}</label>)}</div>
+            <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-800/60 border border-neutral-800 text-sm text-neutral-300 cursor-pointer transition hover:border-neutral-700"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
           </div>
         )}
 
         <div className="flex justify-between mt-6">
-          <button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} className="px-4 py-2 rounded-lg bg-neutral-800 text-neutral-300 text-sm">{step === 0 ? "Cancel" : "Back"}</button>
+          <button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} className="px-4 py-2 rounded-lg bg-neutral-800 text-neutral-300 text-sm transition hover:bg-neutral-700 cursor-pointer">{step === 0 ? "Cancel" : "Back"}</button>
           {step < 2 ? (
-            <button onClick={() => setStep(step + 1)} disabled={step === 0 ? !form.companyName : !form.adminEmail} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-40">Next <ArrowRight className="h-4 w-4" /></button>
+            <button onClick={() => setStep(step + 1)} disabled={step === 0 ? !form.companyName : !form.adminEmail} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">Next <ArrowRight className="h-4 w-4" /></button>
           ) : (
-            <button onClick={handleSubmit} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Provision Company</button>
+            <button onClick={handleSubmit} disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Provision Company</button>
           )}
         </div>
       </div>

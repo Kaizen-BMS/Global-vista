@@ -34,7 +34,7 @@ export default function DuplicateBanner({ leadId, duplicateOfId, duplicateOfName
         </span>
       </div>
       {canMerge && (
-        <button onClick={handleMerge} disabled={merging} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-medium disabled:opacity-60 shrink-0">
+        <button onClick={handleMerge} disabled={merging} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-medium transition disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shrink-0">
           {merging && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Merge into original
         </button>

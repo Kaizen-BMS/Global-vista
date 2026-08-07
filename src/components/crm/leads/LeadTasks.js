@@ -66,7 +66,7 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
           <button
             type="submit"
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60"
+            className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             Add
@@ -86,6 +86,7 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
                   checked={!!task.is_completed}
                   disabled={togglingId === task.id || !canManage}
                   onChange={() => handleToggle(task.id, task.is_completed)}
+                  className="cursor-pointer disabled:cursor-not-allowed"
                 />
                 <div>
                   <p className={`text-sm ${task.is_completed ? "text-neutral-500 line-through" : "text-white"}`}>{task.title}</p>

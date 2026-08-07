@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Download, FileText, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import { SkeletonRows } from "@/components/shared/Skeleton";
 
 export default function ImportHistoryPanel() {
   const [history, setHistory] = useState(null);
@@ -21,7 +22,7 @@ export default function ImportHistoryPanel() {
       {open && (
         <div className="mt-4 bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
           {!history ? (
-            <p className="text-neutral-600 text-sm text-center py-8">Loading…</p>
+            <SkeletonRows rows={3} className="p-4" />
           ) : history.length === 0 ? (
             <p className="text-neutral-600 text-sm text-center py-8">No imports yet.</p>
           ) : (

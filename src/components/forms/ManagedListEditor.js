@@ -23,9 +23,9 @@ export default function ManagedListEditor({ title, apiBase, items }) {
       <h2 className="text-white font-medium mb-4">{title}</h2>
       <form onSubmit={handleAdd} className="flex gap-2 mb-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`New ${title.toLowerCase()}`} className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
-        <button type="submit" disabled={saving} className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
+        <button type="submit" disabled={saving} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-60 cursor-pointer">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
       </form>
-      <ul className="divide-y divide-neutral-800">{items.map((i) => <li key={i.id} className="flex items-center justify-between py-2"><span className="text-neutral-300 text-sm">{i.name}</span><button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} className="text-neutral-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button></li>)}</ul>
+      <ul className="divide-y divide-neutral-800">{items.map((i) => <li key={i.id} className="flex items-center justify-between py-2"><span className="text-neutral-300 text-sm">{i.name}</span><button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} className="text-neutral-500 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="h-4 w-4" /></button></li>)}</ul>
     </div>
   );
 }

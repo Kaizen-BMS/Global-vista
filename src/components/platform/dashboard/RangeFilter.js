@@ -29,7 +29,7 @@ export default function RangeFilter({ active, from, to }) {
         <input type="date" name="from" defaultValue={from} required className="px-2 py-1.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs" />
         <span className="text-neutral-600 text-xs">to</span>
         <input type="date" name="to" defaultValue={to} required className="px-2 py-1.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs" />
-        <button type="submit" className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${active === "custom" ? "bg-indigo-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800"}`}>Apply</button>
+        <button type="submit" className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${active === "custom" ? "bg-indigo-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800"}`}>Apply</button>
       </form>
     </div>
   );

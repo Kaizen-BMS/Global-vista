@@ -11,8 +11,8 @@ export default function Pagination({ page, pageSize, total }) {
     <div className="flex items-center justify-between mt-4 text-sm">
       <p className="text-neutral-500">Page {page} of {totalPages} · {total} total</p>
       <div className="flex items-center gap-2">
-        <button disabled={page <= 1} onClick={() => goTo(page - 1)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-        <button disabled={page >= totalPages} onClick={() => goTo(page + 1)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+        <button disabled={page <= 1} onClick={() => goTo(page - 1)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
+        <button disabled={page >= totalPages} onClick={() => goTo(page + 1)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
       </div>
     </div>
   );
