@@ -1,18 +1,16 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { isPlatformOperator } from "@/lib/helpers/permissions";
-import Link from "next/link";
-import { Building2, Package, Activity, Settings, LayoutDashboard, ScrollText } from "lucide-react";
-import { apiFetch } from "@/components/shared/apiClient";
+import { PLATFORM_NAV_ITEMS } from "@/lib/constants/navItems";
+import Sidebar from "@/components/layout/Sidebar";
+import PlatformTopbar from "@/components/layout/PlatformTopbar";
+import PageTransition from "@/components/shared/PageTransition";
+import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 
-const NAV = [
-  { href: "/platform", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/platform/companies", label: "Companies", icon: Building2 },
-  { href: "/platform/modules", label: "Modules", icon: Package },
-  { href: "/platform/activity-logs", label: "Activity Logs", icon: ScrollText },
-  { href: "/platform/system-health", label: "System Health", icon: Activity },
-  { href: "/platform/settings", label: "Settings", icon: Settings },
-];
+// Global Vista's own identity, not a tenant's — deliberately not
+// pulled from the companies table, per the branding rule that Global
+// Vista branding belongs only in Platform Admin/Login/Marketing/Billing.
+const PLATFORM_IDENTITY = { name: "Global Vista", short_name: "Platform Console", primary_color: "#4f46e5" };
 
 export default async function PlatformLayout({ children }) {
   const session = await getSession();
@@ -20,15 +18,16 @@ export default async function PlatformLayout({ children }) {
   if (!isPlatformOperator(session)) redirect("/workspace/dashboard");
 
   return (
-    <div className="min-h-screen bg-black flex">
-      <aside className="hidden md:flex w-56 shrink-0 bg-neutral-950 border-r border-neutral-800 flex-col">
-        <div className="px-5 py-5 border-b border-neutral-800"><p className="text-white font-semibold">Global Vista</p><p className="text-neutral-500 text-xs">Platform Console</p></div>
-        <nav className="flex-1 px-3 py-4 space-y-1">{NAV.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-neutral-400 hover:bg-neutral-900 hover:text-white"><Icon className="h-4 w-4" />{label}</Link>)}</nav>
-      </aside>
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b border-neutral-900 px-6 flex items-center justify-between"><p className="text-neutral-500 text-xs">{session.name}</p></header>
-        <main className="flex-1 p-6 max-w-[1600px] mx-auto w-full overflow-y-auto">{children}</main>
+    <MobileNavProvider>
+      <div className="h-screen bg-black flex overflow-hidden">
+        <Sidebar session={session} navItems={PLATFORM_NAV_ITEMS} company={PLATFORM_IDENTITY} showPoweredBy={false} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <PlatformTopbar session={session} />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 max-w-[1600px] mx-auto w-full">
+            <PageTransition>{children}</PageTransition>
+          </main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   );
 }

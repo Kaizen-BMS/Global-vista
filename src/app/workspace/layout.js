@@ -10,6 +10,7 @@ import Topbar from "@/components/layout/Topbar";
 import PageTransition from "@/components/shared/PageTransition";
 import ChangePasswordForm from "@/components/forms/ChangePasswordForm";
 import BrandFavicon from "@/components/shared/BrandFavicon";
+import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 
 export default async function WorkspaceLayout({ children }) {
   const session = await getSession();
@@ -22,18 +23,20 @@ export default async function WorkspaceLayout({ children }) {
   const showPoweredBy = platformBranding.powered_by_enabled !== "false";
 
   return (
-    <div
-      className="h-screen bg-black flex overflow-hidden"
-      style={{ "--brand-primary": company?.primary_color || "#4f46e5", "--brand-secondary": company?.secondary_color || "#171717" }}
-    >
-      <BrandFavicon faviconUrl={company?.favicon_url} />
-      <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Topbar company={company} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {session.must_change_password ? <div className="max-w-md mx-auto mt-12"><h1 className="text-xl font-semibold text-white mb-1">Set a New Password</h1><ChangePasswordForm forced /></div> : <PageTransition>{children}</PageTransition>}
-        </main>
+    <MobileNavProvider>
+      <div
+        className="h-screen bg-black flex overflow-hidden"
+        style={{ "--brand-primary": company?.primary_color || "#4f46e5", "--brand-secondary": company?.secondary_color || "#171717" }}
+      >
+        <BrandFavicon faviconUrl={company?.favicon_url} />
+        <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Topbar company={company} />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+            {session.must_change_password ? <div className="max-w-md mx-auto mt-12"><h1 className="text-xl font-semibold text-white mb-1">Set a New Password</h1><ChangePasswordForm forced /></div> : <PageTransition>{children}</PageTransition>}
+          </main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   );
 }

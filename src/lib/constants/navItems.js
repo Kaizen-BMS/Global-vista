@@ -1,5 +1,14 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity };
+
+export const PLATFORM_NAV_ITEMS = [
+  { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
+  { href: "/platform/companies", label: "Companies", icon: "Building2" },
+  { href: "/platform/modules", label: "Modules", icon: "Package" },
+  { href: "/platform/activity-logs", label: "Activity Logs", icon: "ScrollText" },
+  { href: "/platform/system-health", label: "System Health", icon: "Activity" },
+  { href: "/platform/settings", label: "Settings", icon: "Settings" },
+];
 export const ALL_NAV_ITEMS = [
   { href: "/workspace/dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: "dashboard.view" },
   { href: "/workspace/lead-management", label: "Leads", icon: "Contact2", permission: "leads.view" },

@@ -4,10 +4,9 @@ import { toast } from "sonner";
 import { LogOut, Menu } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import NotificationBell from "@/components/notifications/NotificationBell";
-import GlobalSearch from "@/components/shared/GlobalSearch";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
 
-export default function Topbar({ company }) {
+export default function PlatformTopbar({ session }) {
   const router = useRouter();
   const { setOpen } = useMobileNav();
   async function handleLogout() {
@@ -18,11 +17,10 @@ export default function Topbar({ company }) {
   }
   return (
     <header className="h-16 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3 print:hidden">
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex items-center gap-3 min-w-0">
         <button onClick={() => setOpen(true)} className="md:hidden text-neutral-400 hover:text-white cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
-        <div className="hidden sm:block flex-1 max-w-md"><GlobalSearch /></div>
+        <p className="text-neutral-500 text-xs truncate">{session?.name}</p>
       </div>
-      {company?.name && <p className="hidden lg:block text-neutral-500 text-xs truncate max-w-[220px]">{company.name}</p>}
       <div className="flex items-center gap-4 shrink-0">
         <NotificationBell />
         <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white cursor-pointer transition-colors"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Logout</span></button>
