@@ -14,13 +14,16 @@ export default function LayoutWrapper({ children }) {
   // /crm is the dedicated platform landing page (Website Footer -> here ->
   // Login) — it has its own focused header/CTA/footer, not the multi-page
   // marketing nav, so it's excluded the same way the app itself is.
+  // /forms/[slug] is a tenant's own public lead-capture page — it must
+  // show THAT company's branding, not Global Vista's marketing nav.
   const isApplication =
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/platform") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/crm");
+    pathname.startsWith("/crm") ||
+    pathname.startsWith("/forms");
 
   if (isApplication) {
     return <>{children}</>;

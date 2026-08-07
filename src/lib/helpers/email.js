@@ -62,3 +62,13 @@ export async function sendPasswordResetEmail({ to, userId, name, resetUrl, compa
   });
   return send({ to, userId, subject: "Reset your password", html, template: "password_reset" });
 }
+export async function sendLeadFormNotificationEmail({ to, formName, leadName, leadPhone, companyId, leadId }) {
+  const branding = await getBranding(companyId);
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const html = wrap({
+    title: "New lead from your form",
+    bodyFn: (color) => `<p><strong style="color:#fff;">${leadName}</strong> just submitted "${formName}".<br/>Phone: ${leadPhone}</p><a href="${appUrl}/workspace/lead-management/${leadId}" style="color:${color};">View Lead</a>`,
+    branding,
+  });
+  return send({ to, subject: `New lead: ${leadName}`, html, template: "lead_form_notification" });
+}

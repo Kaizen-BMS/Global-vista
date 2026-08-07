@@ -1,0 +1,111 @@
+import "server-only";
+import crypto from "crypto";
+import { pool } from "@/lib/db";
+import { logActivity } from "@/lib/activityLog";
+import { NOT_DELETED } from "@/lib/helpers/db";
+
+function slugify(text) {
+  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 80);
+}
+
+/** companies.slug and lead_forms.slug are both single-column globally-unique — same pattern as provisioning's getUniqueCompanySlug(). */
+async function getUniqueFormSlug(baseSlug) {
+  let slug = baseSlug || crypto.randomBytes(4).toString("hex");
+  let i = 1;
+  while (true) {
+    const [rows] = await pool.query(`SELECT id FROM lead_forms WHERE slug=? LIMIT 1`, [slug]);
+    if (!rows.length) return slug;
+    slug = `${baseSlug}-${i++}`;
+  }
+}
+
+export async function listLeadForms(session) {
+  const [rows] = await pool.query(
+    `SELECT f.*,
+            (SELECT COUNT(*) FROM lead_form_views v WHERE v.form_id=f.id) AS view_count,
+            (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS submission_count
+     FROM lead_forms f WHERE f.company_id=? AND f.${NOT_DELETED} ORDER BY f.created_at DESC`,
+    [session.company_id]
+  );
+  return rows;
+}
+
+export async function getLeadForm(session, id) {
+  const [[row]] = await pool.query(`SELECT * FROM lead_forms WHERE id=? AND company_id=? AND ${NOT_DELETED}`, [id, session.company_id]);
+  if (!row) return null;
+  return { ...row, fields_config: JSON.parse(row.fields_config || "[]"), theme_config: JSON.parse(row.theme_config || "{}") };
+}
+
+export async function createLeadForm(session, data, createdBy) {
+  const slug = await getUniqueFormSlug(slugify(data.slug || data.name));
+  const [result] = await pool.query(
+    `INSERT INTO lead_forms (
+      company_id, name, slug, description, fields_config, default_lead_source_id, default_service_id,
+      default_assigned_to, default_tags, campaign, success_message, redirect_url, notify_emails,
+      theme_config, status, recaptcha_enabled, created_by, updated_by
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      session.company_id, data.name, slug, data.description || null, JSON.stringify(data.fields || []),
+      data.defaultLeadSourceId || null, data.defaultServiceId || null, data.defaultAssignedTo || null,
+      data.defaultTags || null, data.campaign || null, data.successMessage || null, data.redirectUrl || null,
+      data.notifyEmails || null, JSON.stringify(data.theme || {}), data.status || "active",
+      data.recaptchaEnabled ? 1 : 0, createdBy, createdBy,
+    ]
+  );
+  await logActivity({ userId: createdBy, module: "leads", action: "form_create", entityType: "lead_form", entityId: result.insertId, companyId: session.company_id, description: `Created lead form "${data.name}"` });
+  return result.insertId;
+}
+
+export async function updateLeadForm(session, id, data, updatedBy) {
+  await pool.query(
+    `UPDATE lead_forms SET name=?, description=?, fields_config=?, default_lead_source_id=?, default_service_id=?,
+      default_assigned_to=?, default_tags=?, campaign=?, success_message=?, redirect_url=?, notify_emails=?,
+      theme_config=?, status=?, recaptcha_enabled=?, updated_by=? WHERE id=? AND company_id=? AND ${NOT_DELETED}`,
+    [
+      data.name, data.description || null, JSON.stringify(data.fields || []), data.defaultLeadSourceId || null,
+      data.defaultServiceId || null, data.defaultAssignedTo || null, data.defaultTags || null, data.campaign || null,
+      data.successMessage || null, data.redirectUrl || null, data.notifyEmails || null, JSON.stringify(data.theme || {}),
+      data.status || "active", data.recaptchaEnabled ? 1 : 0, updatedBy, id, session.company_id,
+    ]
+  );
+  await logActivity({ userId: updatedBy, module: "leads", action: "form_update", entityType: "lead_form", entityId: id, companyId: session.company_id, description: `Updated lead form #${id}` });
+}
+
+export async function deleteLeadForm(session, id, deletedBy) {
+  await pool.query(`UPDATE lead_forms SET is_deleted=1, deleted_at=NOW(), status='inactive' WHERE id=? AND company_id=?`, [id, session.company_id]);
+  await logActivity({ userId: deletedBy, module: "leads", action: "form_delete", entityType: "lead_form", entityId: id, companyId: session.company_id, description: `Deleted lead form #${id}` });
+}
+
+export async function getLeadFormAnalytics(session, id) {
+  const form = await getLeadForm(session, id);
+  if (!form) return null;
+
+  const [[viewCounts]] = await pool.query(
+    `SELECT SUM(source='link') AS views, SUM(source='qr') AS scans FROM lead_form_views WHERE form_id=?`, [id]
+  );
+  const [[submissionCounts]] = await pool.query(
+    `SELECT COUNT(*) AS total, SUM(status='success') AS successful, AVG(NULLIF(completion_ms,0)) AS avgCompletionMs
+     FROM lead_form_submissions WHERE form_id=?`, [id]
+  );
+  const [topDevices] = await pool.query(`SELECT device, COUNT(*) AS count FROM lead_form_views WHERE form_id=? AND device IS NOT NULL GROUP BY device ORDER BY count DESC LIMIT 5`, [id]);
+  const [topCountries] = await pool.query(`SELECT country, COUNT(*) AS count FROM lead_form_views WHERE form_id=? AND country IS NOT NULL GROUP BY country ORDER BY count DESC LIMIT 5`, [id]);
+  const [topBrowsers] = await pool.query(`SELECT browser, COUNT(*) AS count FROM lead_form_views WHERE form_id=? AND browser IS NOT NULL GROUP BY browser ORDER BY count DESC LIMIT 5`, [id]);
+  const [recentSubmissions] = await pool.query(
+    `SELECT s.id, s.status, s.device, s.browser, s.country, s.created_at, l.id AS lead_id, l.name AS lead_name
+     FROM lead_form_submissions s LEFT JOIN leads l ON l.id = s.lead_id
+     WHERE s.form_id=? ORDER BY s.created_at DESC LIMIT 20`, [id]
+  );
+
+  const views = Number(viewCounts?.views || 0);
+  const scans = Number(viewCounts?.scans || 0);
+  const totalViews = views + scans;
+  const submissions = Number(submissionCounts?.successful || 0);
+
+  return {
+    form,
+    views, scans, totalViews, submissions,
+    conversionRate: totalViews > 0 ? Math.round((submissions / totalViews) * 1000) / 10 : 0,
+    avgCompletionSeconds: submissionCounts?.avgCompletionMs ? Math.round(submissionCounts.avgCompletionMs / 100) / 10 : null,
+    topDevices, topCountries, topBrowsers, recentSubmissions,
+  };
+}
