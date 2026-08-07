@@ -20,7 +20,7 @@ export default async function PlatformLayout({ children }) {
   return (
     <MobileNavProvider>
       <div className="h-screen bg-black flex overflow-hidden">
-        <Sidebar session={session} navItems={PLATFORM_NAV_ITEMS} company={PLATFORM_IDENTITY} showPoweredBy={false} />
+        <Sidebar session={session} navItems={PLATFORM_NAV_ITEMS} company={PLATFORM_IDENTITY} showPoweredBy={false} scope="platform" />
         <div className="flex-1 flex flex-col min-w-0">
           <PlatformTopbar session={session} />
           <main className="flex-1 overflow-y-auto p-4 md:p-6 max-w-[1600px] mx-auto w-full">
