@@ -4,9 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Loader2, Mail } from "lucide-react";
-import { apiFetch } from "@/components/crm/shared/apiClient";
+import { apiFetch } from "@/components/shared/apiClient";
 
-// Moved from app/crm/(public)/forgot-password/page.js — logic unchanged.
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,7 +15,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await apiFetch("/api/auth/forgot-password", {
+      const res = await apiFetch("/api/core/auth/forgot-password", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
       });
       if (!res.ok) throw new Error();
