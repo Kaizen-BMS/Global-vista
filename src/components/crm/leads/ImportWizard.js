@@ -208,8 +208,8 @@ export default function ImportWizard({ sources, services }) {
       {step === 1 && (
         <div>
           <p className="text-neutral-400 text-sm mb-4">Match each column from your file to a CRM field. We've pre-matched what we could recognize.</p>
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden mb-6">
-            <table className="w-full text-sm">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-x-auto mb-6">
+            <table className="w-full text-sm min-w-[520px]">
               <thead><tr className="text-left text-neutral-500 border-b border-neutral-800"><th className="px-4 py-3">File Column</th><th className="px-4 py-3">Sample</th><th className="px-4 py-3">Maps To</th></tr></thead>
               <tbody>
                 {headers.map((h, i) => (
