@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 import LayoutWrapper from "@/components/layout/LayoutWrapper";
+import { ThemeProvider } from "@/components/shared/ThemeProvider";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -103,9 +104,11 @@ export default function RootLayout({ children }) {
     />
   </noscript>
 
-  <LayoutWrapper>
-    {children}
-  </LayoutWrapper>
+  <ThemeProvider>
+    <LayoutWrapper>
+      {children}
+    </LayoutWrapper>
+  </ThemeProvider>
 
   <Toaster
     position="top-right"

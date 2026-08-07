@@ -5,6 +5,7 @@ import { LogOut, Menu } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import GlobalSearch from "@/components/shared/GlobalSearch";
+import ThemeToggle from "@/components/shared/ThemeToggle";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
 
 export default function Topbar({ company }) {
@@ -24,6 +25,7 @@ export default function Topbar({ company }) {
       </div>
       {company?.name && <p className="hidden lg:block text-neutral-500 text-xs truncate max-w-[220px]">{company.name}</p>}
       <div className="flex items-center gap-4 shrink-0">
+        <ThemeToggle />
         <NotificationBell />
         <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white cursor-pointer transition-colors"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Logout</span></button>
       </div>

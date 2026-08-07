@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { LogOut, Menu } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import ThemeToggle from "@/components/shared/ThemeToggle";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
 
 export default function PlatformTopbar({ session }) {
@@ -22,6 +23,7 @@ export default function PlatformTopbar({ session }) {
         <p className="text-neutral-500 text-xs truncate">{session?.name}</p>
       </div>
       <div className="flex items-center gap-4 shrink-0">
+        <ThemeToggle />
         <NotificationBell />
         <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white cursor-pointer transition-colors"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Logout</span></button>
       </div>
