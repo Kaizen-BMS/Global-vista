@@ -10,7 +10,7 @@ export default async function OrganizationPage() {
   ]);
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Settings</h1><SettingsTabs />
+      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1><SettingsTabs />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <ManagedListEditor title="Branches" apiBase="/api/core/organization/branches" items={branches} />
         <ManagedListEditor title="Departments" apiBase="/api/core/organization/departments" items={departments} />

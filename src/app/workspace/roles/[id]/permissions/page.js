@@ -9,10 +9,10 @@ export default async function RolePermissionsPage({ params }) {
   const session = await getSession();
   if (!(await can(session, "permissions.manage"))) return <ForbiddenState />;
   const [role, permissions, assignedIds] = await Promise.all([getRoleById(session, id), listPermissions(), getRolePermissionIds(id)]);
-  if (!role) return <div className="text-neutral-500 text-sm">Not found.</div>;
+  if (!role) return <div className="text-muted-foreground text-sm">Not found.</div>;
   return (
     <div>
-      <div className="mb-6"><h1 className="text-xl font-semibold text-white">{role.name}</h1></div>
+      <div className="mb-6"><h1 className="text-xl font-semibold text-foreground">{role.name}</h1></div>
       <PermissionMatrix roleId={role.id} allPermissions={permissions} assignedIds={assignedIds} />
     </div>
   );

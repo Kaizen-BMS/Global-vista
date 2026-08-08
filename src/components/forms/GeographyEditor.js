@@ -20,20 +20,20 @@ export default function GeographyEditor({ countries }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-        <h3 className="text-white font-medium mb-3">Countries</h3>
-        <form onSubmit={addCountry} className="flex gap-2 mb-3"><input value={newCountry} onChange={(e) => setNewCountry(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" /><button type="submit" className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
-        <div className="space-y-1">{countries.map((c) => <button key={c.id} onClick={() => setSelectedCountryId(c.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition cursor-pointer ${selectedCountryId === c.id ? "bg-indigo-600/10 text-indigo-400" : "text-neutral-300 hover:bg-neutral-800"}`}>{c.name}</button>)}</div>
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-foreground font-medium mb-3">Countries</h3>
+        <form onSubmit={addCountry} className="flex gap-2 mb-3"><input value={newCountry} onChange={(e) => setNewCountry(e.target.value)} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-white text-sm" /><button type="submit" className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
+        <div className="space-y-1">{countries.map((c) => <button key={c.id} onClick={() => setSelectedCountryId(c.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition cursor-pointer ${selectedCountryId === c.id ? "bg-indigo-600/10 text-indigo-400" : "text-foreground hover:bg-muted"}`}>{c.name}</button>)}</div>
       </div>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-        <h3 className="text-white font-medium mb-3">States</h3>
-        <form onSubmit={addState} className="flex gap-2 mb-3"><input value={newState} onChange={(e) => setNewState(e.target.value)} disabled={!selectedCountryId} className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" /><button type="submit" disabled={!selectedCountryId} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
-        <div className="space-y-1">{states.map((s) => <button key={s.id} onClick={() => setSelectedStateId(s.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition cursor-pointer ${selectedStateId === s.id ? "bg-indigo-600/10 text-indigo-400" : "text-neutral-300 hover:bg-neutral-800"}`}>{s.name}</button>)}</div>
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-foreground font-medium mb-3">States</h3>
+        <form onSubmit={addState} className="flex gap-2 mb-3"><input value={newState} onChange={(e) => setNewState(e.target.value)} disabled={!selectedCountryId} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-white text-sm" /><button type="submit" disabled={!selectedCountryId} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
+        <div className="space-y-1">{states.map((s) => <button key={s.id} onClick={() => setSelectedStateId(s.id)} className={`w-full text-left px-3 py-2 rounded-lg text-sm transition cursor-pointer ${selectedStateId === s.id ? "bg-indigo-600/10 text-indigo-400" : "text-foreground hover:bg-muted"}`}>{s.name}</button>)}</div>
       </div>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-        <h3 className="text-white font-medium mb-3">Cities</h3>
-        <form onSubmit={addCity} className="flex gap-2 mb-3"><input value={newCity} onChange={(e) => setNewCity(e.target.value)} disabled={!selectedStateId} className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" /><button type="submit" disabled={!selectedStateId} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
-        <div className="space-y-1">{cities.map((c) => <div key={c.id} className="px-3 py-2 text-sm text-neutral-300">{c.name}</div>)}</div>
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-foreground font-medium mb-3">Cities</h3>
+        <form onSubmit={addCity} className="flex gap-2 mb-3"><input value={newCity} onChange={(e) => setNewCity(e.target.value)} disabled={!selectedStateId} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-white text-sm" /><button type="submit" disabled={!selectedStateId} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"><Plus className="h-4 w-4" /></button></form>
+        <div className="space-y-1">{cities.map((c) => <div key={c.id} className="px-3 py-2 text-sm text-foreground">{c.name}</div>)}</div>
       </div>
     </div>
   );

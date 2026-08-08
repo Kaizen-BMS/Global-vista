@@ -58,8 +58,17 @@ export async function getLeadsByStage(session) {
   return rows;
 }
 
-export async function getMonthlyLeadTrend(session) {
+export async function getMonthlyLeadTrend(session, range) {
   const { where, params } = getVisibleLeadFilter(session);
+  if (range?.start && range?.end) {
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS month, COUNT(*) AS count
+       FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.created_at BETWEEN ? AND ?
+       GROUP BY month ORDER BY month ASC`,
+      [...params, range.start, range.end]
+    );
+    return rows;
+  }
   const [rows] = await pool.query(
     `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS month, COUNT(*) AS count
      FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)

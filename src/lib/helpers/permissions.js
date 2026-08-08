@@ -4,6 +4,9 @@ import { isModuleEnabledForCompany, getSubscriptionState } from "@/lib/platform/
 
 export function isSuperAdmin(session) { return !!session?.is_super_admin; }
 export function isPlatformOperator(session) { return !!session?.is_platform_operator; }
+export function isCompanySuspended(session) {
+  return !isPlatformOperator(session) && ["suspended", "deleted"].includes(session?.company_status);
+}
 
 export async function getRolePermissionSlugs(roleId) {
   const [rows] = await pool.query(
@@ -18,6 +21,7 @@ async function getPermissionModuleSlug(slug) {
 }
 export async function can(session, permissionSlug) {
   if (!session) return false;
+  if (isCompanySuspended(session)) return false;
   const moduleSlug = await getPermissionModuleSlug(permissionSlug);
   const isPlatformSlug = moduleSlug === "platform";
   if (!isPlatformSlug && moduleSlug !== "core") {

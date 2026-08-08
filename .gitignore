@@ -20,6 +20,12 @@
 # production
 /build
 
+# user-uploaded branding assets (runtime content, not source)
+/public/uploads
+
+# private uploaded files (employee documents, etc.) served only via signed URLs
+/.storage
+
 # misc
 .DS_Store
 *.pem
@@ -35,6 +41,9 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# local Claude Code config
+/.claude
 
 # typescript
 *.tsbuildinfo

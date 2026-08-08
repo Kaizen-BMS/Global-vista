@@ -43,8 +43,16 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       className={`${inter.variable} ${instrument.variable}`}
+      suppressHydrationWarning
     >
     <head>
+  {/* Applies the stored theme before first paint, so there's no flash of
+      the wrong theme while ThemeProvider's effect is still hydrating. */}
+  <script
+    dangerouslySetInnerHTML={{
+      __html: `(function(){try{var t=localStorage.getItem('gv:theme')||'dark';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;if(r==='dark')document.documentElement.classList.add('dark');document.documentElement.setAttribute('data-theme',r);}catch(e){}})();`,
+    }}
+  />
   {/* Google Analytics */}
   <Script
     src="https://www.googletagmanager.com/gtag/js?id=G-T71M3NLZCH"

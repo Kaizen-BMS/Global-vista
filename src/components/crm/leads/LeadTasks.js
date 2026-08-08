@@ -6,9 +6,12 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import { apiFetch } from "@/components/shared/apiClient";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
+import { formatDate } from "@/lib/helpers/dateFormat";
 
 export default function LeadTasks({ leadId, tasks, canManage }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
@@ -61,7 +64,7 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="New task title..."
-            className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <button
             type="submit"
@@ -75,11 +78,11 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
       )}
 
       <div className="space-y-2">
-        {tasks.length === 0 && <p className="text-neutral-500 text-sm">No tasks yet.</p>}
+        {tasks.length === 0 && <p className="text-muted-foreground text-sm">No tasks yet.</p>}
         {tasks.map((task) => {
           const overdue = task.due_date && !task.is_completed && new Date(task.due_date) < now;
           return (
-            <div key={task.id} className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+            <div key={task.id} className="flex items-center justify-between bg-card border border-border rounded-lg p-3">
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -89,10 +92,10 @@ export default function LeadTasks({ leadId, tasks, canManage }) {
                   className="cursor-pointer disabled:cursor-not-allowed"
                 />
                 <div>
-                  <p className={`text-sm ${task.is_completed ? "text-neutral-500 line-through" : "text-white"}`}>{task.title}</p>
+                  <p className={`text-sm ${task.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{task.title}</p>
                   {task.due_date && (
-                    <p className={`text-xs ${overdue ? "text-red-400" : "text-neutral-500"}`}>
-                      Due {new Date(task.due_date).toLocaleDateString()} {overdue ? "· Overdue" : ""}
+                    <p className={`text-xs ${overdue ? "text-red-400" : "text-muted-foreground"}`}>
+                      Due {formatDate(task.due_date, timezone)} {overdue ? "· Overdue" : ""}
                     </p>
                   )}
                 </div>

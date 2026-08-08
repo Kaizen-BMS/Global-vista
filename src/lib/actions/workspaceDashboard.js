@@ -33,7 +33,7 @@ export async function getWorkspaceOrgStats(session) {
     pool.query(
       `SELECT
         (SELECT COUNT(*) FROM lead_documents WHERE company_id=?) +
-        (SELECT COUNT(*) FROM employee_documents ed JOIN users u ON u.id=ed.user_id WHERE u.company_id=? AND u.is_deleted=0)
+        (SELECT COUNT(*) FROM employee_documents ed JOIN users u ON u.id=ed.user_id WHERE u.company_id=? AND u.is_deleted=0 AND ed.is_deleted=0)
        AS total`,
       [companyId, companyId]
     ),
@@ -73,7 +73,16 @@ export async function getRecentLogins(session, limit = 8) {
   return rows;
 }
 
-export async function getEmployeeGrowth(session) {
+export async function getEmployeeGrowth(session, range) {
+  if (range?.start && range?.end) {
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
+       FROM users WHERE company_id=? AND is_deleted=0 AND created_at BETWEEN ? AND ?
+       GROUP BY month ORDER BY month ASC`,
+      [session.company_id, range.start, range.end]
+    );
+    return rows;
+  }
   const [rows] = await pool.query(
     `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
      FROM users WHERE company_id=? AND is_deleted=0 AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
@@ -105,14 +114,27 @@ export async function getRoleDistribution(session) {
   return rows;
 }
 
-export async function getDocumentUploadTrend(session) {
+export async function getDocumentUploadTrend(session, range) {
+  if (range?.start && range?.end) {
+    const [rows] = await pool.query(
+      `SELECT day, SUM(count) AS count FROM (
+         SELECT DATE(created_at) AS day, COUNT(*) AS count FROM lead_documents
+         WHERE company_id=? AND created_at BETWEEN ? AND ? GROUP BY day
+         UNION ALL
+         SELECT DATE(ed.created_at) AS day, COUNT(*) AS count FROM employee_documents ed JOIN users u ON u.id=ed.user_id
+         WHERE u.company_id=? AND ed.is_deleted=0 AND ed.created_at BETWEEN ? AND ? GROUP BY day
+       ) combined GROUP BY day ORDER BY day ASC`,
+      [session.company_id, range.start, range.end, session.company_id, range.start, range.end]
+    );
+    return rows;
+  }
   const [rows] = await pool.query(
     `SELECT day, SUM(count) AS count FROM (
        SELECT DATE(created_at) AS day, COUNT(*) AS count FROM lead_documents
        WHERE company_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY day
        UNION ALL
        SELECT DATE(ed.created_at) AS day, COUNT(*) AS count FROM employee_documents ed JOIN users u ON u.id=ed.user_id
-       WHERE u.company_id=? AND ed.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY day
+       WHERE u.company_id=? AND ed.is_deleted=0 AND ed.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY day
      ) combined GROUP BY day ORDER BY day ASC`,
     [session.company_id, session.company_id]
   );

@@ -17,9 +17,9 @@ export default function ChangePasswordForm({ forced }) {
     } catch { toast.error("Something went wrong."); } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={handleSubmit} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-      {!forced && <input type="password" required placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />}
-      <input type="password" required minLength={8} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
+      {!forced && <input type="password" required placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />}
+      <input type="password" required minLength={8} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
       <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Update Password</button>
     </form>
   );

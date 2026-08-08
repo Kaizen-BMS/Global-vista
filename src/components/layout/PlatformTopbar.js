@@ -1,32 +1,29 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { LogOut, Menu } from "lucide-react";
-import { apiFetch } from "@/components/shared/apiClient";
+import { Menu } from "lucide-react";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import ThemeToggle from "@/components/shared/ThemeToggle";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
+import Breadcrumbs from "@/components/layout/Breadcrumbs";
+import QuickCreateButton from "@/components/layout/QuickCreateButton";
+import UserMenu from "@/components/layout/UserMenu";
+import CommandPalette from "@/components/layout/CommandPalette";
 
 export default function PlatformTopbar({ session }) {
-  const router = useRouter();
   const { setOpen } = useMobileNav();
-  async function handleLogout() {
-    await apiFetch("/api/core/auth/logout", { method: "POST" });
-    toast.success("Logged out.");
-    router.push("/login");
-    router.refresh();
-  }
   return (
-    <header className="h-16 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3 print:hidden">
+    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3 print:hidden">
       <div className="flex items-center gap-3 min-w-0">
-        <button onClick={() => setOpen(true)} className="md:hidden text-neutral-400 hover:text-white cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
-        <p className="text-neutral-500 text-xs truncate">{session?.name}</p>
+        <button onClick={() => setOpen(true)} className="md:hidden text-muted-foreground hover:text-foreground cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
+        <Breadcrumbs scope="platform" />
       </div>
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex items-center gap-2.5 shrink-0">
+        <QuickCreateButton scope="platform" />
         <ThemeToggle />
         <NotificationBell />
-        <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white cursor-pointer transition-colors"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Logout</span></button>
+        <div className="w-px h-6 bg-border mx-0.5 hidden sm:block" />
+        <UserMenu session={session} scope="platform" />
       </div>
+      <CommandPalette scope="platform" />
     </header>
   );
 }

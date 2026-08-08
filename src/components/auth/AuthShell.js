@@ -1,9 +1,9 @@
 "use client";
 import { motion } from "framer-motion";
 import AuthShowcase from "@/components/auth/AuthShowcase";
-import { GLOBAL_VISTA_AUTH_BRANDING } from "@/lib/constants/authBranding";
+import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 
-export default function AuthShell({ children, branding = GLOBAL_VISTA_AUTH_BRANDING }) {
+export default function AuthShell({ children, branding = GLOBAL_VISTA_BRANDING }) {
   return (
     <div className="min-h-screen flex bg-[#05050c]">
       <div className="flex flex-1 lg:flex-none lg:w-[38%] xl:w-[36%] min-w-0 items-center justify-center px-6 py-10 sm:px-10">

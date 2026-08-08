@@ -22,8 +22,8 @@ export default async function EditLeadPage({ params }) {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Edit Lead</h1>
-      <p className="text-neutral-500 text-sm mb-6">{lead.lead_number}</p>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Edit Lead</h1>
+      <p className="text-muted-foreground text-sm mb-6">{lead.lead_number}</p>
       <LeadForm sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags} initialData={{ ...lead, id: lead.id }} />
     </div>
   );

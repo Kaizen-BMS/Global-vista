@@ -21,6 +21,10 @@ export async function getCompanyBranding(session) {
     address: company?.address || "",
     sidebarLogoUrl: extended.sidebar_logo_url || "",
     watermarkLogoUrl: extended.watermark_logo_url || "",
+    loginLogoUrl: extended.login_logo_url || "",
+    emailLogoUrl: extended.email_logo_url || "",
+    websiteLogoUrl: extended.website_logo_url || "",
+    backgroundImageUrl: extended.background_image_url || "",
     accentColor: extended.accent_color || "",
     dashboardGreeting: extended.dashboard_greeting || "",
     companyDescription: extended.company_description || "",
@@ -42,6 +46,8 @@ export async function updateCompanyBranding(session, data, updatedBy) {
 
   const extendedValues = {
     sidebar_logo_url: data.sidebarLogoUrl || "", watermark_logo_url: data.watermarkLogoUrl || "",
+    login_logo_url: data.loginLogoUrl || "", email_logo_url: data.emailLogoUrl || "",
+    website_logo_url: data.websiteLogoUrl || "", background_image_url: data.backgroundImageUrl || "",
     accent_color: data.accentColor || "", dashboard_greeting: data.dashboardGreeting || "",
     company_description: data.companyDescription || "", support_email: data.supportEmail || "",
     support_phone: data.supportPhone || "", footer_text: data.footerText || "",

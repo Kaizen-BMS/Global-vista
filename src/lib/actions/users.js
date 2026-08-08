@@ -46,22 +46,50 @@ export async function getUserById(session, id) {
   return rows[0] || null;
 }
 
+// employee_id carries a GLOBAL unique constraint (not scoped to company_id —
+// confirmed against the live schema), so a prefix shared by every tenant
+// guarantees cross-company collisions the moment two companies' sequences
+// reach the same number. The prefix is derived from the company's own slug
+// so each tenant gets its own namespace. The count is MAX(existing suffix)
+// scoped to that prefix, not COUNT(*) — COUNT breaks the instant any user
+// is soft-deleted (the count drops, so "next" reissues an already-taken
+// number); MAX never goes backwards.
 async function generateEmployeeId(companyId) {
-  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users WHERE company_id = ?`, [companyId]);
-  return `GVE-EMP-${String(count + 1).padStart(5, "0")}`;
+  const [[company]] = await pool.query(`SELECT slug FROM companies WHERE id = ?`, [companyId]);
+  const prefix = (company?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "EMP";
+  const [[{ maxNum }]] = await pool.query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(employee_id, '-', -1) AS UNSIGNED)), 0) AS maxNum
+     FROM users WHERE company_id = ? AND employee_id LIKE ?`,
+    [companyId, `${prefix}-%`]
+  );
+  return `${prefix}-${String(maxNum + 1).padStart(5, "0")}`;
 }
 
 export async function createUser(session, data, createdBy) {
   const { name, email, phone, password, roleId, branchId, departmentId, designationId, employeeTypeId, reportingManagerId, joiningDate, sendWelcome = true } = data;
   const tempPassword = password || crypto.randomBytes(6).toString("hex");
   const passwordHash = await hashPassword(tempPassword);
-  const employeeId = await generateEmployeeId(session.company_id);
 
-  const [result] = await pool.query(
-    `INSERT INTO users (company_id, employee_id, name, email, phone, password_hash, role_id, branch_id, department_id, designation_id, employee_type_id, reporting_manager_id, joining_date, must_change_password, created_by, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [session.company_id, employeeId, name, email.trim().toLowerCase(), phone || null, passwordHash, roleId, branchId || null, departmentId || null, designationId || null, employeeTypeId || null, reportingManagerId || null, joiningDate || null, createdBy, createdBy]
-  );
+  // MAX-based generation closes the gap-from-deletion hole but not a true
+  // race between two concurrent creates for the same company — both could
+  // read the same MAX before either INSERT lands. Retrying specifically on
+  // an employee_id collision (never on an email collision, which is a real
+  // validation error the caller needs to see) makes this safe either way.
+  let result;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const employeeId = await generateEmployeeId(session.company_id);
+    try {
+      [result] = await pool.query(
+        `INSERT INTO users (company_id, employee_id, name, email, phone, password_hash, role_id, branch_id, department_id, designation_id, employee_type_id, reporting_manager_id, joining_date, must_change_password, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        [session.company_id, employeeId, name, email.trim().toLowerCase(), phone || null, passwordHash, roleId, branchId || null, departmentId || null, designationId || null, employeeTypeId || null, reportingManagerId || null, joiningDate || null, createdBy, createdBy]
+      );
+      break;
+    } catch (err) {
+      if (err.code === "ER_DUP_ENTRY" && /'employee_id'/.test(err.sqlMessage || "") && attempt < 4) continue;
+      throw err;
+    }
+  }
   await logActivity({ userId: createdBy, module: "users", action: "create", entityType: "user", entityId: result.insertId, description: `Created user ${name}`, companyId: session.company_id });
 
   if (sendWelcome) {

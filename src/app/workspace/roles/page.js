@@ -9,7 +9,7 @@ export default async function RolesPage() {
   if (!(await can(session, "roles.manage"))) return <ForbiddenState />;
   return (
     <div>
-      <div className="mb-6"><h1 className="text-xl font-semibold text-white">Roles</h1></div>
+      <div className="mb-6"><h1 className="text-xl font-semibold text-foreground">Roles</h1></div>
       <RoleList roles={await listRoles(session)} />
     </div>
   );

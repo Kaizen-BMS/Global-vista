@@ -5,10 +5,11 @@ import { toast } from "sonner";
 import { Plus, X, GripVertical, Loader2, Trash2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { AVAILABLE_FORM_FIELDS, defaultFormFields } from "@/lib/modules/crm/constants/leadFormFields";
+import PublicLeadFormRenderer from "@/components/public/PublicLeadFormRenderer";
 
-const inputClass = "w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 function Field({ label, hint, children }) {
-  return (<div><label className="block text-sm text-neutral-300 mb-1">{label}</label>{children}{hint && <p className="text-neutral-600 text-xs mt-1">{hint}</p>}</div>);
+  return (<div><label className="block text-sm text-foreground mb-1">{label}</label>{children}{hint && <p className="text-muted-foreground text-xs mt-1">{hint}</p>}</div>);
 }
 
 export default function LeadFormBuilder({ sources, services, users, initialData, formId }) {
@@ -68,15 +69,15 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4">
-          <p className="text-white font-medium">Details</p>
+        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-foreground font-medium">Details</p>
           <Field label="Form Name *"><input required className={inputClass} value={form.name} onChange={(e) => setField("name", e.target.value)} /></Field>
           <Field label="Description"><textarea rows={2} className={inputClass} value={form.description} onChange={(e) => setField("description", e.target.value)} /></Field>
         </section>
 
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-3">
-          <p className="text-white font-medium mb-1">Fields</p>
-          <p className="text-neutral-500 text-xs mb-3">Drag to reorder. Name and Phone are always required to create a lead.</p>
+        <section className="bg-card border border-border rounded-xl p-5 space-y-3">
+          <p className="text-foreground font-medium mb-1">Fields</p>
+          <p className="text-muted-foreground text-xs mb-3">Drag to reorder. Name and Phone are always required to create a lead.</p>
           <div className="space-y-2">
             {form.fields.map((field, i) => (
               <div
@@ -85,22 +86,22 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
                 onDragStart={() => setDragIndex(i)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); if (dragIndex !== null && dragIndex !== i) reorderFields(dragIndex, i); setDragIndex(null); }}
-                className="flex items-center gap-3 bg-neutral-800/50 border border-neutral-700 rounded-lg p-3 cursor-grab active:cursor-grabbing"
+                className="flex items-center gap-3 bg-muted/50 border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing"
               >
-                <GripVertical className="h-4 w-4 text-neutral-600 shrink-0" />
-                <input value={field.label} onChange={(e) => updateField(i, { label: e.target.value })} className="flex-1 min-w-[100px] px-2 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-sm" />
-                <input value={field.placeholder} onChange={(e) => updateField(i, { placeholder: e.target.value })} placeholder="Placeholder text" className="flex-1 min-w-[100px] px-2 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300 text-sm" />
-                <label className="flex items-center gap-1.5 text-xs text-neutral-400 shrink-0">
+                <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                <input value={field.label} onChange={(e) => updateField(i, { label: e.target.value })} className="flex-1 min-w-[100px] px-2 py-1.5 rounded bg-card border border-border text-foreground text-sm" />
+                <input value={field.placeholder} onChange={(e) => updateField(i, { placeholder: e.target.value })} placeholder="Placeholder text" className="flex-1 min-w-[100px] px-2 py-1.5 rounded bg-card border border-border text-foreground text-sm" />
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
                   <input type="checkbox" checked={field.required} disabled={AVAILABLE_FORM_FIELDS.find((f) => f.type === field.type)?.lockedRequired} onChange={(e) => updateField(i, { required: e.target.checked })} /> Required
                 </label>
-                <button type="button" onClick={() => removeField(i)} className="text-neutral-500 hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => removeField(i)} className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
           </div>
           {availableToAdd.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-2">
               {availableToAdd.map((f) => (
-                <button key={f.type} type="button" onClick={() => addField(f.type)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white text-xs cursor-pointer transition">
+                <button key={f.type} type="button" onClick={() => addField(f.type)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground hover:text-foreground text-xs cursor-pointer transition">
                   <Plus className="h-3.5 w-3.5" /> {f.label}
                 </button>
               ))}
@@ -108,8 +109,8 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
           )}
         </section>
 
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4">
-          <p className="text-white font-medium">Lead Defaults</p>
+        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-foreground font-medium">Lead Defaults</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Lead Source *" hint="Required — leads must have a source.">
               <select required className={inputClass} value={form.defaultLeadSourceId} onChange={(e) => setField("defaultLeadSourceId", e.target.value)}>
@@ -134,25 +135,25 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
           </div>
         </section>
 
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4">
-          <p className="text-white font-medium">After Submission</p>
+        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-foreground font-medium">After Submission</p>
           <Field label="Success Message"><input className={inputClass} value={form.successMessage} onChange={(e) => setField("successMessage", e.target.value)} /></Field>
           <Field label="Redirect URL" hint="Optional — leave blank to show the success message instead."><input className={inputClass} value={form.redirectUrl} onChange={(e) => setField("redirectUrl", e.target.value)} /></Field>
           <Field label="Notify Emails" hint="Comma-separated. Sent a branded email when someone submits."><input className={inputClass} value={form.notifyEmails} onChange={(e) => setField("notifyEmails", e.target.value)} placeholder="team@yourcompany.com" /></Field>
         </section>
 
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4">
-          <p className="text-white font-medium">Spam Protection</p>
-          <label className="flex items-center gap-2 text-sm text-neutral-300">
+        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-foreground font-medium">Spam Protection</p>
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={form.recaptchaEnabled} onChange={(e) => setField("recaptchaEnabled", e.target.checked)} /> Require Google reCAPTCHA
           </label>
-          <p className="text-neutral-600 text-xs">Rate limiting, a honeypot field, and duplicate detection are always on for every form.</p>
+          <p className="text-muted-foreground text-xs">Rate limiting, a honeypot field, and duplicate detection are always on for every form.</p>
         </section>
 
-        <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4">
-          <p className="text-white font-medium">Theme</p>
+        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <p className="text-foreground font-medium">Theme</p>
           <div className="flex items-center gap-2">
-            <input type="color" value={form.theme?.primaryColor || "#4f46e5"} onChange={(e) => setField("theme", { ...form.theme, primaryColor: e.target.value })} className="h-9 w-12 rounded bg-neutral-800 border border-neutral-700 cursor-pointer" />
+            <input type="color" value={form.theme?.primaryColor || "#4f46e5"} onChange={(e) => setField("theme", { ...form.theme, primaryColor: e.target.value })} className="h-9 w-12 rounded bg-muted border border-border cursor-pointer" />
             <input value={form.theme?.primaryColor || ""} onChange={(e) => setField("theme", { ...form.theme, primaryColor: e.target.value })} className={inputClass} />
           </div>
         </section>
@@ -163,23 +164,20 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
       </div>
 
       <div className="lg:sticky lg:top-6 self-start">
-        <p className="text-neutral-500 text-xs uppercase tracking-wider mb-2">Live Preview</p>
-        <div className="rounded-2xl border border-neutral-800 bg-black p-6">
-          <p className="text-white font-semibold text-lg mb-1">{form.name || "Untitled Form"}</p>
-          {form.description && <p className="text-neutral-500 text-sm mb-5">{form.description}</p>}
-          <div className="space-y-3">
-            {form.fields.map((f, i) => (
-              <div key={i}>
-                <label className="block text-xs text-neutral-400 mb-1">{f.label}{f.required && <span className="text-red-400"> *</span>}</label>
-                {f.type === "message" ? (
-                  <textarea disabled rows={2} placeholder={f.placeholder} className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-600 text-sm" />
-                ) : (
-                  <input disabled placeholder={f.placeholder} className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-600 text-sm" />
-                )}
-              </div>
-            ))}
-            <button type="button" disabled className="w-full mt-2 px-3 py-2.5 rounded-lg text-white text-sm font-medium cursor-default" style={{ backgroundColor: form.theme?.primaryColor || "#4f46e5" }}>Submit</button>
-          </div>
+        <p className="text-muted-foreground text-xs uppercase tracking-wider mb-2">Live Preview — exactly what visitors will see</p>
+        <div className="rounded-2xl border border-border overflow-hidden">
+          <PublicLeadFormRenderer
+            preview
+            form={{
+              name: form.name || "Untitled Form",
+              description: form.description,
+              slug: "preview",
+              fields_config: form.fields,
+              theme_config: { primaryColor: form.theme?.primaryColor || "#4f46e5" },
+              success_message: form.successMessage,
+            }}
+            branding={{ name: form.name || "Untitled Form" }}
+          />
         </div>
       </div>
     </form>

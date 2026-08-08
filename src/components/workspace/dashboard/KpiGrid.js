@@ -14,7 +14,7 @@ const ACCENTS = {
   indigo: "text-indigo-400 bg-indigo-500/10", green: "text-emerald-400 bg-emerald-500/10",
   yellow: "text-amber-400 bg-amber-500/10", red: "text-red-400 bg-red-500/10",
   blue: "text-sky-400 bg-sky-500/10", purple: "text-violet-400 bg-violet-500/10",
-  neutral: "text-neutral-400 bg-neutral-500/10",
+  neutral: "text-muted-foreground bg-muted-foreground/10",
 };
 
 function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
@@ -22,16 +22,16 @@ function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
   const content = (
     <>
       <div className="min-w-0">
-        <p className="text-neutral-500 text-xs mb-1 truncate">{label}</p>
-        <p className="text-white text-xl font-semibold tabular-nums">{value}</p>
-        {hint && <p className="text-neutral-600 text-[11px] mt-0.5">{hint}</p>}
+        <p className="text-muted-foreground text-xs mb-1 truncate">{label}</p>
+        <p className="text-foreground text-xl font-semibold tabular-nums">{value}</p>
+        {hint && <p className="text-muted-foreground text-[11px] mt-0.5">{hint}</p>}
       </div>
       {Icon && <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${ACCENTS[accent]}`}><Icon className="h-4.5 w-4.5" /></div>}
     </>
   );
-  const className = "bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex items-center justify-between transition-all";
+  const className = "bg-card border border-border rounded-xl p-4 flex items-center justify-between transition-all";
   return href ? (
-    <Link href={href} className={`${className} cursor-pointer hover:border-neutral-700 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20`}>{content}</Link>
+    <Link href={href} className={`${className} cursor-pointer hover:border-border hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20`}>{content}</Link>
   ) : (
     <div className={className}>{content}</div>
   );

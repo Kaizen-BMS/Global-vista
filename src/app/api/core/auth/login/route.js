@@ -19,6 +19,13 @@ export async function POST(request) {
     if (!user || user.status !== "active") return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
     if (await isAccountLocked(user)) return NextResponse.json({ error: "Account locked. Try again in 15 minutes." }, { status: 423 });
 
+    if (user.company_id && !user.is_platform_operator) {
+      const [[company]] = await pool.query(`SELECT status FROM companies WHERE id = ? LIMIT 1`, [user.company_id]);
+      if (company && ["suspended", "deleted"].includes(company.status)) {
+        return NextResponse.json({ error: "Your company account has been suspended. Please contact Global Vista Support.", code: "COMPANY_SUSPENDED" }, { status: 403 });
+      }
+    }
+
     if (!(await verifyPassword(password, user.password_hash))) {
       await recordFailedLogin(user.id, user.company_id);
       await recordLoginEvent(user.id, "failed_login", { ipAddress: ip, userAgent: ua });

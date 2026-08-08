@@ -162,11 +162,11 @@ export default function ImportWizard({ sources, services }) {
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((label, i) => (
           <div key={label} className="flex items-center gap-2 flex-1">
-            <div className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-medium shrink-0 transition-colors ${i < step ? "bg-emerald-500 text-white" : i === step ? "btn-brand text-white" : "bg-neutral-800 text-neutral-500"}`}>
+            <div className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-medium shrink-0 transition-colors ${i < step ? "bg-emerald-500 text-white" : i === step ? "btn-brand text-white" : "bg-muted text-muted-foreground"}`}>
               {i < step ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
             </div>
-            <span className={`text-sm hidden sm:block ${i === step ? "text-white" : "text-neutral-500"}`}>{label}</span>
-            {i < STEPS.length - 1 && <div className={`h-px flex-1 ${i < step ? "bg-emerald-500/50" : "bg-neutral-800"}`} />}
+            <span className={`text-sm hidden sm:block ${i === step ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+            {i < STEPS.length - 1 && <div className={`h-px flex-1 ${i < step ? "bg-emerald-500/50" : "bg-muted"}`} />}
           </div>
         ))}
       </div>
@@ -178,23 +178,23 @@ export default function ImportWizard({ sources, services }) {
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-14 cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-500/5" : "border-neutral-800 hover:border-neutral-700"}`}
+            className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-14 cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-500/5" : "border-border hover:border-border"}`}
           >
-            <Upload className="h-10 w-10 text-neutral-600" />
+            <Upload className="h-10 w-10 text-muted-foreground" />
             {file ? (
-              <div className="flex items-center gap-2 text-white text-sm"><FileSpreadsheet className="h-4 w-4 text-emerald-400" /> {file.name}</div>
+              <div className="flex items-center gap-2 text-foreground text-sm"><FileSpreadsheet className="h-4 w-4 text-emerald-400" /> {file.name}</div>
             ) : (
               <>
-                <p className="text-white text-sm font-medium">Drag & drop your file here, or click to browse</p>
-                <p className="text-neutral-500 text-xs">Supports .xlsx and .csv, up to 5MB / 500 rows</p>
+                <p className="text-foreground text-sm font-medium">Drag & drop your file here, or click to browse</p>
+                <p className="text-muted-foreground text-xs">Supports .xlsx and .csv, up to 5MB / 500 rows</p>
               </>
             )}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFileSelect(e.target.files?.[0])} />
           </div>
 
           <div className="flex items-center gap-3 mt-4">
-            <a href="/api/leads/import/template?format=xlsx" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs transition cursor-pointer"><Download className="h-3.5 w-3.5" /> Excel Template</a>
-            <a href="/api/leads/import/template?format=csv" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs transition cursor-pointer"><Download className="h-3.5 w-3.5" /> CSV Template</a>
+            <a href="/api/leads/import/template?format=xlsx" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-xs transition cursor-pointer"><Download className="h-3.5 w-3.5" /> Excel Template</a>
+            <a href="/api/leads/import/template?format=csv" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-xs transition cursor-pointer"><Download className="h-3.5 w-3.5" /> CSV Template</a>
           </div>
 
           <div className="flex justify-end mt-8">
@@ -207,17 +207,17 @@ export default function ImportWizard({ sources, services }) {
 
       {step === 1 && (
         <div>
-          <p className="text-neutral-400 text-sm mb-4">Match each column from your file to a CRM field. We've pre-matched what we could recognize.</p>
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-x-auto mb-6">
+          <p className="text-muted-foreground text-sm mb-4">Match each column from your file to a CRM field. We've pre-matched what we could recognize.</p>
+          <div className="bg-card border border-border rounded-xl overflow-x-auto mb-6">
             <table className="w-full text-sm min-w-[520px]">
-              <thead><tr className="text-left text-neutral-500 border-b border-neutral-800"><th className="px-4 py-3">File Column</th><th className="px-4 py-3">Sample</th><th className="px-4 py-3">Maps To</th></tr></thead>
+              <thead><tr className="text-left text-muted-foreground border-b border-border"><th className="px-4 py-3">File Column</th><th className="px-4 py-3">Sample</th><th className="px-4 py-3">Maps To</th></tr></thead>
               <tbody>
                 {headers.map((h, i) => (
-                  <tr key={i} className="border-b border-neutral-800/60">
-                    <td className="px-4 py-3 text-white">{h || `Column ${i + 1}`}</td>
-                    <td className="px-4 py-3 text-neutral-500 truncate max-w-[160px]">{previewRows[0]?.[i] || "—"}</td>
+                  <tr key={i} className="border-b border-border/60">
+                    <td className="px-4 py-3 text-foreground">{h || `Column ${i + 1}`}</td>
+                    <td className="px-4 py-3 text-muted-foreground truncate max-w-[160px]">{previewRows[0]?.[i] || "—"}</td>
                     <td className="px-4 py-3">
-                      <select value={mapping[i] || ""} onChange={(e) => setColumnMapping(i, e.target.value)} className="px-2.5 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-xs cursor-pointer">
+                      <select value={mapping[i] || ""} onChange={(e) => setColumnMapping(i, e.target.value)} className="px-2.5 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer">
                         <option value="">Don't import</option>
                         {LEAD_IMPORT_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
                       </select>
@@ -230,15 +230,15 @@ export default function ImportWizard({ sources, services }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             <div>
-              <label className="block text-xs text-neutral-500 mb-1.5">Default Lead Source (used when no column is mapped)</label>
-              <select value={defaultLeadSourceId} onChange={(e) => setDefaultLeadSourceId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm cursor-pointer">
+              <label className="block text-xs text-muted-foreground mb-1.5">Default Lead Source (used when no column is mapped)</label>
+              <select value={defaultLeadSourceId} onChange={(e) => setDefaultLeadSourceId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
                 <option value="">None</option>
                 {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-neutral-500 mb-1.5">Default Service (used when no column is mapped)</label>
-              <select value={defaultServiceId} onChange={(e) => setDefaultServiceId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm cursor-pointer">
+              <label className="block text-xs text-muted-foreground mb-1.5">Default Service (used when no column is mapped)</label>
+              <select value={defaultServiceId} onChange={(e) => setDefaultServiceId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
                 <option value="">None</option>
                 {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -246,7 +246,7 @@ export default function ImportWizard({ sources, services }) {
           </div>
 
           <div className="flex justify-between">
-            <button onClick={() => setStep(0)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm cursor-pointer"><ArrowLeft className="h-4 w-4" /> Back</button>
+            <button onClick={() => setStep(0)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer"><ArrowLeft className="h-4 w-4" /> Back</button>
             <button onClick={validateFile} disabled={busy} className="btn-brand flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-40 cursor-pointer">
               {busy && <Loader2 className="h-4 w-4 animate-spin" />} Preview & Validate <ArrowRight className="h-4 w-4" />
             </button>
@@ -264,14 +264,14 @@ export default function ImportWizard({ sources, services }) {
 
           {validation.duplicate > 0 && (
             <div className="mb-6">
-              <label className="block text-xs text-neutral-500 mb-1.5">How should we handle duplicates?</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">How should we handle duplicates?</label>
               <div className="flex flex-wrap gap-2">
                 {[
                   { key: "skip", label: "Skip duplicates" },
                   { key: "update", label: "Update existing lead" },
                   { key: "import_anyway", label: "Import anyway (flag as duplicate)" },
                 ].map((opt) => (
-                  <button key={opt.key} onClick={() => setDuplicateStrategy(opt.key)} className={`px-3.5 py-2 rounded-lg text-xs border transition cursor-pointer ${duplicateStrategy === opt.key ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"}`}>
+                  <button key={opt.key} onClick={() => setDuplicateStrategy(opt.key)} className={`px-3.5 py-2 rounded-lg text-xs border transition cursor-pointer ${duplicateStrategy === opt.key ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -279,17 +279,17 @@ export default function ImportWizard({ sources, services }) {
             </div>
           )}
 
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-x-auto mb-8 max-h-[420px] overflow-y-auto">
+          <div className="bg-card border border-border rounded-xl overflow-x-auto mb-8 max-h-[420px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-neutral-900"><tr className="text-left text-neutral-500 border-b border-neutral-800"><th className="px-4 py-3">Row</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Details</th></tr></thead>
+              <thead className="sticky top-0 bg-card"><tr className="text-left text-muted-foreground border-b border-border"><th className="px-4 py-3">Row</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Details</th></tr></thead>
               <tbody>
                 {validation.rows.map((r) => (
-                  <tr key={r.rowNumber} className="border-b border-neutral-800/60">
-                    <td className="px-4 py-3 text-neutral-500">{r.rowNumber}</td>
-                    <td className="px-4 py-3 text-white">{r.raw.name || "—"}</td>
-                    <td className="px-4 py-3 text-neutral-300">{r.raw.phone || "—"}</td>
+                  <tr key={r.rowNumber} className="border-b border-border/60">
+                    <td className="px-4 py-3 text-muted-foreground">{r.rowNumber}</td>
+                    <td className="px-4 py-3 text-foreground">{r.raw.name || "—"}</td>
+                    <td className="px-4 py-3 text-foreground">{r.raw.phone || "—"}</td>
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-md border ${STATUS_STYLES[r.status]}`}>{r.status}</span></td>
-                    <td className="px-4 py-3 text-neutral-500 text-xs">{r.status === "invalid" ? r.errors.join("; ") : r.duplicateReason || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{r.status === "invalid" ? r.errors.join("; ") : r.duplicateReason || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -297,7 +297,7 @@ export default function ImportWizard({ sources, services }) {
           </div>
 
           <div className="flex justify-between">
-            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm cursor-pointer"><ArrowLeft className="h-4 w-4" /> Back</button>
+            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer"><ArrowLeft className="h-4 w-4" /> Back</button>
             <button onClick={runImport} disabled={busy || validation.valid + validation.duplicate === 0} className="btn-brand flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-40 cursor-pointer">
               Import {validation.valid + validation.duplicate} Leads <ArrowRight className="h-4 w-4" />
             </button>
@@ -310,20 +310,20 @@ export default function ImportWizard({ sources, services }) {
           {!result ? (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-white text-sm font-medium">Importing…</p>
-                <p className="text-neutral-500 text-xs">{progress?.processed || 0} / {progress?.total || 0} rows</p>
+                <p className="text-foreground text-sm font-medium">Importing…</p>
+                <p className="text-muted-foreground text-xs">{progress?.processed || 0} / {progress?.total || 0} rows</p>
               </div>
-              <div className="h-2.5 rounded-full bg-neutral-800 overflow-hidden mb-4">
+              <div className="h-2.5 rounded-full bg-muted overflow-hidden mb-4">
                 <div className="h-full btn-brand transition-all duration-300" style={{ width: `${progress ? (progress.processed / progress.total) * 100 : 0}%` }} />
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <SummaryCard label="Imported" value={progress?.imported || 0} color="text-emerald-400" small />
                 <SummaryCard label="Updated" value={progress?.updated || 0} color="text-indigo-400" small />
-                <SummaryCard label="Skipped" value={progress?.skipped || 0} color="text-neutral-400" small />
+                <SummaryCard label="Skipped" value={progress?.skipped || 0} color="text-muted-foreground" small />
                 <SummaryCard label="Failed" value={progress?.failed || 0} color="text-red-400" small />
               </div>
               {progress?.etaMs != null && progress.etaMs > 0 && (
-                <p className="text-neutral-500 text-xs">~{Math.ceil(progress.etaMs / 1000)}s remaining</p>
+                <p className="text-muted-foreground text-xs">~{Math.ceil(progress.etaMs / 1000)}s remaining</p>
               )}
             </div>
           ) : (
@@ -331,14 +331,14 @@ export default function ImportWizard({ sources, services }) {
               <div className="flex items-center gap-3 mb-6">
                 <CheckCircle2 className="h-8 w-8 text-emerald-400" />
                 <div>
-                  <p className="text-white font-medium">Import complete</p>
-                  <p className="text-neutral-500 text-xs">Finished in {(result.durationMs / 1000).toFixed(1)}s</p>
+                  <p className="text-foreground font-medium">Import complete</p>
+                  <p className="text-muted-foreground text-xs">Finished in {(result.durationMs / 1000).toFixed(1)}s</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 <SummaryCard label="Imported" value={result.imported} color="text-emerald-400" />
                 <SummaryCard label="Updated" value={result.updated} color="text-indigo-400" />
-                <SummaryCard label="Skipped" value={result.skipped} color="text-neutral-400" />
+                <SummaryCard label="Skipped" value={result.skipped} color="text-muted-foreground" />
                 <SummaryCard label="Failed" value={result.failed} color="text-red-400" />
               </div>
               {result.failed > 0 && result.historyId && (
@@ -349,7 +349,7 @@ export default function ImportWizard({ sources, services }) {
                 </div>
               )}
               <div className="flex items-center gap-3">
-                <button onClick={reset} className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm cursor-pointer">Import Another File</button>
+                <button onClick={reset} className="px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">Import Another File</button>
                 <a href="/workspace/lead-management" className="btn-brand px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">View Leads</a>
               </div>
             </div>
@@ -362,9 +362,9 @@ export default function ImportWizard({ sources, services }) {
 
 function SummaryCard({ label, value, color, small }) {
   return (
-    <div className={`bg-neutral-900 border border-neutral-800 rounded-xl text-center ${small ? "p-3" : "p-4"}`}>
+    <div className={`bg-card border border-border rounded-xl text-center ${small ? "p-3" : "p-4"}`}>
       <p className={`font-semibold ${small ? "text-lg" : "text-2xl"} ${color}`}>{value}</p>
-      <p className="text-neutral-500 text-xs mt-0.5">{label}</p>
+      <p className="text-muted-foreground text-xs mt-0.5">{label}</p>
     </div>
   );
 }

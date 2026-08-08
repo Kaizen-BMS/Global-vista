@@ -49,14 +49,14 @@ export default function KanbanBoard({ initialLeads }) {
               onDragOver={(e) => { e.preventDefault(); setDragOverStage(stage); }}
               onDragLeave={() => setDragOverStage((s) => (s === stage ? null : s))}
               onDrop={(e) => { e.preventDefault(); setDragOverStage(null); if (dragId) moveLead(dragId, stage); }}
-              className={`shrink-0 w-72 rounded-xl border transition-colors ${isOver ? "border-indigo-500 bg-indigo-500/5" : "border-neutral-800 bg-neutral-950/50"}`}
+              className={`shrink-0 w-72 rounded-xl border transition-colors ${isOver ? "border-indigo-500 bg-indigo-500/5" : "border-border bg-background/50"}`}
             >
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-800 sticky top-0 bg-neutral-950/80 backdrop-blur rounded-t-xl">
-                <span className={`text-xs font-medium px-2 py-1 rounded-md border ${STAGE_COLORS[stage] || "bg-neutral-700/20 text-neutral-400 border-neutral-600/30"}`}>{stage}</span>
-                <span className="text-neutral-500 text-xs font-medium">{items.length}</span>
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-border sticky top-0 bg-background/80 backdrop-blur rounded-t-xl">
+                <span className={`text-xs font-medium px-2 py-1 rounded-md border ${STAGE_COLORS[stage] || "bg-muted/20 text-muted-foreground border-border/30"}`}>{stage}</span>
+                <span className="text-muted-foreground text-xs font-medium">{items.length}</span>
               </div>
               <div className="p-2 space-y-2 min-h-[80px] max-h-[calc(100vh-260px)] overflow-y-auto">
-                {items.length === 0 && <p className="text-neutral-700 text-xs text-center py-6 select-none">No leads</p>}
+                {items.length === 0 && <p className="text-muted-foreground text-xs text-center py-6 select-none">No leads</p>}
                 {items.map((lead) => (
                   <div
                     key={lead.id}
@@ -64,23 +64,23 @@ export default function KanbanBoard({ initialLeads }) {
                     onDragStart={() => setDragId(lead.id)}
                     onDragEnd={() => setDragId(null)}
                     onClick={() => setPreviewId(lead.id)}
-                    className={`group bg-neutral-900 border border-neutral-800 rounded-lg p-3 cursor-grab active:cursor-grabbing transition-all hover:border-neutral-700 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 ${dragId === lead.id ? "opacity-40" : ""}`}
+                    className={`group bg-card border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing transition-all hover:border-border hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 ${dragId === lead.id ? "opacity-40" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <p className="text-white text-sm font-medium truncate">{lead.name}</p>
+                      <p className="text-foreground text-sm font-medium truncate">{lead.name}</p>
                       <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-md border ${PRIORITY_COLORS[lead.priority] || ""}`}>{lead.priority}</span>
                     </div>
-                    <p className="text-neutral-500 text-xs mb-2">{lead.lead_number}</p>
-                    <div className="flex items-center gap-3 text-neutral-500 text-xs">
+                    <p className="text-muted-foreground text-xs mb-2">{lead.lead_number}</p>
+                    <div className="flex items-center gap-3 text-muted-foreground text-xs">
                       <span className="flex items-center gap-1 truncate"><Phone className="h-3 w-3 shrink-0" />{lead.phone}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-neutral-500 text-xs mt-1.5">
+                    <div className="flex items-center gap-1 text-muted-foreground text-xs mt-1.5">
                       <User className="h-3 w-3 shrink-0" /> {lead.assigned_name || "Unassigned"}
                     </div>
                     {lead.tags && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {lead.tags.split(",").filter(Boolean).slice(0, 3).map((t) => (
-                          <span key={t} className="px-1.5 py-0.5 rounded-full text-[10px] bg-neutral-800 text-neutral-400 border border-neutral-700">#{t.trim()}</span>
+                          <span key={t} className="px-1.5 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">#{t.trim()}</span>
                         ))}
                       </div>
                     )}

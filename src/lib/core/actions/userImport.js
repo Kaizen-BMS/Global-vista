@@ -200,6 +200,9 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
     return true;
   });
 
+  const [[importCompany]] = await pool.query(`SELECT slug FROM companies WHERE id = ?`, [companyId]);
+  const employeeIdPrefix = (importCompany?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "EMP";
+
   for (const row of rowsToProcess) {
     const conn = await pool.getConnection();
     try {
@@ -207,18 +210,41 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
 
       const tempPassword = Math.random().toString(36).slice(-10) + "A1!";
       const passwordHash = await hashPassword(tempPassword);
-      const [[{ count }]] = await conn.query(`SELECT COUNT(*) AS count FROM users`);
-      const employeeId = row.raw.employeeId || `GVE-EMP-${String(count + 1).padStart(5, "0")}`;
 
-      const [result] = await conn.query(
-        `INSERT INTO users (company_id, employee_id, name, email, phone, password_hash, role_id, department_id, designation_id, branch_id, employee_type_id, joining_date, must_change_password, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-        [
-          companyId, employeeId, row.raw.name, row.raw.email.trim().toLowerCase(), row.raw.phone || null, passwordHash,
-          row.resolved.roleId, row.resolved.departmentId, row.resolved.designationId, row.resolved.branchId, row.resolved.employeeTypeId,
-          row.raw.joiningDate || null, importedBy, importedBy,
-        ]
-      );
+      // employee_id carries a GLOBAL unique constraint (not scoped to
+      // company_id), so a prefix shared by every tenant — and a bare
+      // COUNT(*) with no company_id filter at all — guaranteed collisions
+      // against other companies' users almost immediately. Prefix is
+      // per-tenant (from the company's slug); the number is MAX(existing
+      // suffix) for that prefix, which — unlike COUNT — never goes
+      // backwards when a user is deleted, and is re-checked with a retry
+      // below for the residual race between concurrent inserts.
+      let employeeId = row.raw.employeeId;
+      let result;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (!row.raw.employeeId) {
+          const [[{ maxNum }]] = await conn.query(
+            `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(employee_id, '-', -1) AS UNSIGNED)), 0) AS maxNum
+             FROM users WHERE company_id = ? AND employee_id LIKE ?`,
+            [companyId, `${employeeIdPrefix}-%`]
+          );
+          employeeId = `${employeeIdPrefix}-${String(maxNum + 1).padStart(5, "0")}`;
+        }
+        try {
+          [result] = await conn.query(
+            `INSERT INTO users (company_id, employee_id, name, email, phone, password_hash, role_id, department_id, designation_id, branch_id, employee_type_id, joining_date, must_change_password, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+            [
+              companyId, employeeId, row.raw.name, row.raw.email.trim().toLowerCase(), row.raw.phone || null, passwordHash,
+              row.resolved.roleId, row.resolved.departmentId, row.resolved.designationId, row.resolved.branchId, row.resolved.employeeTypeId,
+              row.raw.joiningDate || null, importedBy, importedBy,
+            ]
+          );
+          break;
+        } catch (err) {
+          if (row.raw.employeeId || err.code !== "ER_DUP_ENTRY" || !/'employee_id'/.test(err.sqlMessage || "") || attempt >= 4) throw err;
+        }
+      }
 
       await conn.commit();
       importedCount++;

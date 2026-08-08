@@ -17,7 +17,7 @@ export default async function UsersPage({ searchParams }) {
   ]);
   return (
     <div>
-      <div className="mb-6"><h1 className="text-xl font-semibold text-white">Users</h1><p className="text-neutral-500 text-sm">{result.total} total</p></div>
+      <div className="mb-6"><h1 className="text-xl font-semibold text-foreground">Users</h1><p className="text-muted-foreground text-sm">{result.total} total</p></div>
       <UserFilters roles={roles} canManage={canManage} />
       <UsersTable users={result.users} roles={roles} canManage={canManage} canUnlock={canUnlock} isSuperAdmin={isSuperAdmin(session)} />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />

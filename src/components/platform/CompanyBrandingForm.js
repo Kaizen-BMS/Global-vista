@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ImageUploadField from "@/components/shared/ImageUploadField";
 
 export default function CompanyBrandingForm({ companyId, company }) {
   const router = useRouter();
@@ -15,11 +16,11 @@ export default function CompanyBrandingForm({ companyId, company }) {
     catch { toast.error("Failed."); } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={handleSubmit} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-3">
-      <p className="text-white font-medium mb-2">Branding</p>
-      <input placeholder="Logo URL" value={form.logoUrl} onChange={(e) => setForm({ ...form, logoUrl: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
-      <div className="flex gap-2"><input type="color" value={form.primaryColor} onChange={(e) => setForm({ ...form, primaryColor: e.target.value })} className="h-9 w-14 rounded bg-neutral-800 border border-neutral-700" /><input placeholder="Website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="flex-1 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" /></div>
-      <input placeholder="Contact Email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-5 space-y-3">
+      <p className="text-foreground font-medium mb-2">Branding</p>
+      <ImageUploadField label="Logo" value={form.logoUrl} onChange={(v) => setForm({ ...form, logoUrl: v })} uploadUrl={`/api/platform/companies/${companyId}/branding-upload`} category="logo" />
+      <div className="flex gap-2"><input type="color" value={form.primaryColor} onChange={(e) => setForm({ ...form, primaryColor: e.target.value })} className="h-9 w-14 rounded bg-muted border border-border" /><input placeholder="Website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" /></div>
+      <input placeholder="Contact Email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
       <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save Branding</button>
     </form>
   );

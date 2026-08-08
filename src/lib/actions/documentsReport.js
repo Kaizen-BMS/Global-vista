@@ -20,12 +20,14 @@ export async function listAllDocuments(session) {
     [...params, session.company_id]
   );
   const [empDocs] = await pool.query(
-    `SELECT ed.id, 'Employee' AS source, ed.type, ed.file_name, ed.file_size, up.name AS uploaded_by_name, ed.created_at,
+    `SELECT ed.id, 'Employee' AS source, dt.name AS type, ed.file_name, ed.file_size, up.name AS uploaded_by_name, ed.created_at,
             eu.name AS related_to, eu.employee_id AS related_number
      FROM employee_documents ed
      JOIN users eu ON eu.id = ed.user_id AND eu.is_deleted = 0 AND eu.company_id = ?
-     LEFT JOIN users up ON up.id = ed.uploaded_by`,
-    [session.company_id]
+     JOIN employee_document_types dt ON dt.id = ed.document_type_id
+     LEFT JOIN users up ON up.id = ed.uploaded_by
+     WHERE ed.is_deleted = 0 AND ed.company_id = ?`,
+    [session.company_id, session.company_id]
   );
   return [...leadDocs, ...empDocs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }

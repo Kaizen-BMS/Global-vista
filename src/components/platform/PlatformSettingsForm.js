@@ -17,16 +17,16 @@ export default function PlatformSettingsForm({ group, fields, initialValues }) {
     } catch { toast.error("Failed to save."); } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={handleSubmit} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-xl space-y-4">
+    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 max-w-xl space-y-4">
       {fields.map((f) => (
         <div key={f.key}>
-          <label className="block text-sm text-neutral-300 mb-1">{f.label}</label>
+          <label className="block text-sm text-foreground mb-1">{f.label}</label>
           {f.type === "select" ? (
-            <select value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm">
+            <select value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
               {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           ) : (
-            <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+            <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
           )}
         </div>
       ))}

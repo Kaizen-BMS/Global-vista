@@ -20,8 +20,8 @@ export default async function LeadKanbanPage() {
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-white">Lead Pipeline</h1>
-          <p className="text-neutral-500 text-xs mt-0.5">Drag a card to change its stage · showing up to 500 most recently updated, non-closed leads</p>
+          <h1 className="text-xl font-semibold text-foreground">Lead Pipeline</h1>
+          <p className="text-muted-foreground text-xs mt-0.5">Drag a card to change its stage · showing up to 500 most recently updated, non-closed leads</p>
         </div>
         <div className="flex items-center gap-2">
           <LeadViewToggle active="kanban" />

@@ -46,8 +46,20 @@ export async function getSession() {
   try {
     const { payload } = await jwtVerify(token, getSecret());
     if (payload.jti) {
-      const [rows] = await pool.query(`SELECT revoked_at FROM user_sessions WHERE jti = ? LIMIT 1`, [payload.jti]);
-      if (rows[0]?.revoked_at) return null;
+      // One round trip instead of two: session revocation and company
+      // status (re-checked live on every request, never trusted from the
+      // signed JWT, so a company suspended mid-session is enforced on its
+      // very next request) used to be separate sequential queries — on a
+      // remote DB host under any concurrent load, that latency doubles up
+      // on literally every authenticated request in the app.
+      const [[row]] = await pool.query(
+        `SELECT us.revoked_at, c.status AS company_status
+         FROM user_sessions us LEFT JOIN companies c ON c.id = ?
+         WHERE us.jti = ? LIMIT 1`,
+        [payload.company_id || null, payload.jti]
+      );
+      if (row?.revoked_at) return null;
+      if (payload.company_id && !payload.is_platform_operator) payload.company_status = row?.company_status || null;
       pool.query(`UPDATE user_sessions SET last_seen_at = NOW() WHERE jti = ?`, [payload.jti]).catch(() => {});
     }
     return payload;

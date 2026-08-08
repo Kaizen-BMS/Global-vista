@@ -9,8 +9,8 @@ export default async function PlatformSettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-white mb-1">Platform Settings</h1>
-        <p className="text-neutral-500 text-sm mb-6">Global configuration for the platform console.</p>
+        <h1 className="text-xl font-semibold text-foreground mb-1">Platform Settings</h1>
+        <p className="text-muted-foreground text-sm mb-6">Global configuration for the platform console.</p>
         <PlatformSettingsForm
           group="general"
           initialValues={values}
@@ -23,8 +23,8 @@ export default async function PlatformSettingsPage() {
         />
       </div>
       <div>
-        <p className="text-white font-medium mb-1">White-Label Branding</p>
-        <p className="text-neutral-500 text-sm mb-4">Controls Global Vista's own footer credit inside tenant workspaces.</p>
+        <p className="text-foreground font-medium mb-1">White-Label Branding</p>
+        <p className="text-muted-foreground text-sm mb-4">Controls Global Vista's own footer credit inside tenant workspaces.</p>
         <PlatformSettingsForm
           group="branding"
           initialValues={{ powered_by_enabled: "true", ...brandingValues }}

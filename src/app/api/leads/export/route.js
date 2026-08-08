@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { forbidden, withErrorHandling } from "@/lib/helpers/response";
 import { listLeadsForExport } from "@/lib/modules/crm/actions/leads";
+import { getSettingsByGroup } from "@/lib/actions/settings";
 import { buildExportResponse } from "@/lib/helpers/export";
 
 const COLUMNS = [
@@ -10,7 +11,7 @@ const COLUMNS = [
   ["source_name", "Source"], ["service_name", "Service"], ["assigned_name", "Assigned To"],
   ["country", "Country"], ["state", "State"], ["city", "City"],
   ["preferred_country", "Preferred Country"], ["preferred_university", "Preferred University"],
-  ["passport_status", "Passport Status"], ["tags", "Tags"], ["created_at", "Created At"],
+  ["passport_status", "Passport Status"], ["tags", "Tags"], ["created_at", "Created At", "datetime"],
 ];
 
 export const GET = withErrorHandling(async (request) => {
@@ -19,6 +20,7 @@ export const GET = withErrorHandling(async (request) => {
 
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") === "csv" ? "csv" : "xlsx";
+  const systemSettings = await getSettingsByGroup(session, "system");
   const leads = await listLeadsForExport(session, {
     status: searchParams.get("status") || null,
     stage: searchParams.get("stage") || null,
@@ -33,5 +35,5 @@ export const GET = withErrorHandling(async (request) => {
     createdTo: searchParams.get("createdTo") || null,
   });
 
-  return buildExportResponse(leads, COLUMNS, { format, filenameBase: "leads-export", sheetName: "Leads" });
+  return buildExportResponse(leads, COLUMNS, { format, filenameBase: "leads-export", sheetName: "Leads", timezone: systemSettings.timezone || "UTC" });
 });

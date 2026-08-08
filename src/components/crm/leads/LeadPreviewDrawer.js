@@ -6,8 +6,11 @@ import { X, Phone, MessageCircle, Mail, ExternalLink, Loader2 } from "lucide-rea
 import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import { apiFetch } from "@/components/shared/apiClient";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
 
 export default function LeadPreviewDrawer({ leadId, onClose }) {
+  const timezone = useTimezone();
   const [lead, setLead] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,30 +39,30 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <div className="relative w-full max-w-sm h-full bg-neutral-950 border-l border-neutral-800 shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 sticky top-0 bg-neutral-950/90 backdrop-blur z-10">
-          <p className="text-white font-medium">Lead Preview</p>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
+      <div className="relative w-full max-w-sm h-full bg-background border-l border-border shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
+          <p className="text-foreground font-medium">Lead Preview</p>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
         </div>
 
         {!lead ? (
-          <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 text-neutral-600 animate-spin" /></div>
+          <div className="flex items-center justify-center py-20"><Loader2 className="h-5 w-5 text-muted-foreground animate-spin" /></div>
         ) : (
           <div className="p-5 space-y-5">
             <div>
-              <p className="text-neutral-500 text-xs mb-1">{lead.lead_number}</p>
-              <h2 className="text-white text-lg font-semibold">{lead.name}</h2>
+              <p className="text-muted-foreground text-xs mb-1">{lead.lead_number}</p>
+              <h2 className="text-foreground text-lg font-semibold">{lead.name}</h2>
               <div className="flex items-center gap-2 mt-2"><StageBadge stage={lead.stage} /></div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <a href={`tel:${lead.phone}`} className="flex flex-col items-center gap-1 py-3 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-green-500/40 hover:bg-green-500/5 transition cursor-pointer">
+              <a href={`tel:${lead.phone}`} className="flex flex-col items-center gap-1 py-3 rounded-lg bg-card border border-border text-foreground hover:text-foreground hover:border-green-500/40 hover:bg-green-500/5 transition cursor-pointer">
                 <Phone className="h-4 w-4" /><span className="text-[11px]">Call</span>
               </a>
-              <a href={`https://wa.me/${(lead.whatsapp || lead.phone || "").replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1 py-3 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-emerald-500/40 hover:bg-emerald-500/5 transition cursor-pointer">
+              <a href={`https://wa.me/${(lead.whatsapp || lead.phone || "").replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1 py-3 rounded-lg bg-card border border-border text-foreground hover:text-foreground hover:border-emerald-500/40 hover:bg-emerald-500/5 transition cursor-pointer">
                 <MessageCircle className="h-4 w-4" /><span className="text-[11px]">WhatsApp</span>
               </a>
-              <a href={lead.email ? `mailto:${lead.email}` : undefined} className={`flex flex-col items-center gap-1 py-3 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 transition cursor-pointer ${lead.email ? "hover:text-white hover:border-indigo-500/40 hover:bg-indigo-500/5" : "opacity-40 pointer-events-none"}`}>
+              <a href={lead.email ? `mailto:${lead.email}` : undefined} className={`flex flex-col items-center gap-1 py-3 rounded-lg bg-card border border-border text-foreground transition cursor-pointer ${lead.email ? "hover:text-foreground hover:border-indigo-500/40 hover:bg-indigo-500/5" : "opacity-40 pointer-events-none"}`}>
                 <Mail className="h-4 w-4" /><span className="text-[11px]">Email</span>
               </a>
             </div>
@@ -70,12 +73,12 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
               <Row label="Source" value={lead.source_name} />
               <Row label="Service" value={lead.service_name} />
               <Row label="Assigned To" value={lead.assigned_name || "Unassigned"} />
-              <Row label="Next Follow-up" value={lead.next_follow_up ? new Date(lead.next_follow_up).toLocaleString() : "—"} />
+              <Row label="Next Follow-up" value={lead.next_follow_up ? formatDateTime(lead.next_follow_up, timezone) : "—"} />
             </div>
 
             <div>
-              <label className="block text-xs text-neutral-500 mb-1.5">Priority</label>
-              <select disabled={saving} value={lead.priority} onChange={(e) => updatePriority(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-white text-sm cursor-pointer">
+              <label className="block text-xs text-muted-foreground mb-1.5">Priority</label>
+              <select disabled={saving} value={lead.priority} onChange={(e) => updatePriority(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
                 {LEAD_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
@@ -93,8 +96,8 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-neutral-500">{label}</span>
-      <span className="text-neutral-200 truncate max-w-[60%]">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-foreground truncate max-w-[60%]">{value}</span>
     </div>
   );
 }

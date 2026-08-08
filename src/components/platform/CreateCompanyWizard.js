@@ -28,30 +28,30 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-        <div className="flex gap-2 mb-6">{STEPS.map((s, i) => <div key={s} className={`flex-1 text-center text-xs pb-2 border-b-2 ${i <= step ? "border-indigo-500 text-white" : "border-neutral-800 text-neutral-500"}`}>{s}</div>)}</div>
+      <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6">
+        <div className="flex gap-2 mb-6">{STEPS.map((s, i) => <div key={s} className={`flex-1 text-center text-xs pb-2 border-b-2 ${i <= step ? "border-indigo-500 text-foreground" : "border-border text-muted-foreground"}`}>{s}</div>)}</div>
 
         {step === 0 && (
           <div className="space-y-3">
-            <input required placeholder="Company Name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
-            <input placeholder="Short Name" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+            <input required placeholder="Company Name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input placeholder="Short Name" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
           </div>
         )}
         {step === 1 && (
           <div className="space-y-3">
-            <input required placeholder="Admin Full Name" value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
-            <input required type="email" placeholder="Admin Email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+            <input required placeholder="Admin Full Name" value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input required type="email" placeholder="Admin Email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
           </div>
         )}
         {step === 2 && (
           <div>
-            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-4 px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-800/60 border border-neutral-800 text-sm text-neutral-300 cursor-pointer transition hover:border-neutral-700"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
+            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-4 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border text-sm text-foreground cursor-pointer transition hover:border-border"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
           </div>
         )}
 
         <div className="flex justify-between mt-6">
-          <button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} className="px-4 py-2 rounded-lg bg-neutral-800 text-neutral-300 text-sm transition hover:bg-neutral-700 cursor-pointer">{step === 0 ? "Cancel" : "Back"}</button>
+          <button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} className="px-4 py-2 rounded-lg bg-muted text-foreground text-sm transition hover:bg-muted cursor-pointer">{step === 0 ? "Cancel" : "Back"}</button>
           {step < 2 ? (
             <button onClick={() => setStep(step + 1)} disabled={step === 0 ? !form.companyName : !form.adminEmail} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">Next <ArrowRight className="h-4 w-4" /></button>
           ) : (

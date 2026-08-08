@@ -7,19 +7,20 @@ import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
 import TagInput from "@/components/shared/TagInput";
+import { apiFetch } from "@/components/shared/apiClient";
 
 const SECTIONS = ["Personal", "Academic", "Study Preferences", "Passport", "Source & Assignment", "Notes"];
 
 function Field({ label, children }) {
   return (
     <div>
-      <label className="block text-sm text-neutral-300 mb-1">{label}</label>
+      <label className="block text-sm text-foreground mb-1">{label}</label>
       {children}
     </div>
   );
 }
 
-const inputClass = "w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
 export default function LeadForm({ sources = [], services = [], counsellors = [], tagSuggestions = [], initialData = null }) {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
     setSaving(true);
     try {
       const isEdit = !!initialData?.id;
-      const res = await fetch(isEdit ? `/api/leads/${initialData.id}` : "/api/leads", {
+      const res = await apiFetch(isEdit ? `/api/leads/${initialData.id}` : "/api/leads", {
         method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -109,7 +110,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
             key={section}
             onClick={() => setActiveSection(i)}
             className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition ${
-              activeSection === i ? "bg-indigo-600 text-white" : "bg-neutral-900 text-neutral-400 hover:text-white"
+              activeSection === i ? "bg-indigo-600 text-white" : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
             {section}
@@ -122,7 +123,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
         initial={{ opacity: 0, x: 12 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.2 }}
-        className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4"
+        className="bg-card border border-border rounded-xl p-6 space-y-4"
       >
         {activeSection === 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -234,7 +235,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
           type="button"
           disabled={activeSection === 0}
           onClick={() => setActiveSection((s) => Math.max(0, s - 1))}
-          className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm disabled:opacity-40"
+          className="px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm disabled:opacity-40"
         >
           Back
         </button>

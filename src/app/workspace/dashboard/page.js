@@ -1,8 +1,11 @@
 import { getSession } from "@/lib/auth";
+import { can } from "@/lib/helpers/permissions";
 import { getDashboardStats } from "@/lib/actions/dashboard";
 import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getUserNotifications } from "@/lib/actions/notifications";
+import { resolveRange } from "@/lib/helpers/dateRange";
+import { getSettingsByGroup } from "@/lib/actions/settings";
 import {
   getLeadDashboardStats, getLeadsBySource, getLeadsByService, getLeadsByStage,
   getMonthlyLeadTrend, getTeamPerformance, getRecentLeads,
@@ -11,52 +14,74 @@ import {
   getWorkspaceOrgStats, getUpcomingWorkAnniversaries, getRecentLogins,
   getEmployeeGrowth, getDepartmentDistribution, getRoleDistribution, getDocumentUploadTrend,
 } from "@/lib/actions/workspaceDashboard";
+import {
+  getEmployeesWithMissingDocuments, getPendingApprovalDocuments, getExpiringDocuments, getRecentlyUploadedDocuments,
+} from "@/lib/actions/employeeDocuments";
+import { getStorageUsage } from "@/lib/actions/storage";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
+import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
+import RangeFilter from "@/components/shared/RangeFilter";
 import { CrmKpiGrid, OrgKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
 import { WorkspaceCrmChartsSection, WorkspaceOrgChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
 import {
   RecentLeadsTable, TeamPerformanceTable, RecentActivityTable,
   UpcomingAnniversariesTable, RecentLoginsTable,
+  MissingDocumentsTable, PendingApprovalDocumentsTable, ExpiringDocumentsTable, RecentlyUploadedDocumentsTable,
 } from "@/components/workspace/dashboard/WorkspaceTables";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }) {
   const session = await getSession();
+  const sp = await searchParams;
+  const rangeKey = sp?.range || "year";
+  const range = resolveRange(rangeKey, sp?.from, sp?.to);
+  const canManageDocuments = await can(session, "employee_documents.manage");
 
   const [
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
     teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
-    recentActivity, unreadNotifications, branding,
+    recentActivity, unreadNotifications, branding, systemSettings,
+    missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
   ] = await Promise.all([
     getDashboardStats(session),
     getLeadDashboardStats(session),
     getLeadsBySource(session),
     getLeadsByService(session),
     getLeadsByStage(session),
-    getMonthlyLeadTrend(session),
+    getMonthlyLeadTrend(session, range),
     getTeamPerformance(session),
     getRecentLeads(session, 6),
     getWorkspaceOrgStats(session),
     getUpcomingWorkAnniversaries(session),
     getRecentLogins(session, 8),
-    getEmployeeGrowth(session),
+    getEmployeeGrowth(session, range),
     getDepartmentDistribution(session),
     getRoleDistribution(session),
-    getDocumentUploadTrend(session),
+    getDocumentUploadTrend(session, range),
     getActivityLogs({ limit: 8, companyId: session.company_id }),
     getUserNotifications(session, { unreadOnly: true, limit: 100 }),
     getCompanyBranding(session),
+    getSettingsByGroup(session, "system"),
+    canManageDocuments ? getEmployeesWithMissingDocuments(session) : [],
+    canManageDocuments ? getPendingApprovalDocuments(session) : [],
+    canManageDocuments ? getExpiringDocuments(session) : [],
+    canManageDocuments ? getRecentlyUploadedDocuments(session) : [],
+    getStorageUsage(session),
   ]);
+  const timezone = systemSettings.timezone || "UTC";
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-white">{branding.dashboardGreeting || `Welcome, ${session?.name}`}</h1>
-        <p className="text-neutral-500 text-sm">{branding.companyDescription || "Here's what's happening across your workspace today."}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">{branding.dashboardGreeting || `Welcome, ${session?.name}`}</h1>
+          <p className="text-muted-foreground text-sm">{branding.companyDescription || "Here's what's happening across your workspace today."}</p>
+        </div>
+        <RangeFilter active={rangeKey} from={sp?.from} to={sp?.to} basePath="/workspace/dashboard" />
       </div>
 
       <section className="space-y-4">
-        <p className="text-neutral-400 text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
+        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
         <CrmKpiGrid crm={crmStats} />
         <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -66,7 +91,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="space-y-4">
-        <p className="text-neutral-400 text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
+        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
         <OrgKpiGrid
           activeUsers={stats.activeUsers}
           roles={stats.roles}
@@ -78,11 +103,24 @@ export default async function DashboardPage() {
         />
         <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <RecentActivityTable logs={recentActivity} />
+          <RecentActivityTable logs={recentActivity} timezone={timezone} />
           <UpcomingAnniversariesTable people={anniversaries} />
-          <RecentLoginsTable logins={recentLogins} />
+          <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
       </section>
+
+      {canManageDocuments && (
+        <section className="space-y-4">
+          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Employee Documents</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <MissingDocumentsTable employees={missingDocsEmployees} />
+            <PendingApprovalDocumentsTable documents={pendingDocs} />
+            <ExpiringDocumentsTable documents={expiringDocs} timezone={timezone} />
+            <RecentlyUploadedDocumentsTable documents={recentDocs} timezone={timezone} />
+            <StorageUsageWidget usage={storageUsage} />
+          </div>
+        </section>
+      )}
 
       <QuickActionsCard />
     </div>

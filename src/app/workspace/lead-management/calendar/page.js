@@ -24,8 +24,8 @@ export default async function LeadCalendarPage({ searchParams }) {
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-white">Follow-up Calendar</h1>
-          <p className="text-neutral-500 text-xs mt-0.5">Follow-ups and tasks due this month, across leads you can see</p>
+          <h1 className="text-xl font-semibold text-foreground">Follow-up Calendar</h1>
+          <p className="text-muted-foreground text-xs mt-0.5">Follow-ups and tasks due this month, across leads you can see</p>
         </div>
         <LeadViewToggle active="calendar" />
       </div>

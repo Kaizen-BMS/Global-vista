@@ -28,43 +28,43 @@ export default function FollowupCompleteModal({ followupType, onClose, onSubmit 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150">
+      <form onSubmit={handleSubmit} className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150">
         <div className="flex items-center justify-between mb-4">
-          <p className="text-white font-medium">Complete {followupType ? `— ${followupType}` : "Follow-up"}</p>
-          <button type="button" onClick={onClose} className="text-neutral-500 hover:text-white cursor-pointer"><X className="h-4 w-4" /></button>
+          <p className="text-foreground font-medium">Complete {followupType ? `— ${followupType}` : "Follow-up"}</p>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
-        <label className="block text-xs text-neutral-500 mb-1.5">Outcome / notes</label>
+        <label className="block text-xs text-muted-foreground mb-1.5">Outcome / notes</label>
         <textarea
           autoFocus rows={3} value={outcome} onChange={(e) => setOutcome(e.target.value)}
           placeholder="What happened?"
-          className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">Disposition</label>
-            <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm cursor-pointer">
+            <label className="block text-xs text-muted-foreground mb-1.5">Disposition</label>
+            <select value={disposition} onChange={(e) => setDisposition(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
               <option value="">Not set</option>
               {FOLLOWUP_DISPOSITIONS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
           {(followupType === "Phone Call" || followupType === "Zoom" || followupType === "Meeting") && (
             <div>
-              <label className="block text-xs text-neutral-500 mb-1.5">Duration (minutes)</label>
-              <input type="number" min="0" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm" />
+              <label className="block text-xs text-muted-foreground mb-1.5">Duration (minutes)</label>
+              <input type="number" min="0" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
             </div>
           )}
         </div>
 
-        <label className="block text-xs text-neutral-500 mb-1.5">Next follow-up (optional)</label>
+        <label className="block text-xs text-muted-foreground mb-1.5">Next follow-up (optional)</label>
         <input
           type="datetime-local" value={nextFollowUp} onChange={(e) => setNextFollowUp(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm mb-5"
+          className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm mb-5"
         />
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm cursor-pointer">Cancel</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">Cancel</button>
           <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save
           </button>

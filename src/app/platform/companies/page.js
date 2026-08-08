@@ -28,7 +28,7 @@ export default function CompaniesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-white">Companies</h1>
+        <h1 className="text-xl font-semibold text-foreground">Companies</h1>
         <div className="flex items-center gap-2">
           <ReportToolbar exportBase="/api/reports/companies/export" />
           <button onClick={() => setWizardOpen(true)} disabled={!data} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"><Plus className="h-4 w-4" />Create Company</button>
@@ -39,10 +39,10 @@ export default function CompaniesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data.companies.map((c) => (
-            <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 transition hover:border-neutral-700 hover:-translate-y-0.5">
-              <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-indigo-400" /><p className="text-white font-medium">{c.name}</p></div><span className={`text-xs px-2 py-1 rounded-md border ${STATUS_STYLES[c.status]}`}>{c.status}</span></div>
-              <div className="flex items-center gap-4 text-neutral-500 text-xs mb-4"><span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{c.user_count}</span><span className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />{c.enabled_module_count}</span></div>
-              <div className="flex items-center gap-3 text-sm"><Link href={`/platform/companies/${c.id}`} className="text-indigo-400 hover:text-indigo-300 transition cursor-pointer">Manage</Link><button onClick={() => toggleSuspend(c)} disabled={busyId === c.id} className="text-neutral-400 hover:text-white ml-auto transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{c.status === "active" ? "Suspend" : "Reactivate"}</button></div>
+            <div key={c.id} className="bg-card border border-border rounded-xl p-5 transition hover:border-border hover:-translate-y-0.5">
+              <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-indigo-400" /><p className="text-foreground font-medium">{c.name}</p></div><span className={`text-xs px-2 py-1 rounded-md border ${STATUS_STYLES[c.status]}`}>{c.status}</span></div>
+              <div className="flex items-center gap-4 text-muted-foreground text-xs mb-4"><span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{c.user_count}</span><span className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />{c.enabled_module_count}</span></div>
+              <div className="flex items-center gap-3 text-sm"><Link href={`/platform/companies/${c.id}`} className="text-indigo-400 hover:text-indigo-300 transition cursor-pointer">Manage</Link><button onClick={() => toggleSuspend(c)} disabled={busyId === c.id} className="text-muted-foreground hover:text-foreground ml-auto transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{c.status === "active" ? "Suspend" : "Reactivate"}</button></div>
             </div>
           ))}
         </div>

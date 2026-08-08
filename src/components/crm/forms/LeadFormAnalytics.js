@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
 
-function StatCard({ label, value, color = "text-white" }) {
+function StatCard({ label, value, color = "text-foreground" }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-center">
+    <div className="bg-card border border-border rounded-xl p-4 text-center">
       <p className={`text-2xl font-semibold ${color}`}>{value}</p>
-      <p className="text-neutral-500 text-xs mt-0.5">{label}</p>
+      <p className="text-muted-foreground text-xs mt-0.5">{label}</p>
     </div>
   );
 }
@@ -12,16 +13,16 @@ function StatCard({ label, value, color = "text-white" }) {
 function BreakdownCard({ title, rows, labelKey }) {
   const total = rows.reduce((sum, r) => sum + r.count, 0) || 1;
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-      <p className="text-white font-medium mb-3">{title}</p>
+    <div className="bg-card border border-border rounded-xl p-5">
+      <p className="text-foreground font-medium mb-3">{title}</p>
       {rows.length === 0 ? (
-        <p className="text-neutral-600 text-sm">Not enough data yet.</p>
+        <p className="text-muted-foreground text-sm">Not enough data yet.</p>
       ) : (
         <div className="space-y-2.5">
           {rows.map((r) => (
             <div key={r[labelKey]}>
-              <div className="flex items-center justify-between text-xs mb-1"><span className="text-neutral-300">{r[labelKey] || "Unknown"}</span><span className="text-neutral-500">{r.count}</span></div>
-              <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(r.count / total) * 100}%` }} /></div>
+              <div className="flex items-center justify-between text-xs mb-1"><span className="text-foreground">{r[labelKey] || "Unknown"}</span><span className="text-muted-foreground">{r.count}</span></div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(r.count / total) * 100}%` }} /></div>
             </div>
           ))}
         </div>
@@ -30,7 +31,7 @@ function BreakdownCard({ title, rows, labelKey }) {
   );
 }
 
-export default function LeadFormAnalytics({ analytics }) {
+export default function LeadFormAnalytics({ analytics, timezone = "UTC" }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -47,23 +48,23 @@ export default function LeadFormAnalytics({ analytics }) {
         <BreakdownCard title="Top Browsers" rows={analytics.topBrowsers} labelKey="browser" />
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
-        <p className="text-white font-medium px-5 py-4 border-b border-neutral-800">Recent Submissions</p>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <p className="text-foreground font-medium px-5 py-4 border-b border-border">Recent Submissions</p>
         {analytics.recentSubmissions.length === 0 ? (
-          <p className="text-neutral-600 text-sm text-center py-8">No submissions yet.</p>
+          <p className="text-muted-foreground text-sm text-center py-8">No submissions yet.</p>
         ) : (
-          <div className="divide-y divide-neutral-800">
+          <div className="divide-y divide-border">
             {analytics.recentSubmissions.map((s) => (
               <div key={s.id} className="flex items-center justify-between px-5 py-3">
                 <div>
                   {s.lead_id ? (
-                    <Link href={`/workspace/lead-management/${s.lead_id}`} className="text-white text-sm hover:text-indigo-400 cursor-pointer">{s.lead_name}</Link>
+                    <Link href={`/workspace/lead-management/${s.lead_id}`} className="text-foreground text-sm hover:text-indigo-400 cursor-pointer">{s.lead_name}</Link>
                   ) : (
-                    <span className="text-neutral-500 text-sm">{s.status === "spam" ? "Blocked (spam)" : "Failed submission"}</span>
+                    <span className="text-muted-foreground text-sm">{s.status === "spam" ? "Blocked (spam)" : "Failed submission"}</span>
                   )}
-                  <p className="text-neutral-600 text-xs mt-0.5">{s.device} · {s.browser} · {s.country || "Unknown"}</p>
+                  <p className="text-muted-foreground text-xs mt-0.5">{s.device} · {s.browser} · {s.country || "Unknown"}</p>
                 </div>
-                <span className="text-neutral-500 text-xs shrink-0">{new Date(s.created_at).toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs shrink-0">{formatDateTime(s.created_at, timezone)}</span>
               </div>
             ))}
           </div>

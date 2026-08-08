@@ -6,19 +6,19 @@ const SEGMENTS = [
 
 export default function LeadScoreBar({ score }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+    <div className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-neutral-400 text-xs">Lead Score <span className="text-neutral-600">(computed, not stored)</span></p>
-        <p className="text-white text-sm font-semibold">{score.total} / 100</p>
+        <p className="text-muted-foreground text-xs">Lead Score <span className="text-muted-foreground">(computed, not stored)</span></p>
+        <p className="text-foreground text-sm font-semibold">{score.total} / 100</p>
       </div>
-      <div className="flex h-2 rounded-full overflow-hidden bg-neutral-800">
+      <div className="flex h-2 rounded-full overflow-hidden bg-muted">
         {SEGMENTS.map((s) => (
           <div key={s.key} className={`${s.color} transition-all`} style={{ width: `${(score[s.key] / 100) * 100}%` }} />
         ))}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5">
         {SEGMENTS.map((s) => (
-          <div key={s.key} className="flex items-center gap-1.5 text-[11px] text-neutral-500">
+          <div key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className={`h-1.5 w-1.5 rounded-full ${s.color}`} />
             {s.label}: {score[s.key]}/{s.max}
           </div>

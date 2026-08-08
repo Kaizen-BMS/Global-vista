@@ -1,26 +1,24 @@
 "use client";
 
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
+import ChartCard from "@/components/shared/ChartCard";
 
-const COLORS = ["#6366f1", "#22d3ee", "#34d399", "#facc15", "#f87171", "#a78bfa", "#fb923c", "#f472b6", "#60a5fa", "#4ade80"];
+const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "#a78bfa", "#fb923c", "#f472b6", "#60a5fa", "#4ade80"];
+const tooltipStyle = { background: "var(--popover)", color: "var(--popover-foreground)", border: "1px solid var(--border)", borderRadius: 8 };
+const legendStyle = { fontSize: 12, color: "var(--foreground)" };
 
 export default function LeadSourceChart({ data }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-      <p className="text-white font-medium mb-4">Leads by Source</p>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="count" nameKey="source" innerRadius={50} outerRadius={80} paddingAngle={2}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip contentStyle={{ background: "#171717", border: "1px solid #262626", borderRadius: 8 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <ChartCard title="Leads by Source" empty={!data?.length} data={data} csvColumns={["source", "count"]}
+      renderChart={({ fullscreen }) => (
+        <PieChart>
+          <Pie data={data} dataKey="count" nameKey="source" innerRadius={fullscreen ? 70 : 50} outerRadius={fullscreen ? 140 : 80} paddingAngle={2}>
+            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+          </Pie>
+          <Tooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={legendStyle} />
+        </PieChart>
+      )}
+    />
   );
 }

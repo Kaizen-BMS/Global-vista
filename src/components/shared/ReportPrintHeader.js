@@ -1,6 +1,7 @@
 import { getCompanyBranding } from "@/lib/actions/companyBranding";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
 
-export default async function ReportPrintHeader({ session, title, subtitle }) {
+export default async function ReportPrintHeader({ session, title, subtitle, timezone = "UTC" }) {
   const branding = await getCompanyBranding(session);
   return (
     <div className="hidden print:flex items-center justify-between border-b border-black pb-3 mb-4">
@@ -17,7 +18,7 @@ export default async function ReportPrintHeader({ session, title, subtitle }) {
       <div className="text-right">
         <p className="text-black font-medium text-sm">{title}</p>
         {subtitle && <p className="text-neutral-600 text-xs">{subtitle}</p>}
-        <p className="text-neutral-500 text-xs">Generated {new Date().toLocaleString()} by {session?.name || "—"}</p>
+        <p className="text-neutral-500 text-xs">Generated {formatDateTime(new Date(), timezone)} by {session?.name || "—"}</p>
       </div>
     </div>
   );

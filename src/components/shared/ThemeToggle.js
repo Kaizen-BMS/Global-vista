@@ -27,12 +27,12 @@ export default function ThemeToggle() {
         onClick={() => setOpen((o) => !o)}
         aria-label="Change theme"
         title="Change theme"
-        className="text-neutral-400 hover:text-white cursor-pointer transition-colors"
+        className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
       >
         <Current className="h-5 w-5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-3 w-36 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 overflow-hidden p-1 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute right-0 mt-3 w-36 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden p-1 animate-in fade-in slide-in-from-top-1 duration-150">
           {OPTIONS.map((o) => {
             const Icon = o.icon;
             const active = theme === o.key;
@@ -40,7 +40,7 @@ export default function ThemeToggle() {
               <button
                 key={o.key}
                 onClick={() => { setTheme(o.key); setOpen(false); }}
-                className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm cursor-pointer transition-colors ${active ? "bg-indigo-500/10 text-indigo-300" : "text-neutral-300 hover:bg-neutral-800 hover:text-white"}`}
+                className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm cursor-pointer transition-colors ${active ? "bg-indigo-500/10 text-indigo-400" : "text-popover-foreground/70 hover:bg-accent hover:text-popover-foreground"}`}
               >
                 <Icon className="h-4 w-4" /> {o.label}
                 {active && <Check className="h-3.5 w-3.5 ml-auto" />}

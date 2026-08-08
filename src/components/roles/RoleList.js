@@ -30,14 +30,14 @@ export default function RoleList({ roles }) {
       {roles.length === 0 ? <EmptyState icon={ShieldCheck} title="No roles yet" /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {roles.map((role) => (
-            <div key={role.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
-              <div className="flex items-start justify-between mb-2"><p className="text-white font-medium">{role.name}</p><ShieldCheck className="h-4 w-4 text-neutral-600" /></div>
-              <p className="flex items-center gap-1.5 text-neutral-500 text-xs mb-4"><Users className="h-3.5 w-3.5" />{role.user_count} users</p>
+            <div key={role.id} className="bg-card border border-border rounded-xl p-5">
+              <div className="flex items-start justify-between mb-2"><p className="text-foreground font-medium">{role.name}</p><ShieldCheck className="h-4 w-4 text-muted-foreground" /></div>
+              <p className="flex items-center gap-1.5 text-muted-foreground text-xs mb-4"><Users className="h-3.5 w-3.5" />{role.user_count} users</p>
               <div className="flex items-center gap-3 text-sm">
                 <Link href={`/workspace/roles/${role.id}/permissions`} className="text-indigo-400 hover:text-indigo-300">Permissions</Link>
                 {!role.is_system && <>
-                  <button onClick={() => setDialogRole(role)} className="text-neutral-400 hover:text-white flex items-center gap-1"><Pencil className="h-3.5 w-3.5" />Edit</button>
-                  <button onClick={() => handleDelete(role)} disabled={deletingId === role.id} className="text-neutral-400 hover:text-red-400 flex items-center gap-1 ml-auto"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setDialogRole(role)} className="text-muted-foreground hover:text-foreground flex items-center gap-1"><Pencil className="h-3.5 w-3.5" />Edit</button>
+                  <button onClick={() => handleDelete(role)} disabled={deletingId === role.id} className="text-muted-foreground hover:text-red-400 flex items-center gap-1 ml-auto"><Trash2 className="h-3.5 w-3.5" /></button>
                 </>}
               </div>
             </div>

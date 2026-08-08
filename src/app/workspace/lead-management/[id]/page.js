@@ -56,21 +56,21 @@ export default async function LeadDetailsPage({ params }) {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-neutral-500 text-xs mb-1">{lead.lead_number}</p>
-          <h1 className="text-xl font-semibold text-white">{lead.name}</h1>
+          <p className="text-muted-foreground text-xs mb-1">{lead.lead_number}</p>
+          <h1 className="text-xl font-semibold text-foreground">{lead.name}</h1>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <StageBadge stage={lead.stage} />
             <PriorityBadge priority={lead.priority} />
             <LeadScoreBadge score={score} />
             {tags.map((tag) => (
-              <span key={tag} className="px-2 py-1 rounded-full text-xs border bg-neutral-800 text-neutral-300 border-neutral-700">#{tag}</span>
+              <span key={tag} className="px-2 py-1 rounded-full text-xs border bg-muted text-foreground border-border">#{tag}</span>
             ))}
           </div>
         </div>
         <div className="flex items-center gap-2">
           <QuickActionBar lead={lead} canManage={canManageFollowups} />
           {canEdit && (
-            <Link href={`/workspace/lead-management/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm transition cursor-pointer">
+            <Link href={`/workspace/lead-management/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer">
               <Pencil className="h-4 w-4" /> Edit
             </Link>
           )}
@@ -93,8 +93,8 @@ export default async function LeadDetailsPage({ params }) {
       </div>
 
       <LeadTabs>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-          <p className="text-neutral-300 text-sm whitespace-pre-wrap">{lead.remarks || "No remarks recorded."}</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-foreground text-sm whitespace-pre-wrap">{lead.remarks || "No remarks recorded."}</p>
         </div>
         <LeadTimeline events={timeline} />
         <LeadNotes leadId={id} notes={notes} canManage={canManageNotes} />
@@ -108,9 +108,9 @@ export default async function LeadDetailsPage({ params }) {
 
 function InfoBlock({ label, value }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
-      <p className="text-neutral-500 text-xs mb-0.5">{label}</p>
-      <p className="text-white text-sm truncate">{value}</p>
+    <div className="bg-card border border-border rounded-lg p-3">
+      <p className="text-muted-foreground text-xs mb-0.5">{label}</p>
+      <p className="text-foreground text-sm truncate">{value}</p>
     </div>
   );
 }

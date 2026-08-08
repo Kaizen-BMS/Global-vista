@@ -28,8 +28,8 @@ export default async function EditLeadFormPage({ params }) {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Edit Lead Form</h1>
-      <p className="text-neutral-500 text-sm mb-6">/forms/{form.slug}</p>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Edit Lead Form</h1>
+      <p className="text-muted-foreground text-sm mb-6">/forms/{form.slug}</p>
       <LeadFormBuilder sources={sources} services={services} users={usersResult.users} initialData={initialData} formId={form.id} />
     </div>
   );

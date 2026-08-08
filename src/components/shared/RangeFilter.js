@@ -8,28 +8,28 @@ const RANGES = [
   { key: "year", label: "Year" },
 ];
 
-export default function RangeFilter({ active, from, to }) {
+export default function RangeFilter({ active, from, to, basePath = "/platform" }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-lg p-1">
+      <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1">
         {RANGES.map((r) => (
           <Link
             key={r.key}
-            href={`/platform?range=${r.key}`}
+            href={`${basePath}?range=${r.key}`}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-              active === r.key ? "bg-indigo-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+              active === r.key ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             {r.label}
           </Link>
         ))}
       </div>
-      <form method="GET" action="/platform" className="flex items-center gap-1.5">
+      <form method="GET" action={basePath} className="flex items-center gap-1.5">
         <input type="hidden" name="range" value="custom" />
-        <input type="date" name="from" defaultValue={from} required className="px-2 py-1.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs" />
-        <span className="text-neutral-600 text-xs">to</span>
-        <input type="date" name="to" defaultValue={to} required className="px-2 py-1.5 rounded-md bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs" />
-        <button type="submit" className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${active === "custom" ? "bg-indigo-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800"}`}>Apply</button>
+        <input type="date" name="from" defaultValue={from} required className="px-2 py-1.5 rounded-md bg-card border border-border text-foreground text-xs" />
+        <span className="text-muted-foreground text-xs">to</span>
+        <input type="date" name="to" defaultValue={to} required className="px-2 py-1.5 rounded-md bg-card border border-border text-foreground text-xs" />
+        <button type="submit" className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${active === "custom" ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground hover:bg-muted border border-border"}`}>Apply</button>
       </form>
     </div>
   );

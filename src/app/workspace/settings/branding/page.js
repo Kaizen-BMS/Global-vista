@@ -12,9 +12,9 @@ export default async function BrandingPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
       <SettingsTabs />
-      <p className="text-neutral-500 text-sm mb-6 max-w-2xl">
+      <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
         Your logo, colors, and contact details appear across the sidebar, reports, and outgoing emails —
         the moment you save, the whole workspace reflects it.
       </p>

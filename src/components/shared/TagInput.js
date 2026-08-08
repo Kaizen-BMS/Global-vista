@@ -30,11 +30,11 @@ export default function TagInput({ value, onChange, suggestions = [] }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-1.5 w-full px-2 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 focus-within:ring-2 focus-within:ring-indigo-500 transition">
+      <div className="flex flex-wrap items-center gap-1.5 w-full px-2 py-1.5 rounded-lg bg-muted border border-border focus-within:ring-2 focus-within:ring-indigo-500 transition">
         {tags.map((tag) => (
           <span key={tag} className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
             #{tag}
-            <button type="button" onClick={() => removeTag(tag)} className="hover:text-white cursor-pointer rounded-full transition-colors">
+            <button type="button" onClick={() => removeTag(tag)} className="hover:text-indigo-100 cursor-pointer rounded-full transition-colors">
               <X className="h-3 w-3" />
             </button>
           </span>
@@ -45,7 +45,7 @@ export default function TagInput({ value, onChange, suggestions = [] }) {
           onKeyDown={handleKeyDown}
           onBlur={() => commit(draft)}
           placeholder={tags.length ? "" : "Type and press Enter..."}
-          className="flex-1 min-w-[100px] bg-transparent text-white text-sm px-1 py-1 focus:outline-none"
+          className="flex-1 min-w-[100px] bg-transparent text-foreground text-sm px-1 py-1 focus:outline-none"
         />
       </div>
       {unusedSuggestions.length > 0 && (
@@ -55,7 +55,7 @@ export default function TagInput({ value, onChange, suggestions = [] }) {
               key={s}
               type="button"
               onClick={() => commit(s)}
-              className="px-2 py-0.5 rounded-full text-xs bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-white hover:border-neutral-600 cursor-pointer transition"
+              className="px-2 py-0.5 rounded-full text-xs bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40 cursor-pointer transition"
             >
               #{s}
             </button>

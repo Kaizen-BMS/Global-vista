@@ -16,8 +16,8 @@ export default async function NewLeadPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white mb-1">Add Lead</h1>
-      <p className="text-neutral-500 text-sm mb-6">Fill in as much detail as you have — you can complete the rest later.</p>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Add Lead</h1>
+      <p className="text-muted-foreground text-sm mb-6">Fill in as much detail as you have — you can complete the rest later.</p>
       <LeadForm sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags} />
     </div>
   );

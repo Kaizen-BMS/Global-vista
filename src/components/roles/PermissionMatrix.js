@@ -24,11 +24,11 @@ export default function PermissionMatrix({ roleId, allPermissions, assignedIds }
       <div className="flex justify-end mb-4"><button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save</button></div>
       <div className="space-y-4">
         {modules.map((m) => (
-          <div key={m} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
-            <p className="text-white text-sm font-medium mb-3">{PERMISSION_MODULE_LABELS[m] || m}</p>
+          <div key={m} className="bg-card border border-border rounded-xl p-4">
+            <p className="text-foreground text-sm font-medium mb-3">{PERMISSION_MODULE_LABELS[m] || m}</p>
             <div className="flex flex-wrap gap-2">
               {grouped[m].map((p) => { const active = selected.has(p.id); return (
-                <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border ${active ? "bg-indigo-600/10 text-indigo-400 border-indigo-600/30" : "bg-neutral-800/60 text-neutral-400 border-neutral-800"}`}>{active && <Check className="h-3 w-3" />}{p.name}</button>
+                <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border ${active ? "bg-indigo-600/10 text-indigo-400 border-indigo-600/30" : "bg-muted/60 text-muted-foreground border-border"}`}>{active && <Check className="h-3 w-3" />}{p.name}</button>
               ); })}
             </div>
           </div>

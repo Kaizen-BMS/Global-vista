@@ -23,6 +23,7 @@ export default async function LeadManagementPage({ searchParams }) {
       assignedTo: sp?.assignedTo || null, country: sp?.country || null, tag: sp?.tag || null,
       createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
       followupFrom: sp?.followupFrom || null, followupTo: sp?.followupTo || null,
+      sort: sp?.sort || "created_at", dir: sp?.dir || "DESC",
       page: sp?.page || 1, pageSize: 20,
     }),
     listLeadSources(session),
@@ -37,12 +38,12 @@ export default async function LeadManagementPage({ searchParams }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-xl font-semibold text-white">Leads ({result.total})</h1>
+        <h1 className="text-xl font-semibold text-foreground">Leads ({result.total})</h1>
         <div className="flex items-center gap-2">
           <LeadViewToggle active="list" />
           {canCreate && (
             <>
-              <Link href="/workspace/lead-management/import" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-sm font-medium transition cursor-pointer">
+              <Link href="/workspace/lead-management/import" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm font-medium transition cursor-pointer">
                 <Upload className="h-4 w-4" /> Import
               </Link>
               <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
@@ -54,7 +55,7 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} />
-      <LeadsTable leads={result.leads} canBulkAssign={canAssign} canBulkUpdate={canUpdate} />
+      <LeadsTable leads={result.leads} canBulkAssign={canAssign} canBulkUpdate={canUpdate} sortKey={sp?.sort || "created_at"} sortDir={sp?.dir || "DESC"} />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>
   );

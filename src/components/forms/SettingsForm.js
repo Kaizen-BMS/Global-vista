@@ -12,11 +12,18 @@ export default function SettingsForm({ group, fields, initialValues }) {
     catch { toast.error("Failed."); } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={handleSubmit} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-xl space-y-4">
+    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 max-w-xl space-y-4">
       {fields.map((f) => (
         <div key={f.key}>
-          <label className="block text-sm text-neutral-300 mb-1">{f.label}</label>
-          <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+          <label className="block text-sm text-foreground mb-1">{f.label}</label>
+          {f.type === "select" ? (
+            <select value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+              {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : (
+            <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+          )}
+          {f.hint && <p className="text-muted-foreground text-xs mt-1">{f.hint}</p>}
         </div>
       ))}
       <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save</button>

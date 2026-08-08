@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pin, Loader2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
 
 export default function LeadNotes({ leadId, notes, canManage }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -41,7 +44,7 @@ export default function LeadNotes({ leadId, notes, canManage }) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Add a note..."
-            className="w-full px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <button
             type="submit"
@@ -55,15 +58,15 @@ export default function LeadNotes({ leadId, notes, canManage }) {
       )}
 
       <div className="space-y-3">
-        {notes.length === 0 && <p className="text-neutral-500 text-sm">No notes yet.</p>}
+        {notes.length === 0 && <p className="text-muted-foreground text-sm">No notes yet.</p>}
         {notes.map((note) => (
-          <div key={note.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+          <div key={note.id} className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-white text-sm font-medium">{note.author_name}</span>
+              <span className="text-foreground text-sm font-medium">{note.author_name}</span>
               {!!note.is_pinned && <Pin className="h-3.5 w-3.5 text-yellow-400" />}
             </div>
-            <p className="text-neutral-300 text-sm">{note.content}</p>
-            <p className="text-neutral-600 text-xs mt-1">{new Date(note.created_at).toLocaleString()}</p>
+            <p className="text-foreground text-sm">{note.content}</p>
+            <p className="text-muted-foreground text-xs mt-1">{formatDateTime(note.created_at, timezone)}</p>
           </div>
         ))}
       </div>

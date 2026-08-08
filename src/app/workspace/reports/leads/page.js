@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeadsForExport } from "@/lib/modules/crm/actions/leads";
+import { getSettingsByGroup } from "@/lib/actions/settings";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
@@ -15,19 +16,20 @@ const COLUMNS = [
 export default async function LeadsReportPage() {
   const session = await getSession();
   if (!(await can(session, "leads.view"))) return <ForbiddenState />;
-  const leads = await listLeadsForExport(session, {});
+  const [leads, systemSettings] = await Promise.all([listLeadsForExport(session, {}), getSettingsByGroup(session, "system")]);
+  const timezone = systemSettings.timezone || "UTC";
 
   return (
     <div>
-      <ReportPrintHeader session={session} title="Leads Report" subtitle={`${leads.length} lead${leads.length === 1 ? "" : "s"}`} />
+      <ReportPrintHeader session={session} title="Leads Report" subtitle={`${leads.length} lead${leads.length === 1 ? "" : "s"}`} timezone={timezone} />
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-white">Leads Report</h1>
-          <p className="text-neutral-500 text-sm">{leads.length} lead{leads.length === 1 ? "" : "s"}</p>
+          <h1 className="text-xl font-semibold text-foreground">Leads Report</h1>
+          <p className="text-muted-foreground text-sm">{leads.length} lead{leads.length === 1 ? "" : "s"}</p>
         </div>
         <ReportToolbar exportBase="/api/leads/export" />
       </div>
-      <ReportTable columns={COLUMNS} rows={leads} />
+      <ReportTable columns={COLUMNS} rows={leads} timezone={timezone} />
     </div>
   );
 }

@@ -3,7 +3,13 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
-export default function PublicLeadFormRenderer({ form, branding }) {
+/**
+ * Also used, with `preview`, as the Lead Form Builder's live preview — so the
+ * builder can never visually drift from what the real public page renders.
+ * In preview mode there's no real slug/backend to hit: the view-ping is
+ * skipped and "submitting" just shows the configured success state locally.
+ */
+export default function PublicLeadFormRenderer({ form, branding, preview = false }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [values, setValues] = useState({});
@@ -15,6 +21,7 @@ export default function PublicLeadFormRenderer({ form, branding }) {
   const source = searchParams.get("src") === "qr" ? "qr" : "link";
 
   useEffect(() => {
+    if (preview) return;
     fetch(`/api/public/forms/${form.slug}/view`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source }),
     }).catch(() => {});
@@ -27,6 +34,14 @@ export default function PublicLeadFormRenderer({ form, branding }) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+
+    if (preview) {
+      await new Promise((r) => setTimeout(r, 400));
+      setResult({ successMessage: form.success_message });
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const utmPayload = {};
       for (const key of ["source", "medium", "campaign", "term", "content"]) {
@@ -49,7 +64,7 @@ export default function PublicLeadFormRenderer({ form, branding }) {
 
   if (result) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black px-4">
+      <div className={preview ? "flex items-center justify-center bg-black rounded-2xl py-16 px-4" : "min-h-screen flex items-center justify-center bg-black px-4"}>
         <div className="w-full max-w-md text-center">
           <CheckCircle2 className="h-12 w-12 mx-auto mb-4" style={{ color: primaryColor }} />
           <p className="text-white text-lg font-medium">{result.successMessage || "Thank you! We'll be in touch shortly."}</p>
@@ -59,7 +74,7 @@ export default function PublicLeadFormRenderer({ form, branding }) {
   }
 
   return (
-    <div className="min-h-screen bg-black px-4 py-16 flex items-center justify-center">
+    <div className={preview ? "bg-black rounded-2xl px-4 py-10 flex items-center justify-center" : "min-h-screen bg-black px-4 py-16 flex items-center justify-center"}>
       <div className="w-full max-w-lg">
         <div className="flex flex-col items-center mb-8">
           {branding?.logo_url ? (

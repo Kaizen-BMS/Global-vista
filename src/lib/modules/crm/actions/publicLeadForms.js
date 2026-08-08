@@ -15,7 +15,13 @@ const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
  * the submit/view handlers, which need everything.
  */
 export async function getPublicLeadForm(slug) {
-  const [[form]] = await pool.query(`SELECT * FROM lead_forms WHERE slug=? AND is_deleted=0 LIMIT 1`, [slug]);
+  // Joins companies so a suspended tenant's public forms disappear (404)
+  // the instant it's suspended — the same one query already guards status.
+  const [[form]] = await pool.query(
+    `SELECT f.* FROM lead_forms f JOIN companies c ON c.id = f.company_id
+     WHERE f.slug=? AND f.is_deleted=0 AND c.status='active' LIMIT 1`,
+    [slug]
+  );
   if (!form || form.status !== "active") return null;
   return { ...form, fields_config: JSON.parse(form.fields_config || "[]"), theme_config: JSON.parse(form.theme_config || "{}") };
 }
