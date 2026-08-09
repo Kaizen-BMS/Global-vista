@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -37,7 +37,15 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
 
 function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate, collapsed, onToggleCollapse, showToggle, scope }) {
   const pathname = usePathname();
-  const logo = company?.sidebar_logo_url || company?.logo_url;
+  const logoUrl = company?.sidebar_logo_url || company?.logo_url;
+  // The upload succeeding and the file still being servable are different
+  // things (deploy without persistent storage, cleared /public/uploads,
+  // etc.) — an <img> with no onError just shows the browser's broken-image
+  // icon forever. Track load failure per URL so a real logo still renders
+  // once it's set to a working src.
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => { setLogoFailed(false); }, [logoUrl]);
+  const logo = logoFailed ? null : logoUrl;
   const primaryColor = company?.primary_color || "#4f46e5";
   const [pinned, setPinned] = useLocalStorageState(`gv:${scope}:pinnedNav`, []);
 
@@ -64,7 +72,11 @@ function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate,
     <>
       <div className={`border-b border-sidebar-border ${collapsed ? "px-3 py-4 flex flex-col items-center gap-3" : "px-4 py-4 flex items-center justify-between gap-2"}`}>
         <div className={`flex items-center gap-3 min-w-0 ${collapsed ? "" : "flex-1"}`}>
-          {logo ? <img src={logo} alt="" className="h-8 w-8 rounded object-contain shrink-0" /> : <div className="h-8 w-8 rounded flex items-center justify-center font-semibold text-white shrink-0" style={{ backgroundColor: primaryColor }}>{(company?.short_name || company?.name || "W").charAt(0)}</div>}
+          {logo ? (
+            <img src={logo} alt="" width={32} height={32} onError={() => setLogoFailed(true)} className="h-8 w-8 rounded object-contain shrink-0" />
+          ) : (
+            <div className="h-8 w-8 rounded flex items-center justify-center font-semibold text-white shrink-0" style={{ backgroundColor: primaryColor }}>{(company?.short_name || company?.name || "W").charAt(0)}</div>
+          )}
           {!collapsed && <div className="min-w-0"><p className="text-sidebar-foreground font-semibold text-sm truncate">{company?.name || "Workspace"}</p></div>}
         </div>
         {showToggle && (
