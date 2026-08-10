@@ -21,9 +21,11 @@ export default function UserMenu({ session, scope = "workspace" }) {
   }, []);
 
   const loadRoles = useCallback(() => {
-    if (!session?.id) return;
-    apiFetch(`/api/core/users/${session.id}/roles`).then((r) => r.json()).then((d) => setRoles(d.roles || [])).catch(() => setRoles([]));
-  }, [session?.id]);
+    if (!session?.id || scope !== "workspace") return;
+    // Company roles for a permanent Super Admin, or just this user's own
+    // assignments otherwise — the server decides which, never the client.
+    apiFetch(`/api/core/session/available-roles`).then((r) => r.json()).then((d) => setRoles(d.roles || [])).catch(() => setRoles([]));
+  }, [session?.id, scope]);
 
   useEffect(() => { if (open && roles === null) loadRoles(); }, [open, roles, loadRoles]);
 

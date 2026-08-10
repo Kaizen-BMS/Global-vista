@@ -2,7 +2,22 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { isModuleEnabledForCompany, getSubscriptionState } from "@/lib/platform/tenant";
 
-export function isSuperAdmin(session) { return !!session?.is_super_admin; }
+// Permanent account flag — a Company Super Admin always carries this,
+// regardless of which role is currently active. Used ONLY where the
+// permanent identity itself is what matters: authorizing a switch of
+// your OWN active role to any role in the company. Never use this for a
+// general permission bypass — that's what let a Super Admin who'd
+// switched to "Counsellor" silently keep full Super Admin access the
+// whole time, which is exactly the bug the active-role system exists to
+// close.
+export function isSuperAdminAccount(session) { return !!session?.is_super_admin; }
+
+// "Acting as Super Admin right now" — the permanent flag AND the active
+// role must agree. Every permission/visibility/RBAC check in the app
+// should use this (it's what `can()`, RLS, and admin-only UI gates all
+// call) — it correctly de-privileges the account the instant it switches
+// to another role, and re-privileges it the instant it switches back.
+export function isSuperAdmin(session) { return isSuperAdminAccount(session) && session?.role_slug === "super-admin"; }
 export function isPlatformOperator(session) { return !!session?.is_platform_operator; }
 export function isCompanySuspended(session) {
   return !isPlatformOperator(session) && ["suspended", "deleted"].includes(session?.company_status);
