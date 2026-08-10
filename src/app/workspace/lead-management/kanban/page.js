@@ -11,9 +11,11 @@ export default async function LeadKanbanPage() {
   const session = await getSession();
   if (!(await can(session, "leads.view"))) return <ForbiddenState />;
 
-  const [leads, canCreate] = await Promise.all([
+  const [leads, canCreate, canClaim, canManageAssignment] = await Promise.all([
     listLeadsForKanban(session),
     can(session, "leads.create"),
+    can(session, "leads.update"),
+    can(session, "leads.assign"),
   ]);
 
   return (
@@ -32,7 +34,7 @@ export default async function LeadKanbanPage() {
           )}
         </div>
       </div>
-      <KanbanBoard initialLeads={leads} />
+      <KanbanBoard initialLeads={leads} currentUserId={session.id} canClaim={canClaim} canManageAssignment={canManageAssignment} />
     </div>
   );
 }

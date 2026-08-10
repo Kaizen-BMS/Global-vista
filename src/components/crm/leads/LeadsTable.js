@@ -4,14 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2, UserPlus, Loader2 } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2 } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import DataTable from "@/components/shared/DataTable";
 import { apiFetch } from "@/components/shared/apiClient";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, assignableUsers = [], sortKey = "created_at", sortDir = "DESC" }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC" }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -19,6 +19,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [claimingId, setClaimingId] = useState(null);
+  const [releasingId, setReleasingId] = useState(null);
 
   function toggleSelect(id) { setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
   function toggleAll() { setSelected(selected.length === leads.length ? [] : leads.map((l) => l.id)); }
@@ -62,6 +63,30 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     } catch (err) { toast.error(err.message); } finally { setClaimingId(null); }
   }
 
+  async function releaseLead(id) {
+    if (!confirm("Release this lead back to the unassigned pool?")) return;
+    setReleasingId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/release`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to release lead.");
+      toast.success("Lead released.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setReleasingId(null); }
+  }
+
+  async function bulkRelease() {
+    if (!confirm(`Release ${selected.length} lead${selected.length === 1 ? "" : "s"} back to the unassigned pool?`)) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(selected.map((id) => apiFetch(`/api/leads/${id}/release`, { method: "POST" })));
+      const failed = results.filter((r) => r.status === "rejected" || !r.value.ok).length;
+      if (failed) toast.error(`${failed} lead${failed === 1 ? "" : "s"} could not be released.`);
+      if (failed < selected.length) toast.success(`${selected.length - failed} lead${selected.length - failed === 1 ? "" : "s"} released.`);
+      setSelected([]); router.refresh();
+    } finally { setBulkBusy(false); }
+  }
+
   if (leads.length === 0) return <EmptyState icon={Contact2} title="No leads found" description="Try adjusting your filters or add a new lead." />;
 
   const columns = [
@@ -95,18 +120,39 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       render: (l) => l.created_by_name || (l.source_form_name ? "System (Form)" : "—"),
     },
     {
-      key: "assigned_name", label: "Assigned", width: 160,
-      render: (l) => l.assigned_name ? l.assigned_name : (
-        canClaim ? (
-          <button
-            onClick={(e) => { e.stopPropagation(); claimLead(l.id); }}
-            disabled={claimingId === l.id}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 cursor-pointer transition disabled:opacity-60"
-          >
-            {claimingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take Lead
-          </button>
-        ) : "Unassigned"
-      ),
+      key: "assigned_name", label: "Assigned", width: 170,
+      render: (l) => {
+        if (!l.assigned_to) {
+          return canClaim ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); claimLead(l.id); }}
+              disabled={claimingId === l.id}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 cursor-pointer transition disabled:opacity-60"
+            >
+              {claimingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take Lead
+            </button>
+          ) : "Unassigned";
+        }
+        // Release is only offered when it's actually your own claim, or
+        // you hold leads.assign (the same permission bulk-assign uses) —
+        // never a contradictory "Take Lead"/"Release" pair on someone
+        // else's lead.
+        const canReleaseThis = l.assigned_to === currentUserId || canBulkAssign;
+        return (
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate">{l.assigned_name}</span>
+            {canReleaseThis && (
+              <button
+                onClick={(e) => { e.stopPropagation(); releaseLead(l.id); }}
+                disabled={releasingId === l.id}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] bg-muted hover:bg-red-500/10 text-muted-foreground hover:text-red-400 cursor-pointer transition disabled:opacity-60 shrink-0"
+              >
+                {releasingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserMinus className="h-3 w-3" />} Release
+              </button>
+            )}
+          </span>
+        );
+      },
     },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
     { key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> },
@@ -114,13 +160,21 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   return (
     <div>
-      {selected.length > 0 && (canBulkAssign || canBulkUpdate) && (
+      {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim) && (
         <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm flex-wrap">
           <span className="text-indigo-300 shrink-0">{selected.length} selected</span>
           {canBulkUpdate && (<>
             <button disabled={bulkBusy} onClick={() => bulkSetStatus("Hold")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Hold</button>
             <button disabled={bulkBusy} onClick={() => bulkSetStatus("Denied")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Deny</button>
           </>)}
+          {selected.some((id) => {
+            const l = leads.find((x) => x.id === id);
+            return l && l.assigned_to && (l.assigned_to === currentUserId || canBulkAssign);
+          }) && (
+            <button disabled={bulkBusy} onClick={bulkRelease} className="flex items-center gap-1 text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60">
+              <UserMinus className="h-3.5 w-3.5" /> Release Selected
+            </button>
+          )}
           {canBulkAssign && (
             <div className="flex items-center gap-2 ml-auto">
               <select

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Search, Check } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone, useHour12 } from "@/components/shared/TimezoneProvider";
 import { formatDateTime, dayKey } from "@/lib/helpers/dateFormat";
+import FloatingPanel from "@/components/shared/FloatingPanel";
 
 // Bucketed by calendar day in the company's configured timezone, not the
 // browser's — otherwise "Today"/"Yesterday" can disagree with the rest of
@@ -19,20 +20,11 @@ function bucketOf(createdAt, timeZone) {
 
 const BUCKET_ORDER = ["Unread", "Today", "Yesterday", "This Week", "Older"];
 
-export default function NotificationDrawer({ notifications, onClose, onRead }) {
+export default function NotificationDrawer({ anchorRef, open, notifications, onClose, onRead }) {
   const router = useRouter();
   const timezone = useTimezone();
   const hour12 = useHour12();
   const [query, setQuery] = useState("");
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function onClick(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
-    function onKey(e) { if (e.key === "Escape") onClose(); }
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey); };
-  }, [onClose]);
 
   async function markAll() { await apiFetch("/api/core/notifications", { method: "PUT" }); onRead(); }
   async function openNotification(n) {
@@ -57,7 +49,7 @@ export default function NotificationDrawer({ notifications, onClose, onRead }) {
   const unreadCount = grouped.Unread.length;
 
   return (
-    <div ref={ref} className="absolute right-0 mt-3 w-96 max-w-[92vw] bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+    <FloatingPanel anchorRef={anchorRef} open={open} onClose={onClose} width={384} className="max-w-[92vw]">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <p className="text-foreground text-sm font-medium">Notifications</p>
         {unreadCount > 0 && (
@@ -111,6 +103,6 @@ export default function NotificationDrawer({ notifications, onClose, onRead }) {
           );
         })}
       </div>
-    </div>
+    </FloatingPanel>
   );
 }

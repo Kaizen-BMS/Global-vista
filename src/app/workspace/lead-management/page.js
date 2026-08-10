@@ -60,6 +60,7 @@ export default async function LeadManagementPage({ searchParams }) {
         canBulkAssign={canAssign}
         canBulkUpdate={canUpdate}
         canClaim={canUpdate}
+        currentUserId={session.id}
         assignableUsers={counsellorsResult.users}
         sortKey={sp?.sort || "created_at"}
         sortDir={sp?.dir || "DESC"}

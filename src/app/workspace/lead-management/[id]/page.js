@@ -20,7 +20,7 @@ import LeadFollowups from "@/components/crm/leads/LeadFollowups";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
 import DuplicateBanner from "@/components/crm/leads/DuplicateBanner";
-import TakeLeadButton from "@/components/crm/leads/TakeLeadButton";
+import { TakeLeadButton, ReleaseLeadButton } from "@/components/crm/leads/LeadAssignmentAction";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 import { computeLeadScore } from "@/lib/modules/crm/leadScore";
@@ -33,11 +33,11 @@ export default async function LeadDetailsPage({ params }) {
   const lead = await getLeadById(session, id);
   if (!lead) return <WorkspaceNotFound />;
 
-  const [notes, followups, tasks, documents, timeline, canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs] = await Promise.all([
+  const [notes, followups, tasks, documents, timeline, canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
     can(session, "leads.update"), can(session, "leads.notes.manage"), can(session, "leads.followups.manage"),
-    can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"),
+    can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"), can(session, "leads.assign"),
   ]);
 
   const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
@@ -84,7 +84,13 @@ export default async function LeadDetailsPage({ params }) {
         <InfoBlock label="Country" value={lead.country || "—"} />
         <InfoBlock
           label="Assigned To"
-          value={lead.assigned_name || (canEdit ? <TakeLeadButton leadId={id} /> : "Unassigned")}
+          value={
+            !lead.assigned_to
+              ? (canEdit ? <TakeLeadButton leadId={id} /> : "Unassigned")
+              : lead.assigned_to === session.id || canManageAssignment
+                ? <span className="flex items-center gap-2"><span className="truncate">{lead.assigned_name}</span><ReleaseLeadButton leadId={id} /></span>
+                : lead.assigned_name
+          }
         />
         <InfoBlock label="Source" value={lead.source_form_name ? `${lead.source_name} — ${lead.source_form_name}` : lead.source_name} />
         <InfoBlock label="Created By" value={lead.created_by_name || (lead.source_form_name ? "System (Public Form)" : "—")} />

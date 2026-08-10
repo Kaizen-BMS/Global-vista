@@ -1,17 +1,43 @@
 "use client";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import { Phone, User } from "lucide-react";
+import { Phone, User, UserPlus, UserMinus, Loader2 } from "lucide-react";
 import { LEAD_STAGES, STAGE_COLORS, PRIORITY_COLORS } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 import LeadPreviewDrawer from "@/components/crm/leads/LeadPreviewDrawer";
 
-export default function KanbanBoard({ initialLeads }) {
+export default function KanbanBoard({ initialLeads, currentUserId, canClaim, canManageAssignment }) {
   const [leads, setLeads] = useState(initialLeads);
   const [dragId, setDragId] = useState(null);
   const [dragOverStage, setDragOverStage] = useState(null);
   const [previewId, setPreviewId] = useState(null);
+  const [assignBusyId, setAssignBusyId] = useState(null);
   const savingRef = useRef(new Set());
+
+  async function claimCard(e, lead) {
+    e.stopPropagation();
+    setAssignBusyId(lead.id);
+    try {
+      const res = await apiFetch(`/api/leads/${lead.id}/claim`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "This lead has already been assigned.");
+      toast.success("Lead claimed.");
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assigned_to: currentUserId, assigned_name: data.lead?.assigned_name || "You" } : l)));
+    } catch (err) { toast.error(err.message); } finally { setAssignBusyId(null); }
+  }
+
+  async function releaseCard(e, lead) {
+    e.stopPropagation();
+    if (!confirm("Release this lead back to the unassigned pool?")) return;
+    setAssignBusyId(lead.id);
+    try {
+      const res = await apiFetch(`/api/leads/${lead.id}/release`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to release lead.");
+      toast.success("Lead released.");
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assigned_to: null, assigned_name: null } : l)));
+    } catch (err) { toast.error(err.message); } finally { setAssignBusyId(null); }
+  }
 
   const columns = useMemo(() => {
     const map = new Map(LEAD_STAGES.map((s) => [s, []]));
@@ -74,8 +100,18 @@ export default function KanbanBoard({ initialLeads }) {
                     <div className="flex items-center gap-3 text-muted-foreground text-xs">
                       <span className="flex items-center gap-1 truncate"><Phone className="h-3 w-3 shrink-0" />{lead.phone}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-muted-foreground text-xs mt-1.5">
-                      <User className="h-3 w-3 shrink-0" /> {lead.assigned_name || "Unassigned"}
+                    <div className="flex items-center justify-between gap-1 text-muted-foreground text-xs mt-1.5">
+                      <span className="flex items-center gap-1 truncate"><User className="h-3 w-3 shrink-0" /> {lead.assigned_name || "Unassigned"}</span>
+                      {!lead.assigned_to && canClaim && (
+                        <button onClick={(e) => claimCard(e, lead)} disabled={assignBusyId === lead.id} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 cursor-pointer transition disabled:opacity-60 shrink-0">
+                          {assignBusyId === lead.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take
+                        </button>
+                      )}
+                      {lead.assigned_to && (lead.assigned_to === currentUserId || canManageAssignment) && (
+                        <button onClick={(e) => releaseCard(e, lead)} disabled={assignBusyId === lead.id} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] bg-muted hover:bg-red-500/10 text-muted-foreground hover:text-red-400 cursor-pointer transition disabled:opacity-60 shrink-0">
+                          {assignBusyId === lead.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserMinus className="h-3 w-3" />} Release
+                        </button>
+                      )}
                     </div>
                     {lead.tags && (
                       <div className="flex flex-wrap gap-1 mt-2">

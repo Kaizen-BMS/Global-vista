@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Settings2, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import FloatingPanel from "@/components/shared/FloatingPanel";
 
 /**
  * Generic table shell: sticky header, per-column resize (drag the right
@@ -20,8 +21,7 @@ export default function DataTable({
   const [hiddenCols, setHiddenCols] = useLocalStorageState(`gv:table:${tableId}:hidden`, []);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, row }
-  const columnMenuRef = useRef(null);
-  const contextMenuRef = useRef(null);
+  const columnMenuAnchorRef = useRef(null);
   const resizingRef = useRef(null);
 
   const onResizeMove = useCallback((e) => {
@@ -45,17 +45,6 @@ export default function DataTable({
     document.addEventListener("mouseup", onResizeEnd);
   }
 
-  useEffect(() => {
-    function onClick(e) {
-      if (columnMenuRef.current && !columnMenuRef.current.contains(e.target)) setColumnMenuOpen(false);
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) setContextMenu(null);
-    }
-    function onKey(e) { if (e.key === "Escape") { setColumnMenuOpen(false); setContextMenu(null); } }
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey); };
-  }, []);
-
   function handleContextMenu(e, row) {
     if (!rowContextMenuItems) return;
     e.preventDefault();
@@ -67,29 +56,28 @@ export default function DataTable({
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-end px-2 py-1.5 border-b border-border">
-        <div className="relative" ref={columnMenuRef}>
+        <div className="relative">
           <button
+            ref={columnMenuAnchorRef}
             type="button"
             onClick={() => setColumnMenuOpen((o) => !o)}
             className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition"
           >
             <Settings2 className="h-3.5 w-3.5" /> Columns
           </button>
-          {columnMenuOpen && (
-            <div className="absolute right-0 mt-1 w-52 bg-popover border border-border rounded-lg shadow-2xl z-30 p-1 animate-in fade-in slide-in-from-top-1 duration-150">
-              {columns.filter((c) => c.hideable !== false).map((c) => (
-                <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 text-xs text-popover-foreground hover:bg-accent rounded-md cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!hiddenCols.includes(c.key)}
-                    onChange={() => setHiddenCols((h) => (h.includes(c.key) ? h.filter((k) => k !== c.key) : [...h, c.key]))}
-                    className="cursor-pointer"
-                  />
-                  {c.label}
-                </label>
-              ))}
-            </div>
-          )}
+          <FloatingPanel anchorRef={columnMenuAnchorRef} open={columnMenuOpen} onClose={() => setColumnMenuOpen(false)} width={208} className="p-1">
+            {columns.filter((c) => c.hideable !== false).map((c) => (
+              <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 text-xs text-popover-foreground hover:bg-accent rounded-md cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!hiddenCols.includes(c.key)}
+                  onChange={() => setHiddenCols((h) => (h.includes(c.key) ? h.filter((k) => k !== c.key) : [...h, c.key]))}
+                  className="cursor-pointer"
+                />
+                {c.label}
+              </label>
+            ))}
+          </FloatingPanel>
         </div>
       </div>
 
@@ -140,24 +128,18 @@ export default function DataTable({
         </table>
       </div>
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y }}
-          className="z-50 w-48 bg-popover border border-border rounded-lg shadow-2xl overflow-hidden p-1 animate-in fade-in zoom-in-95 duration-100"
-        >
-          {rowContextMenuItems(contextMenu.row).map((item, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => { item.onClick(); setContextMenu(null); }}
-              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs cursor-pointer transition-colors ${item.danger ? "text-red-400 hover:bg-red-500/10" : "text-popover-foreground hover:bg-accent"}`}
-            >
-              {item.icon && <item.icon className="h-3.5 w-3.5" />} {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <FloatingPanel point={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null} align="start" open={!!contextMenu} onClose={() => setContextMenu(null)} width={192} className="p-1">
+        {contextMenu && rowContextMenuItems(contextMenu.row).map((item, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => { item.onClick(); setContextMenu(null); }}
+            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs cursor-pointer transition-colors ${item.danger ? "text-red-400 hover:bg-red-500/10" : "text-popover-foreground hover:bg-accent"}`}
+          >
+            {item.icon && <item.icon className="h-3.5 w-3.5" />} {item.label}
+          </button>
+        ))}
+      </FloatingPanel>
     </div>
   );
 }

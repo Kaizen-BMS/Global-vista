@@ -153,7 +153,7 @@ export async function listLeadsForKanban(session, { search = null, assignedTo = 
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const [rows] = await pool.query(
     `SELECT l.id, l.lead_number, l.name, l.phone, l.stage, l.priority, l.tags, l.country, l.next_follow_up, l.updated_at,
-            u.name AS assigned_name
+            l.assigned_to, u.name AS assigned_name
      FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
      ${whereSql} ORDER BY l.updated_at DESC LIMIT 500`,
     params
@@ -200,6 +200,35 @@ export async function claimLead(session, id, userId) {
   await logActivity({
     userId, module: "leads", action: "claim", entityType: "lead", entityId: id, companyId: session.company_id,
     description: `${session.name} claimed lead ${lead?.name || `#${id}`}${lead?.lead_number ? ` (${lead.lead_number})` : ""}`,
+  });
+  return getLeadById(session, id);
+}
+
+// The opposite of claimLead — same atomic-conditional-UPDATE safety
+// pattern, just the inverse condition. `force` (granted only to callers
+// who already hold leads.assign) widens the match from "assigned to ME"
+// to "assigned to anyone", which is how a manager releases someone
+// else's lead without being able to release an already-unassigned one.
+// Status only resets to 'New' if it was still exactly 'Assigned' —
+// releasing a lead that has since moved to Hold/Denied/Converted/etc.
+// must not silently erase that progress.
+export async function releaseLead(session, id, userId, { force = false } = {}) {
+  const ownershipClause = force ? "assigned_to IS NOT NULL" : "assigned_to = ?";
+  const ownershipParams = force ? [] : [userId];
+  const [result] = await pool.query(
+    `UPDATE leads SET assigned_to = NULL, status = IF(status = 'Assigned', 'New', status), updated_by = ?
+     WHERE id = ? AND company_id = ? AND ${ownershipClause} AND ${NOT_DELETED}`,
+    [userId, id, session.company_id, ...ownershipParams]
+  );
+  if (result.affectedRows === 0) {
+    const e = new Error(force ? "This lead is already unassigned." : "This lead is not currently assigned to you.");
+    e.status = 409;
+    throw e;
+  }
+  const [[lead]] = await pool.query(`SELECT name, lead_number FROM leads WHERE id = ?`, [id]);
+  await logActivity({
+    userId, module: "leads", action: "release", entityType: "lead", entityId: id, companyId: session.company_id,
+    description: `${session.name} released lead ${lead?.name || `#${id}`}${lead?.lead_number ? ` (${lead.lead_number})` : ""} back to the unassigned pool`,
   });
   return getLeadById(session, id);
 }
