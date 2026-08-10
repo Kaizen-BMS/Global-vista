@@ -56,9 +56,9 @@ export async function getPlatformDashboard({ start, end }) {
     `),
     pool.query(`
       SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
-      FROM companies WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+      FROM companies WHERE created_at BETWEEN ? AND ?
       GROUP BY month ORDER BY month ASC
-    `),
+    `, [start, end]),
     pool.query(`
       SELECT DATE(created_at) AS day, COUNT(*) AS logins, COUNT(DISTINCT user_id) AS active_users
       FROM user_login_history WHERE event='login' AND created_at BETWEEN ? AND ?

@@ -11,8 +11,11 @@ import {
 export default async function PlatformDashboard({ searchParams }) {
   const sp = await searchParams;
   const range = sp?.range || "month";
-  const { start, end, label } = resolveRange(range, sp?.from, sp?.to);
-  const [{ kpis, charts, tables }, timezone] = await Promise.all([getPlatformDashboard({ start, end }), getPlatformTimezone()]);
+  const timezone = await getPlatformTimezone();
+  const { start, end, label } = resolveRange(range, sp?.from, sp?.to, {
+    timeZone: timezone, quarter: sp?.quarter, qyear: sp?.qyear, years: sp?.years,
+  });
+  const { kpis, charts, tables } = await getPlatformDashboard({ start, end });
 
   return (
     <div className="space-y-6">
@@ -21,7 +24,11 @@ export default async function PlatformDashboard({ searchParams }) {
           <h1 className="text-xl font-semibold text-foreground">Platform Dashboard</h1>
           <p className="text-muted-foreground text-sm">Executive overview across every tenant · {label}</p>
         </div>
-        <RangeFilter active={range} from={sp?.from} to={sp?.to} />
+        <RangeFilter
+          active={range} from={sp?.from} to={sp?.to}
+          quarter={sp?.quarter ? Number(sp.quarter) : undefined} qyear={sp?.qyear ? Number(sp.qyear) : undefined} years={sp?.years ? Number(sp.years) : undefined}
+          rangeStart={start} rangeEnd={end} timezone={timezone}
+        />
       </div>
 
       <KpiGrid kpis={kpis} />

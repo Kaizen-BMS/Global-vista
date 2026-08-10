@@ -33,14 +33,21 @@ export default async function DashboardPage({ searchParams }) {
   const session = await getSession();
   const sp = await searchParams;
   const rangeKey = sp?.range || "year";
-  const range = resolveRange(rangeKey, sp?.from, sp?.to);
+  // Timezone has to be known before the range is resolved — a quarter or
+  // multi-year boundary computed in the wrong zone can land on the wrong
+  // calendar day, which is exactly the class of bug this feature exists
+  // to avoid. Fetched once here and reused below rather than re-fetched
+  // inside the Promise.all.
+  const systemSettings = await getSettingsByGroup(session, "system");
+  const timezone = systemSettings.timezone || "UTC";
+  const range = resolveRange(rangeKey, sp?.from, sp?.to, { timeZone: timezone, quarter: sp?.quarter, qyear: sp?.qyear, years: sp?.years });
   const canManageDocuments = await can(session, "employee_documents.manage");
 
   const [
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
     teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
-    recentActivity, unreadNotifications, branding, systemSettings,
+    recentActivity, unreadNotifications, branding,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
   ] = await Promise.all([
     getDashboardStats(session),
@@ -61,14 +68,12 @@ export default async function DashboardPage({ searchParams }) {
     getActivityLogs({ limit: 8, companyId: session.company_id }),
     getUserNotifications(session, { unreadOnly: true, limit: 100 }),
     getCompanyBranding(session),
-    getSettingsByGroup(session, "system"),
     canManageDocuments ? getEmployeesWithMissingDocuments(session) : [],
     canManageDocuments ? getPendingApprovalDocuments(session) : [],
     canManageDocuments ? getExpiringDocuments(session) : [],
     canManageDocuments ? getRecentlyUploadedDocuments(session) : [],
     getStorageUsage(session),
   ]);
-  const timezone = systemSettings.timezone || "UTC";
 
   return (
     <div className="space-y-8">
@@ -77,7 +82,12 @@ export default async function DashboardPage({ searchParams }) {
           <h1 className="text-xl font-semibold text-foreground">{branding.dashboardGreeting || `Welcome, ${session?.name}`}</h1>
           <p className="text-muted-foreground text-sm">{branding.companyDescription || "Here's what's happening across your workspace today."}</p>
         </div>
-        <RangeFilter active={rangeKey} from={sp?.from} to={sp?.to} basePath="/workspace/dashboard" />
+        <RangeFilter
+          active={rangeKey} from={sp?.from} to={sp?.to}
+          quarter={sp?.quarter ? Number(sp.quarter) : undefined} qyear={sp?.qyear ? Number(sp.qyear) : undefined} years={sp?.years ? Number(sp.years) : undefined}
+          rangeStart={range.start} rangeEnd={range.end} timezone={timezone}
+          basePath="/workspace/dashboard"
+        />
       </div>
 
       <section className="space-y-4">
