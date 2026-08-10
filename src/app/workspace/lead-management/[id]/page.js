@@ -20,6 +20,7 @@ import LeadFollowups from "@/components/crm/leads/LeadFollowups";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
 import DuplicateBanner from "@/components/crm/leads/DuplicateBanner";
+import TakeLeadButton from "@/components/crm/leads/TakeLeadButton";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 import { computeLeadScore } from "@/lib/modules/crm/leadScore";
@@ -81,8 +82,12 @@ export default async function LeadDetailsPage({ params }) {
         <InfoBlock label="Phone" value={lead.phone} />
         <InfoBlock label="Email" value={lead.email || "—"} />
         <InfoBlock label="Country" value={lead.country || "—"} />
-        <InfoBlock label="Assigned To" value={lead.assigned_name || "Unassigned"} />
-        <InfoBlock label="Source" value={lead.source_name} />
+        <InfoBlock
+          label="Assigned To"
+          value={lead.assigned_name || (canEdit ? <TakeLeadButton leadId={id} /> : "Unassigned")}
+        />
+        <InfoBlock label="Source" value={lead.source_form_name ? `${lead.source_name} — ${lead.source_form_name}` : lead.source_name} />
+        <InfoBlock label="Created By" value={lead.created_by_name || (lead.source_form_name ? "System (Public Form)" : "—")} />
         <InfoBlock label="Service" value={lead.service_name} />
         <InfoBlock label="Preferred Country" value={lead.preferred_country || "—"} />
         <InfoBlock label="Passport" value={lead.passport_status || "—"} />

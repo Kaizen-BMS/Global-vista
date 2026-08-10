@@ -136,6 +136,8 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
             <label className="block text-xs text-muted-foreground mb-1">Assigned To</label>
             <select defaultValue={searchParams.get("assignedTo") || ""} onChange={(e) => setParam("assignedTo", e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
               <option value="">Anyone</option>
+              <option value="me">Me</option>
+              <option value="unassigned">Unassigned</option>
               {counsellors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>

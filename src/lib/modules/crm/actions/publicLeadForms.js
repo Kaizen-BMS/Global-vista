@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createLead, assignLead, findDuplicateLead } from "@/lib/modules/crm/actions/leads";
+import { createNotification } from "@/lib/actions/notifications";
 import { sendLeadFormNotificationEmail } from "@/lib/helpers/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,11 +49,11 @@ export async function recordFormView(form, meta) {
 
 /**
  * Full public submission pipeline: honeypot -> field validation ->
- * duplicate detection -> lead creation (reusing createLead exactly as
- * every other lead-creation path does) -> default assignment -> tags/
- * campaign -> notifications. Every outcome (success/failed/spam) is
- * recorded in lead_form_submissions for analytics and audit, even when
- * no lead is created.
+ * duplicate detection -> create a new lead (reusing createLead exactly as
+ * every other lead-creation path does) OR link to the existing matching
+ * lead -> default assignment/tags/campaign -> notifications. Every
+ * outcome (success/failed/spam) is recorded in lead_form_submissions for
+ * analytics and audit, even when no new lead is created.
  */
 export async function submitPublicLeadForm(form, rawData, meta) {
   const record = async (status, leadId, failureReason) => {
@@ -86,23 +87,46 @@ export async function submitPublicLeadForm(form, rawData, meta) {
   const pseudoSession = { company_id: form.company_id };
   const duplicate = await findDuplicateLead(form.company_id, { phone: rawData.phone, email: rawData.email });
 
-  const leadId = await createLead(pseudoSession, {
-    name: rawData.name, phone: rawData.phone, email: rawData.email || null,
-    country: rawData.country || null, state: rawData.state || null, city: rawData.city || null,
-    leadSourceId: form.default_lead_source_id, serviceId: form.default_service_id,
-    campaign: form.campaign || meta.utm?.campaign || null,
-    tags: form.default_tags || null,
-    remarks: rawData.message || null,
-  }, null);
+  let leadId;
+  if (duplicate) {
+    // Someone who already has a lead record submitted again — link this
+    // submission to that existing lead instead of spawning another row
+    // (createLead's own duplicate check would otherwise flag-and-create a
+    // second lead for every repeat visitor, which is exactly the
+    // uncontrolled-duplicate behaviour public forms need to avoid).
+    leadId = duplicate.id;
+    await logActivity({
+      userId: null, module: "leads", action: "form_resubmission", entityType: "lead", entityId: leadId,
+      companyId: form.company_id, description: `${rawData.name} resubmitted via public form "${form.name}" — matched existing lead ${duplicate.name} (#${duplicate.id})`,
+    });
+    const [[existing]] = await pool.query(`SELECT assigned_to FROM leads WHERE id = ?`, [leadId]);
+    if (existing?.assigned_to) {
+      await createNotification(form.company_id, existing.assigned_to, {
+        title: "Lead resubmitted a form",
+        message: `${rawData.name} submitted "${form.name}" again`,
+        type: "lead_form_resubmission",
+        link: `/workspace/lead-management/${leadId}`,
+      });
+    }
+  } else {
+    leadId = await createLead(pseudoSession, {
+      name: rawData.name, phone: rawData.phone, email: rawData.email || null,
+      country: rawData.country || null, state: rawData.state || null, city: rawData.city || null,
+      leadSourceId: form.default_lead_source_id, serviceId: form.default_service_id,
+      campaign: form.campaign || meta.utm?.campaign || null,
+      tags: form.default_tags || null,
+      remarks: rawData.message || null,
+    }, null);
 
-  if (form.default_assigned_to) {
-    await assignLead(pseudoSession, leadId, form.default_assigned_to, null).catch(() => {});
+    if (form.default_assigned_to) {
+      await assignLead(pseudoSession, leadId, form.default_assigned_to, null).catch(() => {});
+    }
+
+    await logActivity({
+      userId: null, module: "leads", action: "form_submission", entityType: "lead", entityId: leadId,
+      companyId: form.company_id, description: `Lead captured via public form "${form.name}"`,
+    });
   }
-
-  await logActivity({
-    userId: null, module: "leads", action: "form_submission", entityType: "lead", entityId: leadId,
-    companyId: form.company_id, description: `Lead captured via public form "${form.name}"${duplicate ? " (flagged duplicate)" : ""}`,
-  });
 
   if (form.notify_emails) {
     const recipients = form.notify_emails.split(",").map((e) => e.trim()).filter(Boolean);

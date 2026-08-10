@@ -25,10 +25,14 @@ function Stepper({ step }) {
   );
 }
 
-export default function CreateUserDialog({ roles, onClose }) {
+export default function CreateUserDialog({ roles, isSuperAdmin, onClose }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", roleId: "", sendWelcome: true });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", roleId: "", roleIds: [], sendWelcome: true });
+
+  function toggleExtraRole(id) {
+    setForm((f) => ({ ...f, roleIds: f.roleIds.includes(id) ? f.roleIds.filter((r) => r !== id) : [...f.roleIds, id] }));
+  }
   const [saving, setSaving] = useState(false);
   const [createdUser, setCreatedUser] = useState(null);
 
@@ -67,8 +71,20 @@ export default function CreateUserDialog({ roles, onClose }) {
               <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
               <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} />
               <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className={inputClass}>
-                <option value="">Select role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <option value="">Select default role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
+              {isSuperAdmin && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Additional roles (optional)</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {roles.filter((r) => String(r.id) !== String(form.roleId)).map((r) => (
+                      <label key={r.id} className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                        <input type="checkbox" checked={form.roleIds.includes(r.id)} onChange={() => toggleExtraRole(r.id)} /> {r.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className="flex items-center gap-2 text-sm text-foreground pt-1">
                 <input type="checkbox" checked={form.sendWelcome} onChange={(e) => setForm({ ...form, sendWelcome: e.target.checked })} /> Send welcome email
               </label>

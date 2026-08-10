@@ -4,7 +4,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, Plus } from "lucide-react";
 import CreateUserDialog from "@/components/dialogs/CreateUserDialog";
 
-export default function UserFilters({ roles, canManage }) {
+export default function UserFilters({ roles, canManage, isSuperAdmin }) {
   const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   function setParam(key, value) { const p = new URLSearchParams(searchParams.toString()); value ? p.set(key, value) : p.delete(key); p.delete("page"); router.push(`${pathname}?${p.toString()}`); }
@@ -18,7 +18,7 @@ export default function UserFilters({ roles, canManage }) {
         <option value="">All Roles</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
       </select>
       {canManage && <button onClick={() => setCreateOpen(true)} className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"><Plus className="h-4 w-4" />Add User</button>}
-      {createOpen && <CreateUserDialog roles={roles} onClose={() => setCreateOpen(false)} />}
+      {createOpen && <CreateUserDialog roles={roles} isSuperAdmin={isSuperAdmin} onClose={() => setCreateOpen(false)} />}
     </div>
   );
 }

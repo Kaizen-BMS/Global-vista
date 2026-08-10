@@ -6,6 +6,26 @@ import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
 
+// Correlated subquery, not a JOIN: a lead can have more than one
+// lead_form_submissions row (a repeat submitter gets linked to their
+// existing lead rather than spawning a duplicate — see submitPublicLeadForm),
+// and a JOIN would multiply the lead row per submission. Picking the first
+// submission is enough to answer "which form did this originate from".
+const SOURCE_FORM_SUBQUERY = `(
+  SELECT lf.name FROM lead_form_submissions lfs
+  JOIN lead_forms lf ON lf.id = lfs.form_id
+  WHERE lfs.lead_id = l.id ORDER BY lfs.created_at ASC LIMIT 1
+) AS source_form_name`;
+
+// "Assigned To" filter accepts a real user id, or one of two sentinels the
+// UI exposes ("me" / "unassigned") that don't map to a literal column value.
+function applyAssignedToFilter(where, params, assignedTo, session) {
+  if (!assignedTo) return;
+  if (assignedTo === "unassigned") where.push("l.assigned_to IS NULL");
+  else if (assignedTo === "me") { where.push("l.assigned_to = ?"); params.push(session.id); }
+  else { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+}
+
 export async function listDistinctTags(session) {
   const { where, params } = getVisibleLeadFilter(session);
   const [rows] = await pool.query(
@@ -45,7 +65,7 @@ export async function listLeads(session, {
   if (priority) { where.push("l.priority = ?"); params.push(priority); }
   if (sourceId) { where.push("l.lead_source_id = ?"); params.push(sourceId); }
   if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
-  if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+  applyAssignedToFilter(where, params, assignedTo, session);
   if (country) { where.push("l.country = ?"); params.push(country); }
   if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
   if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
@@ -64,11 +84,13 @@ export async function listLeads(session, {
   const sortDir = dir === "ASC" ? "ASC" : "DESC";
 
   const [rows] = await pool.query(
-    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name
+    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
+            ${SOURCE_FORM_SUBQUERY}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN users cu ON cu.id = l.created_by
      ${whereSql}
      ORDER BY l.${sortCol} ${sortDir}
      LIMIT ? OFFSET ?`,
@@ -93,7 +115,7 @@ export async function listLeadsForExport(session, {
   if (sourceId) { where.push("l.lead_source_id = ?"); params.push(sourceId); }
   if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
   if (priority) { where.push("l.priority = ?"); params.push(priority); }
-  if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+  applyAssignedToFilter(where, params, assignedTo, session);
   if (country) { where.push("l.country = ?"); params.push(country); }
   if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
   if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
@@ -104,11 +126,13 @@ export async function listLeadsForExport(session, {
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const [rows] = await pool.query(
-    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name
+    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
+            ${SOURCE_FORM_SUBQUERY}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN users cu ON cu.id = l.created_by
      ${whereSql}
      ORDER BY l.created_at DESC LIMIT 5000`,
     params
@@ -120,7 +144,7 @@ export async function listLeadsForKanban(session, { search = null, assignedTo = 
   const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere, "l.stage NOT IN (?)"];
   const params = [...rlsParams, ["Lost", "Cancelled", "Duplicate"]];
-  if (assignedTo) { where.push("l.assigned_to = ?"); params.push(assignedTo); }
+  applyAssignedToFilter(where, params, assignedTo, session);
   if (priority) { where.push("l.priority = ?"); params.push(priority); }
   if (search) {
     where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.lead_number LIKE ?)");
@@ -140,18 +164,44 @@ export async function listLeadsForKanban(session, { search = null, assignedTo = 
 export async function getLeadById(session, id) {
   const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
   const [rows] = await pool.query(
-    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name,
-            dup.name AS duplicate_of_name, dup.lead_number AS duplicate_of_number
+    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
+            dup.name AS duplicate_of_name, dup.lead_number AS duplicate_of_number,
+            ${SOURCE_FORM_SUBQUERY}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN users cu ON cu.id = l.created_by
      LEFT JOIN leads dup ON dup.id = l.duplicate_of
      WHERE l.id = ? AND l.${NOT_DELETED} AND ${rlsWhere}
      LIMIT 1`,
     [id, ...rlsParams]
   );
   return rows[0] || null;
+}
+
+// Race-safe self-pickup: the conditional UPDATE (not a SELECT-then-UPDATE)
+// is the whole safety mechanism. Two concurrent claims for the same lead
+// both run this UPDATE; only the first commits (assigned_to IS NULL is
+// still true), the second matches zero rows and finds out atomically —
+// no window where both could believe they won.
+export async function claimLead(session, id, userId) {
+  const [result] = await pool.query(
+    `UPDATE leads SET assigned_to = ?, status = 'Assigned', updated_by = ?
+     WHERE id = ? AND company_id = ? AND assigned_to IS NULL AND ${NOT_DELETED}`,
+    [userId, userId, id, session.company_id]
+  );
+  if (result.affectedRows === 0) {
+    const e = new Error("This lead has already been assigned.");
+    e.status = 409;
+    throw e;
+  }
+  const [[lead]] = await pool.query(`SELECT name, lead_number FROM leads WHERE id = ?`, [id]);
+  await logActivity({
+    userId, module: "leads", action: "claim", entityType: "lead", entityId: id, companyId: session.company_id,
+    description: `${session.name} claimed lead ${lead?.name || `#${id}`}${lead?.lead_number ? ` (${lead.lead_number})` : ""}`,
+  });
+  return getLeadById(session, id);
 }
 
 export async function createLead(session, data, createdBy) {

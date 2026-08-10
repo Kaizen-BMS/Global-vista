@@ -4,19 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2 } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, Loader2 } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import DataTable from "@/components/shared/DataTable";
 import { apiFetch } from "@/components/shared/apiClient";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, sortKey = "created_at", sortDir = "DESC" }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, assignableUsers = [], sortKey = "created_at", sortDir = "DESC" }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [selected, setSelected] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkAssignee, setBulkAssignee] = useState("");
+  const [claimingId, setClaimingId] = useState(null);
 
   function toggleSelect(id) { setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
   function toggleAll() { setSelected(selected.length === leads.length ? [] : leads.map((l) => l.id)); }
@@ -38,6 +40,28 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, sortKe
     } catch { toast.error("Bulk update failed."); } finally { setBulkBusy(false); }
   }
 
+  async function bulkAssignTo() {
+    if (!bulkAssignee) return;
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "assign", ids: selected, assignedTo: Number(bulkAssignee) }) });
+      if (!res.ok) throw new Error();
+      toast.success(`${selected.length} lead${selected.length === 1 ? "" : "s"} assigned.`);
+      setSelected([]); setBulkAssignee(""); router.refresh();
+    } catch { toast.error("Bulk assignment failed."); } finally { setBulkBusy(false); }
+  }
+
+  async function claimLead(id) {
+    setClaimingId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/claim`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "This lead has already been assigned.");
+      toast.success("Lead claimed.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setClaimingId(null); }
+  }
+
   if (leads.length === 0) return <EmptyState icon={Contact2} title="No leads found" description="Try adjusting your filters or add a new lead." />;
 
   const columns = [
@@ -53,8 +77,37 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, sortKe
     },
     { key: "phone", label: "Phone", width: 140, render: (l) => l.phone },
     { key: "country", label: "Country", width: 120, render: (l) => l.country || "—" },
-    { key: "source_name", label: "Source", width: 130, render: (l) => l.source_name },
-    { key: "assigned_name", label: "Assigned", width: 140, render: (l) => l.assigned_name || "Unassigned" },
+    {
+      key: "source_name", label: "Source", width: 160,
+      render: (l) => (
+        <span className="flex flex-col min-w-0">
+          <span className="truncate">{l.source_name}</span>
+          {l.source_form_name && <span className="text-muted-foreground text-[10px] truncate">via {l.source_form_name}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "created_by_name", label: "Created By", width: 140,
+      // created_by is only ever a real staff member for manually-created
+      // leads — public-form and future automated-import leads never set
+      // it, so they must read as "System", never blank (which could look
+      // like missing data) and never a person's name that isn't real.
+      render: (l) => l.created_by_name || (l.source_form_name ? "System (Form)" : "—"),
+    },
+    {
+      key: "assigned_name", label: "Assigned", width: 160,
+      render: (l) => l.assigned_name ? l.assigned_name : (
+        canClaim ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); claimLead(l.id); }}
+            disabled={claimingId === l.id}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 cursor-pointer transition disabled:opacity-60"
+          >
+            {claimingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take Lead
+          </button>
+        ) : "Unassigned"
+      ),
+    },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
     { key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> },
   ];
@@ -62,12 +115,32 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, sortKe
   return (
     <div>
       {selected.length > 0 && (canBulkAssign || canBulkUpdate) && (
-        <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm">
-          <span className="text-indigo-300">{selected.length} selected</span>
+        <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm flex-wrap">
+          <span className="text-indigo-300 shrink-0">{selected.length} selected</span>
           {canBulkUpdate && (<>
-            <button disabled={bulkBusy} onClick={() => bulkSetStatus("Hold")} className="text-foreground hover:text-foreground">Hold</button>
-            <button disabled={bulkBusy} onClick={() => bulkSetStatus("Denied")} className="text-foreground hover:text-foreground">Deny</button>
+            <button disabled={bulkBusy} onClick={() => bulkSetStatus("Hold")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Hold</button>
+            <button disabled={bulkBusy} onClick={() => bulkSetStatus("Denied")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Deny</button>
           </>)}
+          {canBulkAssign && (
+            <div className="flex items-center gap-2 ml-auto">
+              <select
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground text-xs cursor-pointer"
+              >
+                <option value="">Assign to…</option>
+                {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <button
+                disabled={bulkBusy || !bulkAssignee}
+                onClick={bulkAssignTo}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer disabled:opacity-50 transition"
+              >
+                {bulkBusy && <Loader2 className="h-3 w-3 animate-spin" />} Assign {selected.length} Lead{selected.length === 1 ? "" : "s"}
+              </button>
+            </div>
+          )}
+          <button onClick={() => setSelected([])} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
         </div>
       )}
 

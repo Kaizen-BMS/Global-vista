@@ -3,6 +3,8 @@ import { Plus, ExternalLink, Eye, ScanLine, Contact2 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeadForms } from "@/lib/modules/crm/actions/leadForms";
+import { getSettingsByGroup } from "@/lib/actions/settings";
+import { formatDate } from "@/lib/helpers/dateFormat";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import EmptyState from "@/components/shared/EmptyState";
 
@@ -11,7 +13,8 @@ const STATUS_STYLES = { active: "bg-emerald-500/10 text-emerald-400 border-emera
 export default async function LeadFormsPage() {
   const session = await getSession();
   if (!(await can(session, "leads.view"))) return <ForbiddenState />;
-  const [forms, canCreate] = await Promise.all([listLeadForms(session), can(session, "leads.create")]);
+  const [forms, canCreate, systemSettings] = await Promise.all([listLeadForms(session), can(session, "leads.create"), getSettingsByGroup(session, "system")]);
+  const timezone = systemSettings.timezone || "UTC";
 
   return (
     <div>
@@ -37,10 +40,14 @@ export default async function LeadFormsPage() {
                 <p className="text-foreground font-medium truncate pr-2">{f.name}</p>
                 <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-md border ${STATUS_STYLES[f.status]}`}>{f.status}</span>
               </div>
-              <p className="text-muted-foreground text-xs truncate mb-4">/forms/{f.slug}</p>
+              <p className="text-muted-foreground text-xs truncate mb-3">/forms/{f.slug}</p>
+              <p className="text-muted-foreground text-xs mb-3">
+                Created by {f.created_by_name || "—"} · {formatDate(f.created_at, timezone)}
+              </p>
               <div className="flex items-center gap-4 text-muted-foreground text-xs">
                 <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> {f.view_count} views</span>
                 <span className="flex items-center gap-1"><ScanLine className="h-3.5 w-3.5" /> {f.submission_count} leads</span>
+                <span>{f.conversion_rate}% conv.</span>
                 <ExternalLink className="h-3.5 w-3.5 ml-auto" />
               </div>
             </Link>

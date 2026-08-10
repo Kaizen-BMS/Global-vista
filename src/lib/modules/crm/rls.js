@@ -14,7 +14,11 @@ export function getVisibleLeadFilter(session) {
   }
 
   if (COUNSELLOR_ROLE_SLUGS.includes(session.role_slug)) {
-    return { where: "l.company_id = ? AND l.assigned_to = ?", params: [session.company_id, session.id] };
+    // Leads they own, plus the unassigned pool so they have something to
+    // claim — without this, a lead nobody has assigned yet (e.g. a fresh
+    // public-form submission) would be invisible to every counsellor,
+    // with no way for anyone below Admin/Management to ever find it.
+    return { where: "l.company_id = ? AND (l.assigned_to = ? OR l.assigned_to IS NULL)", params: [session.company_id, session.id] };
   }
 
   return { where: "l.company_id = ? AND 1=0", params: [session.company_id] };

@@ -85,7 +85,7 @@ export default function UsersTable({ users, roles, canManage, canUnlock, isSuper
           ),
         } : undefined}
       />
-      {editingUser && <EditUserDialog user={editingUser} roles={roles} onClose={() => setEditingUser(null)} />}
+      {editingUser && <EditUserDialog user={editingUser} roles={roles} isSuperAdmin={isSuperAdmin} onClose={() => setEditingUser(null)} />}
     </>
   );
 }

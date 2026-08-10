@@ -55,7 +55,15 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} />
-      <LeadsTable leads={result.leads} canBulkAssign={canAssign} canBulkUpdate={canUpdate} sortKey={sp?.sort || "created_at"} sortDir={sp?.dir || "DESC"} />
+      <LeadsTable
+        leads={result.leads}
+        canBulkAssign={canAssign}
+        canBulkUpdate={canUpdate}
+        canClaim={canUpdate}
+        assignableUsers={counsellorsResult.users}
+        sortKey={sp?.sort || "created_at"}
+        sortDir={sp?.dir || "DESC"}
+      />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>
   );

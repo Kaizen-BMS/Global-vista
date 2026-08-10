@@ -66,7 +66,7 @@ async function generateEmployeeId(companyId) {
 }
 
 export async function createUser(session, data, createdBy) {
-  const { name, email, phone, password, roleId, branchId, departmentId, designationId, employeeTypeId, reportingManagerId, joiningDate, sendWelcome = true } = data;
+  const { name, email, phone, password, roleId, roleIds, branchId, departmentId, designationId, employeeTypeId, reportingManagerId, joiningDate, sendWelcome = true } = data;
   const tempPassword = password || crypto.randomBytes(6).toString("hex");
   const passwordHash = await hashPassword(tempPassword);
 
@@ -91,6 +91,17 @@ export async function createUser(session, data, createdBy) {
     }
   }
   await logActivity({ userId: createdBy, module: "users", action: "create", entityType: "user", entityId: result.insertId, description: `Created user ${name}`, companyId: session.company_id });
+
+  // roleId is always the default/primary role — mirrored into user_roles
+  // so the role switcher and role-management UI have something to show
+  // from the moment the account exists. roleIds is an optional set of
+  // additional roles a Super Admin grants at creation time (deduped
+  // against roleId so it's never inserted twice).
+  const extraRoleIds = Array.isArray(roleIds) ? roleIds.filter((r) => Number(r) !== Number(roleId)) : [];
+  await pool.query(`INSERT INTO user_roles (user_id, role_id, is_default, created_by) VALUES (?, ?, 1, ?)`, [result.insertId, roleId, createdBy]);
+  for (const extraId of extraRoleIds) {
+    await pool.query(`INSERT IGNORE INTO user_roles (user_id, role_id, is_default, created_by) VALUES (?, ?, 0, ?)`, [result.insertId, extraId, createdBy]);
+  }
 
   if (sendWelcome) {
     const [[role]] = await pool.query(`SELECT name FROM roles WHERE id = ?`, [roleId]);

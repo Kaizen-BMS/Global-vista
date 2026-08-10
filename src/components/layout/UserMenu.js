@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, User, Settings } from "lucide-react";
+import { LogOut, User, Settings, Check, Repeat, Loader2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
 export default function UserMenu({ session, scope = "workspace" }) {
   const [open, setOpen] = useState(false);
+  const [roles, setRoles] = useState(null);
+  const [switching, setSwitching] = useState(null);
   const ref = useRef(null);
   const router = useRouter();
   const initial = (session?.name || "?").charAt(0).toUpperCase();
@@ -17,6 +19,26 @@ export default function UserMenu({ session, scope = "workspace" }) {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  const loadRoles = useCallback(() => {
+    if (!session?.id) return;
+    apiFetch(`/api/core/users/${session.id}/roles`).then((r) => r.json()).then((d) => setRoles(d.roles || [])).catch(() => setRoles([]));
+  }, [session?.id]);
+
+  useEffect(() => { if (open && roles === null) loadRoles(); }, [open, roles, loadRoles]);
+
+  async function switchRole(roleId) {
+    if (roleId === session?.role_id) return;
+    setSwitching(roleId);
+    try {
+      const res = await apiFetch("/api/core/session/switch-role", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to switch role.");
+      toast.success(`Switched to ${data.role.roleName}.`);
+      setOpen(false);
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setSwitching(null); }
+  }
 
   async function handleLogout() {
     await apiFetch("/api/core/auth/logout", { method: "POST" });
@@ -44,6 +66,27 @@ export default function UserMenu({ session, scope = "workspace" }) {
             <p className="text-popover-foreground text-sm font-medium truncate">{session?.name}</p>
             {session?.email && <p className="text-muted-foreground text-xs truncate mt-0.5">{session.email}</p>}
           </div>
+
+          {roles && roles.length > 1 && (
+            <div className="p-1 border-b border-border">
+              <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5"><Repeat className="h-3 w-3" /> Switch Role</p>
+              {roles.map((r) => (
+                <button
+                  key={r.role_id}
+                  onClick={() => switchRole(r.role_id)}
+                  disabled={switching !== null}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <span className="flex items-center gap-2">
+                    {r.role_id === session?.role_id ? <Check className="h-3.5 w-3.5 text-indigo-400 shrink-0" /> : <span className="w-3.5 shrink-0" />}
+                    {r.name}
+                  </span>
+                  {switching === r.role_id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="p-1">
             {scope === "workspace" && (
               <Link href="/workspace/profile" onClick={() => setOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer">

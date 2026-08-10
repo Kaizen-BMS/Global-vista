@@ -21,17 +21,26 @@ async function getUniqueFormSlug(baseSlug) {
 
 export async function listLeadForms(session) {
   const [rows] = await pool.query(
-    `SELECT f.*,
+    `SELECT f.*, cu.name AS created_by_name,
             (SELECT COUNT(*) FROM lead_form_views v WHERE v.form_id=f.id) AS view_count,
-            (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS submission_count
-     FROM lead_forms f WHERE f.company_id=? AND f.${NOT_DELETED} ORDER BY f.created_at DESC`,
+            (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS submission_count,
+            (SELECT COUNT(*) FROM lead_form_views v WHERE v.form_id=f.id) + (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS conv_denominator
+     FROM lead_forms f LEFT JOIN users cu ON cu.id = f.created_by
+     WHERE f.company_id=? AND f.${NOT_DELETED} ORDER BY f.created_at DESC`,
     [session.company_id]
   );
-  return rows;
+  return rows.map((r) => {
+    const { conv_denominator, ...rest } = r;
+    return { ...rest, conversion_rate: conv_denominator > 0 ? Math.round((r.submission_count / conv_denominator) * 1000) / 10 : 0 };
+  });
 }
 
 export async function getLeadForm(session, id) {
-  const [[row]] = await pool.query(`SELECT * FROM lead_forms WHERE id=? AND company_id=? AND ${NOT_DELETED}`, [id, session.company_id]);
+  const [[row]] = await pool.query(
+    `SELECT f.*, cu.name AS created_by_name FROM lead_forms f LEFT JOIN users cu ON cu.id = f.created_by
+     WHERE f.id=? AND f.company_id=? AND f.${NOT_DELETED}`,
+    [id, session.company_id]
+  );
   if (!row) return null;
   return { ...row, fields_config: JSON.parse(row.fields_config || "[]"), theme_config: JSON.parse(row.theme_config || "{}") };
 }

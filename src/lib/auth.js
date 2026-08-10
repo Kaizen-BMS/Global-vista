@@ -65,6 +65,23 @@ export async function getSession() {
     return payload;
   } catch { return null; }
 }
+// Active-role switching: re-signs the session cookie with a new
+// role_id/role_slug, keeping the same jti (so user_sessions
+// revocation/last_seen tracking is untouched) and the same absolute
+// expiry (payload.exp, not a fresh window) so switching roles never
+// extends or resets how long the session lasts. Every existing can()/RLS
+// check reads session.role_id fresh on each call, so this one write is
+// the entire enforcement mechanism — nothing else needs to change to
+// make permissions, nav, and data visibility respect the new role.
+export async function reissueSessionWithRole(payload, roleId, roleSlug) {
+  const { iat, exp, ...rest } = payload;
+  const token = await new SignJWT({ ...rest, role_id: roleId, role_slug: roleSlug })
+    .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
+  const cookieStore = await cookies();
+  const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
+  cookieStore.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge, path: "/" });
+}
+
 export async function verifySessionToken(token) { try { const { payload } = await jwtVerify(token, getSecret()); return payload; } catch { return null; } }
 export async function getUserByEmail(email) {
   const [rows] = await pool.query(`SELECT u.*, r.slug AS role_slug, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.email = ? LIMIT 1`, [email]);

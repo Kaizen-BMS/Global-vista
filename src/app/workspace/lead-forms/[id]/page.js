@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { getLeadFormAnalytics } from "@/lib/modules/crm/actions/leadForms";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 import LeadFormShareCard from "@/components/crm/forms/LeadFormShareCard";
@@ -24,6 +25,9 @@ export default async function LeadFormDetailPage({ params }) {
         <div>
           <h1 className="text-xl font-semibold text-foreground">{analytics.form.name}</h1>
           {analytics.form.description && <p className="text-muted-foreground text-sm mt-0.5">{analytics.form.description}</p>}
+          <p className="text-muted-foreground text-xs mt-1">
+            Created by {analytics.form.created_by_name || "—"} · {formatDateTime(analytics.form.created_at, timezone)}
+          </p>
         </div>
         {canEdit && (
           <Link href={`/workspace/lead-forms/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer">
