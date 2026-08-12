@@ -25,27 +25,28 @@ function createPool() {
     // driven by the company's configured timezone setting.
     timezone: "Z",
     waitForConnections: true,
-    // History: 25 originally (dashboard-fan-out contention) -> dropped to
-    // 5 to minimize new-connection count while max_connections_per_hour
-    // was throttled -> confirmed via a live test that the throttle has
-    // now cleared (a single connection succeeds in <1s), and 5 was
-    // provably too low: the Platform Dashboard alone fires 16 parallel
-    // queries in one Promise.all, so 11 of them had to queue for one of
-    // only 5 connections and one hit connectTimeout (ETIMEDOUT) waiting.
-    // 20 comfortably covers that burst with margin. If the hourly-count
-    // concern resurfaces, the real fix is reducing how many separate
-    // queries getPlatformDashboard fires (several of those 16 could
-    // combine into fewer round trips the way getStorageUsage already
-    // does with subqueries) — not shrinking this below what a single
-    // page load actually needs, which just turns "throttled" into
-    // "broken" the way it did here.
-    connectionLimit: 20,
+    // Set per Hostinger support's explicit recommendation for this account's
+    // max_connections_per_hour: 500 cap: a small, conservative connectionLimit
+    // does NOT fix that cap (it's an hourly count of NEW connections opened,
+    // not a concurrency limit) but it does reduce how many distinct
+    // connections this process can ever open at once, which is the one lever
+    // available on the app side. Known tradeoff, accepted deliberately: pages
+    // that fire many parallel queries in one Promise.all (e.g. the Platform
+    // Dashboard's ~16-query fan-out) will queue requests behind these 5
+    // connections instead of running them all at once — waitForConnections:
+    // true + queueLimit: 0 means they wait rather than error, just slower
+    // under load. If that queuing becomes a real problem, fix it by reducing
+    // the number of separate queries those pages fire (combine several into
+    // fewer round trips, the way getStorageUsage already does with
+    // subqueries) — do NOT raise connectionLimit to compensate; a bigger pool
+    // opens more connections per hour, working against the actual constraint.
+    connectionLimit: 5,
     queueLimit: 0,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
     connectTimeout: 10000,
-    idleTimeout: 30000,
-    maxIdle: 10,
+    idleTimeout: 60000,
+    maxIdle: 5,
   });
   pool.on("error", (err) => console.error("MySQL pool error:", err.code, err.message));
   return pool;
