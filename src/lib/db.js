@@ -5,6 +5,15 @@ const globalForPool = globalThis;
 
 function createPool() {
   const pool = mysql.createPool({
+    // Deliberately env-driven, never hardcoded: local development connects
+    // to Hostinger's remote hostname (DB_HOST=srv1872.hstgr.io in
+    // .env.local) since the app isn't running on the same box as the
+    // database. If/when this app is actually deployed ON Hostinger
+    // alongside the database, set DB_HOST=localhost in THAT environment's
+    // .env only — a Unix-socket/localhost connection there is faster and
+    // isn't subject to the same remote-connection accounting. Hardcoding
+    // "localhost" here would break every local dev connection to the
+    // remote DB, so it stays a config value, not a literal.
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -16,15 +25,21 @@ function createPool() {
     // driven by the company's configured timezone setting.
     timezone: "Z",
     waitForConnections: true,
-    // 10 was too tight for this app's actual concurrency: pages like the
-    // workspace dashboard fan out ~20 parallel queries on a single load,
-    // and every authenticated request also does its own auth-check
-    // queries — under a few concurrent tabs/pollers that exhausted the
-    // pool, and mysql2 has no separate timeout for a request queued
-    // waiting on a busy pool, so it can hang until something frees up
-    // rather than failing fast. Raised the ceiling instead of adding an
-    // artificial timeout that would just turn contention into more errors.
-    connectionLimit: 25,
+    // History: 25 originally (dashboard-fan-out contention) -> dropped to
+    // 5 to minimize new-connection count while max_connections_per_hour
+    // was throttled -> confirmed via a live test that the throttle has
+    // now cleared (a single connection succeeds in <1s), and 5 was
+    // provably too low: the Platform Dashboard alone fires 16 parallel
+    // queries in one Promise.all, so 11 of them had to queue for one of
+    // only 5 connections and one hit connectTimeout (ETIMEDOUT) waiting.
+    // 20 comfortably covers that burst with margin. If the hourly-count
+    // concern resurfaces, the real fix is reducing how many separate
+    // queries getPlatformDashboard fires (several of those 16 could
+    // combine into fewer round trips the way getStorageUsage already
+    // does with subqueries) — not shrinking this below what a single
+    // page load actually needs, which just turns "throttled" into
+    // "broken" the way it did here.
+    connectionLimit: 20,
     queueLimit: 0,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
