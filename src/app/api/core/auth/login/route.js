@@ -22,7 +22,7 @@ export async function POST(request) {
     if (user.company_id && !user.is_platform_operator) {
       const [[company]] = await pool.query(`SELECT status FROM companies WHERE id = ? LIMIT 1`, [user.company_id]);
       if (company && ["suspended", "deleted"].includes(company.status)) {
-        return NextResponse.json({ error: "Your company account has been suspended. Please contact Global Vista Support.", code: "COMPANY_SUSPENDED" }, { status: 403 });
+        return NextResponse.json({ error: "Your company account has been suspended. Please contact KaizenBMS Support.", code: "COMPANY_SUSPENDED" }, { status: 403 });
       }
     }
 

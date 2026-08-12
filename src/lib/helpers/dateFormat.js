@@ -1,5 +1,15 @@
 const DEFAULT_TZ = "UTC";
 
+/** Used at the settings-write boundary (platform + company) so a bad IANA
+ * zone name — a stray copy-paste artifact, trailing whitespace, anything
+ * `Intl.DateTimeFormat` won't accept — never reaches the database and
+ * silently breaks every page that formats a date until someone notices. */
+export function isValidTimeZone(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: value }); return true; }
+  catch { return false; }
+}
+
 /** MySQL returns DATETIME values as naive local-clock strings once the pool session is
  * pinned to UTC (see src/lib/db.js `timezone: "Z"`) — so treating them as UTC here is safe. */
 function toDate(value) {
@@ -86,7 +96,13 @@ export { zoneAbbreviation };
  * instants be compared by "same calendar day in this timezone" regardless of the
  * browser's own local zone. */
 export function dayKey(date, timeZone = DEFAULT_TZ) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  } catch (err) {
+    console.error(`dateFormat: invalid timezone "${timeZone}", falling back to UTC`, err.message);
+    parts = new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  }
   const get = (t) => parts.find((p) => p.type === t)?.value;
   return Date.UTC(Number(get("year")), Number(get("month")) - 1, Number(get("day")));
 }

@@ -130,6 +130,8 @@ export async function provisionCompany(input, operatorId) {
     adminEmail,
     planId,
     moduleIds = [],
+    endsAt = null,
+    subscriptionStatus = "trial",
   } = input;
 
   // ---------------------------------------------------------------
@@ -478,10 +480,10 @@ export async function provisionCompany(input, operatorId) {
 
     // -------------------------------------------------------------
     // Assign Subscription
-    // company_subscriptions columns used: company_id, plan_id,
-    // status, starts_at — status and starts_at are hardcoded literals
-    // ('trial', CURDATE()), so only 2 placeholders/2 params needed for
-    // company_id and plan_id. Correct as-is.
+    // starts_at is always "today" (provisioning IS the start), status
+    // and ends_at are operator-configurable from the creation wizard —
+    // ends_at stays NULL (no expiry) unless explicitly set, preserving
+    // the pre-existing default behavior for callers that don't pass one.
     // -------------------------------------------------------------
     if (planId) {
       const [[existingSubscription]] = await conn.query(
@@ -490,9 +492,9 @@ export async function provisionCompany(input, operatorId) {
       );
       if (!existingSubscription) {
         await conn.query(
-          `INSERT INTO company_subscriptions (company_id, plan_id, status, starts_at)
-           VALUES (?, ?, 'trial', CURDATE())`,
-          [companyId, planId]
+          `INSERT INTO company_subscriptions (company_id, plan_id, status, starts_at, ends_at)
+           VALUES (?, ?, ?, CURDATE(), ?)`,
+          [companyId, planId, subscriptionStatus, endsAt || null]
         );
       }
     }

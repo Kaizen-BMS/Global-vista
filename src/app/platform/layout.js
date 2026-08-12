@@ -11,9 +11,9 @@ import BrandFavicon from "@/components/shared/BrandFavicon";
 import { TimezoneProvider } from "@/components/shared/TimezoneProvider";
 import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 
-// Global Vista's own identity, not a tenant's — deliberately never
+// KaizenBMS's own identity, not a tenant's — deliberately never
 // pulled from the companies table, per the branding rule that the
-// Platform Console always shows Global Vista's own identity, never a
+// Platform Console always shows the platform owner's own identity, never a
 // tenant's. Sourced entirely from GLOBAL_VISTA_BRANDING — the single
 // constant also used by the pre-login auth pages — so the sidebar can
 // never drift out of sync with what Login shows.

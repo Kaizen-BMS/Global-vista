@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { uploadFile, deleteFile, getFileUrl } from "@/lib/services/StorageService";
+import { enforceStorageLimit } from "@/lib/actions/storage";
 
 const NOT_DELETED = "is_deleted = 0";
 
@@ -80,6 +81,8 @@ export async function uploadEmployeeDocument(session, userId, documentTypeId, { 
       deleteFile(row.file_url).catch(() => {});
     }
   }
+
+  await enforceStorageLimit(session.company_id, buffer.length);
 
   const { key } = await uploadFile({
     companyId: session.company_id, category: `employee-documents/${userId}`, buffer, fileName, mimeType,

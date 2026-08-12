@@ -12,6 +12,22 @@ export const YEAR_RANGE_OPTIONS = [
   { value: 10, label: "10 Years" },
 ];
 
+// A stored timezone value can be corrupted (bad manual edit, copy-paste
+// artifact, stale data) — dateFormat.js already guards every Intl call
+// against that and falls back to UTC rather than crashing; this file's
+// Intl calls need the identical guard, since an invalid IANA zone name
+// makes `new Intl.DateTimeFormat` throw synchronously, not something a
+// try/catch at the call site can paper over one call at a time.
+const zoneValidityCache = new Map();
+function safeZone(timeZone) {
+  if (zoneValidityCache.has(timeZone)) return zoneValidityCache.get(timeZone) ? timeZone : "UTC";
+  let valid = true;
+  try { new Intl.DateTimeFormat("en-US", { timeZone }); }
+  catch { valid = false; console.error(`dateRange: invalid timezone "${timeZone}", falling back to UTC`); }
+  zoneValidityCache.set(timeZone, valid);
+  return valid ? timeZone : "UTC";
+}
+
 /**
  * The UTC instant for midnight of (year, month, day) as it reads on a
  * wall clock in `timeZone` — the "double conversion" trick: guess the
@@ -21,6 +37,7 @@ export const YEAR_RANGE_OPTIONS = [
  * which never lands exactly on a quarter/year boundary in practice.
  */
 function startOfDayInZone(year, month, day, timeZone) {
+  timeZone = safeZone(timeZone);
   const guess = Date.UTC(year, month - 1, day, 0, 0, 0);
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -32,6 +49,7 @@ function startOfDayInZone(year, month, day, timeZone) {
 }
 
 export function currentQuarter(timeZone = "UTC") {
+  timeZone = safeZone(timeZone);
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, month: "numeric", year: "numeric" }).formatToParts(new Date());
   const month = Number(parts.find((p) => p.type === "month").value);
   const year = Number(parts.find((p) => p.type === "year").value);

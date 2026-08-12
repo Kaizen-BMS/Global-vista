@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { createNotification } from "@/lib/actions/notifications";
+import { sendFollowupCreatedEmail, sendFollowupRescheduledEmail, sendFollowupCancelledEmail } from "@/lib/modules/crm/actions/followupNotifications";
 
 export async function listLeadFollowups(session, leadId) {
   const [rows] = await pool.query(
@@ -72,7 +73,53 @@ export async function createFollowup(session, leadId, data, createdBy) {
     });
   }
 
+  // Fire-and-forget from this action's perspective — sendFollowupCreatedEmail
+  // never throws (see followupNotifications.js), so a slow or failed email
+  // provider can never fail the follow-up creation itself.
+  sendFollowupCreatedEmail({ id: result.insertId, lead_id: leadId, type: data.type, scheduled_at: data.scheduledAt }, session.company_id, createdBy);
+
   return result.insertId;
+}
+
+/** Reschedule an existing Scheduled follow-up to a new date/time — sends a
+ * "rescheduled" email (never re-sends the original confirmation). */
+export async function rescheduleFollowup(session, id, leadId, newScheduledAt, updatedBy) {
+  const [[existing]] = await pool.query(
+    `SELECT id, lead_id, type, status, scheduled_at FROM lead_followups WHERE id = ? AND lead_id = ? AND company_id = ?`,
+    [id, leadId, session.company_id]
+  );
+  if (!existing) { const e = new Error("Follow-up not found."); e.status = 404; throw e; }
+  if (existing.status !== "Scheduled") { const e = new Error("Only a scheduled follow-up can be rescheduled."); e.status = 400; throw e; }
+
+  await pool.query(`UPDATE lead_followups SET scheduled_at = ?, updated_by = ? WHERE id = ? AND company_id = ?`, [newScheduledAt, updatedBy, id, session.company_id]);
+  await logActivity({
+    userId: updatedBy, module: "leads", action: "followup_rescheduled", entityType: "lead", entityId: leadId, companyId: session.company_id,
+    description: `Rescheduled ${existing.type} follow-up`,
+  });
+
+  sendFollowupRescheduledEmail(
+    { id, lead_id: leadId, type: existing.type, scheduled_at: newScheduledAt, previous_scheduled_at: existing.scheduled_at },
+    session.company_id, updatedBy
+  );
+}
+
+/** Cancel a Scheduled follow-up — 'Cancelled' is an existing lead_followups.status
+ * value, not a new state invented for this feature. */
+export async function cancelFollowup(session, id, leadId, updatedBy) {
+  const [[existing]] = await pool.query(
+    `SELECT id, lead_id, type, status, scheduled_at FROM lead_followups WHERE id = ? AND lead_id = ? AND company_id = ?`,
+    [id, leadId, session.company_id]
+  );
+  if (!existing) { const e = new Error("Follow-up not found."); e.status = 404; throw e; }
+  if (existing.status !== "Scheduled") { const e = new Error("Only a scheduled follow-up can be cancelled."); e.status = 400; throw e; }
+
+  await pool.query(`UPDATE lead_followups SET status = 'Cancelled', updated_by = ? WHERE id = ? AND company_id = ?`, [updatedBy, id, session.company_id]);
+  await logActivity({
+    userId: updatedBy, module: "leads", action: "followup_cancelled", entityType: "lead", entityId: leadId, companyId: session.company_id,
+    description: `Cancelled ${existing.type} follow-up`,
+  });
+
+  sendFollowupCancelledEmail({ id, lead_id: leadId, type: existing.type, scheduled_at: existing.scheduled_at }, session.company_id, updatedBy);
 }
 
 /**

@@ -10,7 +10,7 @@ const STEPS = ["Company", "Admin", "Modules & Plan"];
 export default function CreateCompanyWizard({ modules, plans, onClose }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ companyName: "", shortName: "", adminName: "", adminEmail: "", planId: plans[0]?.id || "", moduleIds: [] });
+  const [form, setForm] = useState({ companyName: "", shortName: "", adminName: "", adminEmail: "", planId: plans[0]?.id || "", moduleIds: [], endsAt: "", subscriptionStatus: "trial" });
   const [saving, setSaving] = useState(false);
 
   function toggleModule(id) { setForm((f) => ({ ...f, moduleIds: f.moduleIds.includes(id) ? f.moduleIds.filter((m) => m !== id) : [...f.moduleIds, id] })); }
@@ -45,7 +45,13 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
         )}
         {step === 2 && (
           <div>
-            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-4 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <select value={form.subscriptionStatus} onChange={(e) => setForm({ ...form, subscriptionStatus: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
+                <option value="trial">Trial</option><option value="active">Active</option>
+              </select>
+              <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} placeholder="Expiry date (optional)" title="Expiry date (leave blank for no expiry)" className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            </div>
             <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border text-sm text-foreground cursor-pointer transition hover:border-border"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
           </div>
         )}

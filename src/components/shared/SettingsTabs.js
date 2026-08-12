@@ -9,6 +9,7 @@ const TABS = [
   { href: "/workspace/settings/geography", label: "Geography" }, { href: "/workspace/settings/lead-sources", label: "Lead Sources" },
   { href: "/workspace/settings/services", label: "Services" }, { href: "/workspace/settings/document-types", label: "Document Types" },
   { href: "/workspace/settings/integrations", label: "Integrations" },
+  { href: "/workspace/settings/subscription", label: "Subscription" },
 ];
 export default function SettingsTabs() {
   const pathname = usePathname();

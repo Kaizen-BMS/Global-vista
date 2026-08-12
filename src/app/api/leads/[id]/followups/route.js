@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { listLeadFollowups, createFollowup, completeFollowup, logQuickActivity } from "@/lib/modules/crm/actions/leadFollowups";
+import { listLeadFollowups, createFollowup, completeFollowup, logQuickActivity, rescheduleFollowup, cancelFollowup } from "@/lib/modules/crm/actions/leadFollowups";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request, context) => {
@@ -26,6 +26,16 @@ export const POST = withCsrf(withErrorHandling(async (request, context) => {
     if (!body.type) return badRequest("Activity type is required.");
     const followupId = await logQuickActivity(session, id, body, session.id);
     return created({ id: followupId });
+  }
+  if (body.action === "reschedule") {
+    if (!body.followupId || !body.scheduledAt) return badRequest("followupId and scheduledAt are required.");
+    await rescheduleFollowup(session, body.followupId, id, body.scheduledAt, session.id);
+    return ok();
+  }
+  if (body.action === "cancel") {
+    if (!body.followupId) return badRequest("followupId is required.");
+    await cancelFollowup(session, body.followupId, id, session.id);
+    return ok();
   }
   if (!body.type || !body.scheduledAt) return badRequest("Type and scheduled time are required.");
   const followupId = await createFollowup(session, id, body, session.id);

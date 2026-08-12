@@ -55,7 +55,7 @@ export default function LoginForm({ onNavigate }) {
       ) : (
         <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <h1 className="text-2xl font-semibold text-white mb-1.5">Welcome back</h1>
-          <p className="text-white/50 text-sm mb-7">Sign in to your Global Vista workspace.</p>
+          <p className="text-white/50 text-sm mb-7">Sign in to your KaizenBMS Platform workspace.</p>
 
           <OAuthButtons />
 

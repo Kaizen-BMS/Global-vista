@@ -24,12 +24,12 @@ export default async function PlatformSettingsPage() {
       </div>
       <div>
         <p className="text-foreground font-medium mb-1">White-Label Branding</p>
-        <p className="text-muted-foreground text-sm mb-4">Controls Global Vista's own footer credit inside tenant workspaces.</p>
+        <p className="text-muted-foreground text-sm mb-4">Controls KaizenBMS's own footer credit inside tenant workspaces.</p>
         <PlatformSettingsForm
           group="branding"
           initialValues={{ powered_by_enabled: "true", ...brandingValues }}
           fields={[
-            { key: "powered_by_enabled", label: "Show \"Powered by Global Vista\" in tenant sidebars", type: "select", options: ["true", "false"] },
+            { key: "powered_by_enabled", label: "Show \"Powered by KaizenBMS\" in tenant sidebars", type: "select", options: ["true", "false"] },
           ]}
         />
       </div>

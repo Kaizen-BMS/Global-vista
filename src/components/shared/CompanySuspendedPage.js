@@ -25,7 +25,7 @@ export default function CompanySuspendedPage() {
           Your company account has been suspended. Access to the dashboard, CRM, and all other workspace features has been temporarily disabled.
         </p>
         <p className="text-muted-foreground text-sm mt-4">
-          Please contact Global Vista Support for assistance.
+          Please contact KaizenBMS Support for assistance.
         </p>
         <button
           onClick={handleLogout}

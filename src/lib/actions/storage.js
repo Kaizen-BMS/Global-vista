@@ -1,5 +1,8 @@
 import "server-only";
 import { pool } from "@/lib/db";
+import { formatBytes } from "@/lib/helpers/formatBytes";
+
+export { formatBytes };
 
 /**
  * Storage usage is computed on the fly from file_size columns already
@@ -36,6 +39,38 @@ export async function getStorageUsage(session) {
       { module: "Lead Documents", bytes: Number(byModule.lead_bytes) },
     ],
   };
+}
+
+/**
+ * Server-side, pre-upload gate — the entire point is that a client-supplied
+ * file size is never trusted for this check on its own; the ACTUAL buffer
+ * length the upload code already measured is what gets passed in here,
+ * before the file is written to storage. A plan with no configured
+ * max_storage_mb (NULL) is treated as unlimited, matching getStorageUsage's
+ * own null-means-unlimited convention.
+ */
+export async function enforceStorageLimit(companyId, additionalBytes) {
+  const [[plan]] = await pool.query(
+    `SELECT p.max_storage_mb FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  const limitBytes = plan?.max_storage_mb ? plan.max_storage_mb * 1024 * 1024 : null;
+  if (limitBytes == null) return; // unlimited
+
+  const [[byModule]] = await pool.query(
+    `SELECT
+      (SELECT COALESCE(SUM(file_size),0) FROM employee_documents WHERE company_id=? AND is_deleted=0) AS employee_bytes,
+      (SELECT COALESCE(SUM(file_size),0) FROM lead_documents WHERE company_id=?) AS lead_bytes`,
+    [companyId, companyId]
+  );
+  const usedBytes = Number(byModule.employee_bytes) + Number(byModule.lead_bytes);
+
+  if (usedBytes + additionalBytes > limitBytes) {
+    const e = new Error(`Storage limit reached (${formatBytes(usedBytes)} / ${formatBytes(limitBytes)} used). Delete files or upgrade the plan to upload more.`);
+    e.status = 413;
+    throw e;
+  }
 }
 
 export async function getLargestFiles(session, limit = 10) {
@@ -95,9 +130,3 @@ export async function getPlatformStorageUsage() {
   };
 }
 
-export function formatBytes(bytes) {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}

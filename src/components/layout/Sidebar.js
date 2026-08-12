@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { X, PanelLeftClose, PanelLeftOpen, Pin, PinOff } from "lucide-react";
 import { ICON_MAP } from "@/lib/constants/navItems";
+import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import SidebarTooltip from "@/components/layout/SidebarTooltip";
@@ -109,7 +110,7 @@ function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate,
       {!collapsed && (
         <div className="px-5 py-4 border-t border-sidebar-border">
           <p className="text-sidebar-foreground/80 text-sm truncate">{session?.name}</p>
-          {showPoweredBy && <p className="text-sidebar-foreground/30 text-[10px] mt-1">Powered by Global Vista</p>}
+          {showPoweredBy && <p className="text-sidebar-foreground/30 text-[10px] mt-1">{GLOBAL_VISTA_BRANDING.poweredByLabel}</p>}
         </div>
       )}
     </>

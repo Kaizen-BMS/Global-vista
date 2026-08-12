@@ -1,6 +1,7 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { pool } from "@/lib/db";
+import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 
 let cachedTransporter = null;
 function getTransporter() {
@@ -14,26 +15,31 @@ async function logEmail({ recipient, userId = null, subject, template, status, s
       [recipient, userId, subject, template, status, smtpResponse || null, messageId, status === "sent" ? new Date() : null, createdBy]);
   } catch (err) { console.error("Email log failed:", err.message); }
 }
-async function send({ to, userId = null, subject, html, template, createdBy = null }) {
+export async function send({ to, userId = null, subject, html, template, createdBy = null }) {
   try {
-    const info = await getTransporter().sendMail({ from: `"Global Vista" <${process.env.EMAIL_USER}>`, to, subject, html });
+    const info = await getTransporter().sendMail({ from: `"${GLOBAL_VISTA_BRANDING.name}" <${process.env.EMAIL_USER}>`, to, subject, html });
     await logEmail({ recipient: to, userId, subject, template, status: "sent", smtpResponse: info.response, messageId: info.messageId, createdBy });
-    return { success: true };
+    return { success: true, messageId: info.messageId };
   } catch (err) {
     await logEmail({ recipient: to, userId, subject, template, status: "failed", smtpResponse: err.message, createdBy });
-    return { success: false };
+    return { success: false, error: err.message };
   }
 }
-async function getBranding(companyId) {
+// Never trust a caller-supplied companyId that didn't come from the
+// authenticated session/record chain — this only ever reads the ONE row
+// for the id it's given, so the tenant-isolation guarantee lives entirely
+// in what the caller passes in (see followupNotifications.js, which
+// resolves companyId from the follow-up's own row, never from a request body).
+export async function getBranding(companyId) {
   if (!companyId) return null;
   try {
-    const [[company]] = await pool.query(`SELECT name, logo_url, primary_color FROM companies WHERE id=?`, [companyId]);
+    const [[company]] = await pool.query(`SELECT name, logo_url, primary_color, contact_email, contact_phone, website FROM companies WHERE id=?`, [companyId]);
     return company || null;
   } catch { return null; }
 }
 
 function wrap({ title, bodyFn, branding }) {
-  const brandName = branding?.name || "Global Vista";
+  const brandName = branding?.name || GLOBAL_VISTA_BRANDING.name;
   const brandColor = branding?.primary_color || "#4f46e5";
   const logo = branding?.logo_url
     ? `<img src="${branding.logo_url}" alt="" style="height:28px;object-fit:contain;" />`

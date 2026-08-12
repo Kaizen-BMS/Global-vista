@@ -1,6 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
+import { isValidTimeZone } from "@/lib/helpers/dateFormat";
 
 export async function getSettingsByGroup(session, group) {
   const [rows] = await pool.query(`SELECT \`key\`, \`value\` FROM crm_settings WHERE \`group\`=? AND company_id=?`, [group, session.company_id]);
@@ -11,6 +12,11 @@ export async function updateSettings(session, group, values, updatedBy) {
   try {
     await conn.beginTransaction();
     for (const [key, value] of Object.entries(values)) {
+      if (key === "timezone" && value && !isValidTimeZone(value)) {
+        const e = new Error(`"${value}" is not a valid timezone.`);
+        e.status = 400;
+        throw e;
+      }
       await conn.query(`INSERT INTO crm_settings (company_id, \`key\`, \`value\`, \`group\`, created_by, updated_by) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE \`value\`=VALUES(\`value\`), updated_by=VALUES(updated_by)`,
         [session.company_id, key, value == null ? "" : String(value), group, updatedBy, updatedBy]);
     }
