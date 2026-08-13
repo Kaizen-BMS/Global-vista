@@ -3,7 +3,7 @@ import { pool } from "@/lib/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 
 export async function getCalendarEvents(session, { start, end }) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
 
   const [followups] = await pool.query(
     `SELECT f.id, f.type, f.status, f.scheduled_at AS at, l.id AS lead_id, l.name AS lead_name, l.phone AS lead_phone

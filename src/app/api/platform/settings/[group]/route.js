@@ -5,7 +5,7 @@ import { pool } from "@/lib/db";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 import { isValidTimeZone } from "@/lib/helpers/dateFormat";
 
-const ALLOWED_GROUPS = ["general", "security", "authentication", "email", "storage", "logging", "backups", "queue", "api", "branding", "maintenance"];
+const ALLOWED_GROUPS = ["general", "security", "authentication", "email", "storage", "logging", "backups", "queue", "api", "branding", "maintenance", "payments"];
 
 export const GET = withErrorHandling(async (request, context) => {
   const { group } = await context.params;

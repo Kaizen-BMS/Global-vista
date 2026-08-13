@@ -24,6 +24,7 @@ export async function listLeadForms(session) {
     `SELECT f.*, cu.name AS created_by_name,
             (SELECT COUNT(*) FROM lead_form_views v WHERE v.form_id=f.id) AS view_count,
             (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS submission_count,
+            (SELECT COUNT(DISTINCT s.lead_id) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success' AND s.lead_id IS NOT NULL) AS leads_created_count,
             (SELECT COUNT(*) FROM lead_form_views v WHERE v.form_id=f.id) + (SELECT COUNT(*) FROM lead_form_submissions s WHERE s.form_id=f.id AND s.status='success') AS conv_denominator
      FROM lead_forms f LEFT JOIN users cu ON cu.id = f.created_by
      WHERE f.company_id=? AND f.${NOT_DELETED} ORDER BY f.created_at DESC`,
@@ -61,7 +62,7 @@ export async function createLeadForm(session, data, createdBy) {
       data.recaptchaEnabled ? 1 : 0, createdBy, createdBy,
     ]
   );
-  await logActivity({ userId: createdBy, module: "leads", action: "form_create", entityType: "lead_form", entityId: result.insertId, companyId: session.company_id, description: `Created lead form "${data.name}"` });
+  await logActivity({ userId: createdBy, module: "leads", action: "form_create", entityType: "lead_form", entityId: result.insertId, companyId: session.company_id, description: `Created query form "${data.name}"` });
   return result.insertId;
 }
 
@@ -77,7 +78,41 @@ export async function updateLeadForm(session, id, data, updatedBy) {
       data.status || "active", data.recaptchaEnabled ? 1 : 0, updatedBy, id, session.company_id,
     ]
   );
-  await logActivity({ userId: updatedBy, module: "leads", action: "form_update", entityType: "lead_form", entityId: id, companyId: session.company_id, description: `Updated lead form #${id}` });
+  await logActivity({ userId: updatedBy, module: "leads", action: "form_update", entityType: "lead_form", entityId: id, companyId: session.company_id, description: `Updated query form #${id}` });
+}
+
+/**
+ * Copies an existing Query Form into a brand-new one: new id, new unique
+ * slug, ownership transferred to whoever duplicated it (not the original
+ * creator) — matches "Each copied form gets its own ID and ownership" and
+ * "Do not destroy the original template when copying." The source form is
+ * untouched. New copies start `inactive` so a half-renamed duplicate can't
+ * go live on the public URL before someone reviews it.
+ */
+export async function duplicateLeadForm(session, id, actorId) {
+  const source = await getLeadForm(session, id);
+  if (!source) { const e = new Error("Query Form not found."); e.status = 404; throw e; }
+
+  const newName = `${source.name} (Copy)`;
+  const slug = await getUniqueFormSlug(slugify(newName));
+  const [result] = await pool.query(
+    `INSERT INTO lead_forms (
+      company_id, name, slug, description, fields_config, default_lead_source_id, default_service_id,
+      default_assigned_to, default_tags, campaign, success_message, redirect_url, notify_emails,
+      theme_config, status, recaptcha_enabled, created_by, updated_by
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      session.company_id, newName, slug, source.description, JSON.stringify(source.fields_config || []),
+      source.default_lead_source_id, source.default_service_id, source.default_assigned_to, source.default_tags,
+      source.campaign, source.success_message, source.redirect_url, source.notify_emails,
+      JSON.stringify(source.theme_config || {}), "inactive", source.recaptcha_enabled, actorId, actorId,
+    ]
+  );
+  await logActivity({
+    userId: actorId, module: "leads", action: "form_duplicate", entityType: "lead_form", entityId: result.insertId,
+    companyId: session.company_id, description: `Duplicated query form "${source.name}" as "${newName}"`,
+  });
+  return result.insertId;
 }
 
 export async function deleteLeadForm(session, id, deletedBy) {

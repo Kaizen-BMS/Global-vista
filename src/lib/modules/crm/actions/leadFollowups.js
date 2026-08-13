@@ -4,6 +4,20 @@ import { logActivity } from "@/lib/activityLog";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { createNotification } from "@/lib/actions/notifications";
 import { sendFollowupCreatedEmail, sendFollowupRescheduledEmail, sendFollowupCancelledEmail } from "@/lib/modules/crm/actions/followupNotifications";
+import { getSettingsByGroup } from "@/lib/actions/settings";
+import { parseDateTimeLocalInZone } from "@/lib/helpers/dateRange";
+
+/** Every follow-up write goes through this — the single point where an
+ * HTML datetime-local value (no timezone of its own) gets interpreted as
+ * wall-clock time in the company's configured zone before it ever reaches
+ * a DATETIME column. Falls back to UTC if the setting is unset, same
+ * default the rest of the app uses. Returns a real Date (or null) — pass
+ * it straight through as a query parameter, never re-stringify it. */
+async function toStoredDateTime(session, value) {
+  if (!value) return null;
+  const { timezone } = await getSettingsByGroup(session, "system");
+  return parseDateTimeLocalInZone(value, timezone || "UTC");
+}
 
 export async function listLeadFollowups(session, leadId) {
   const [rows] = await pool.query(
@@ -17,7 +31,7 @@ export async function listLeadFollowups(session, leadId) {
 }
 
 export async function getTodaysFollowups(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT f.*, l.name AS lead_name, l.phone AS lead_phone
      FROM lead_followups f
@@ -30,7 +44,7 @@ export async function getTodaysFollowups(session) {
 }
 
 export async function getFollowupDashboard(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const base = `SELECT f.id, f.type, f.status, f.scheduled_at, l.id AS lead_id, l.name AS lead_name, l.phone AS lead_phone, l.priority, l.company_id, u.name AS assigned_name
      FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0 AND ${where}
      LEFT JOIN users u ON u.id = l.assigned_to`;
@@ -51,14 +65,16 @@ export async function getFollowupDashboard(session) {
 }
 
 export async function createFollowup(session, leadId, data, createdBy) {
+  const scheduledAt = await toStoredDateTime(session, data.scheduledAt);
+  const nextFollowUp = await toStoredDateTime(session, data.nextFollowUp);
   const [result] = await pool.query(
     `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, next_follow_up, notes, created_by, updated_by)
      VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?, ?)`,
-    [session.company_id, leadId, data.type, data.scheduledAt, data.nextFollowUp || null, data.notes || null, createdBy, createdBy]
+    [session.company_id, leadId, data.type, scheduledAt, nextFollowUp, data.notes || null, createdBy, createdBy]
   );
 
-  if (data.nextFollowUp) {
-    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [data.nextFollowUp, leadId, session.company_id]);
+  if (nextFollowUp) {
+    await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
   }
 
   await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Scheduled ${data.type} follow-up` });
@@ -76,7 +92,7 @@ export async function createFollowup(session, leadId, data, createdBy) {
   // Fire-and-forget from this action's perspective — sendFollowupCreatedEmail
   // never throws (see followupNotifications.js), so a slow or failed email
   // provider can never fail the follow-up creation itself.
-  sendFollowupCreatedEmail({ id: result.insertId, lead_id: leadId, type: data.type, scheduled_at: data.scheduledAt }, session.company_id, createdBy);
+  sendFollowupCreatedEmail({ id: result.insertId, lead_id: leadId, type: data.type, scheduled_at: scheduledAt }, session.company_id, createdBy);
 
   return result.insertId;
 }
@@ -91,14 +107,15 @@ export async function rescheduleFollowup(session, id, leadId, newScheduledAt, up
   if (!existing) { const e = new Error("Follow-up not found."); e.status = 404; throw e; }
   if (existing.status !== "Scheduled") { const e = new Error("Only a scheduled follow-up can be rescheduled."); e.status = 400; throw e; }
 
-  await pool.query(`UPDATE lead_followups SET scheduled_at = ?, updated_by = ? WHERE id = ? AND company_id = ?`, [newScheduledAt, updatedBy, id, session.company_id]);
+  const scheduledAt = await toStoredDateTime(session, newScheduledAt);
+  await pool.query(`UPDATE lead_followups SET scheduled_at = ?, updated_by = ? WHERE id = ? AND company_id = ?`, [scheduledAt, updatedBy, id, session.company_id]);
   await logActivity({
     userId: updatedBy, module: "leads", action: "followup_rescheduled", entityType: "lead", entityId: leadId, companyId: session.company_id,
     description: `Rescheduled ${existing.type} follow-up`,
   });
 
   sendFollowupRescheduledEmail(
-    { id, lead_id: leadId, type: existing.type, scheduled_at: newScheduledAt, previous_scheduled_at: existing.scheduled_at },
+    { id, lead_id: leadId, type: existing.type, scheduled_at: scheduledAt, previous_scheduled_at: existing.scheduled_at },
     session.company_id, updatedBy
   );
 }
@@ -129,7 +146,8 @@ export async function cancelFollowup(session, id, leadId, updatedBy) {
  * bar, so counsellors never have to open two separate forms for
  * "what I just did" and "what's next."
  */
-export async function logQuickActivity(session, leadId, { type, note, nextFollowUp, durationSeconds, disposition }, actorId) {
+export async function logQuickActivity(session, leadId, { type, note, nextFollowUp: nextFollowUpInput, durationSeconds, disposition }, actorId) {
+  const nextFollowUp = await toStoredDateTime(session, nextFollowUpInput);
   const conn = await pool.getConnection();
   let completedId;
   try {
@@ -167,10 +185,11 @@ export async function logQuickActivity(session, leadId, { type, note, nextFollow
   return completedId;
 }
 
-export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp, durationSeconds, disposition }, updatedBy) {
+export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp: nextFollowUpInput, durationSeconds, disposition }, updatedBy) {
+  const nextFollowUp = await toStoredDateTime(session, nextFollowUpInput);
   await pool.query(
     `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, duration_seconds = ?, disposition = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
-    [outcome || null, nextFollowUp || null, durationSeconds || null, disposition || null, updatedBy, id, session.company_id]
+    [outcome || null, nextFollowUp, durationSeconds || null, disposition || null, updatedBy, id, session.company_id]
   );
   if (nextFollowUp) {
     await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);

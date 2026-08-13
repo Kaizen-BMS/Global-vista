@@ -1,10 +1,10 @@
 import { getSession } from "@/lib/auth";
-import { getSubscriptionDetails } from "@/lib/platform/tenant";
+import { getSubscriptionDetails, getUsageCounts } from "@/lib/platform/tenant";
 import { getStorageUsage, formatBytes } from "@/lib/actions/storage";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import SettingsTabs from "@/components/shared/SettingsTabs";
-import { CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, Clock, Users, Contact2 } from "lucide-react";
 
 const STATE_META = {
   active: { label: "Active", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", icon: CheckCircle2 },
@@ -16,8 +16,8 @@ const STATE_META = {
 
 export default async function SubscriptionSettingsPage() {
   const session = await getSession();
-  const [subscription, storage, systemSettings] = await Promise.all([
-    getSubscriptionDetails(session.company_id), getStorageUsage(session), getSettingsByGroup(session, "system"),
+  const [subscription, storage, systemSettings, usage] = await Promise.all([
+    getSubscriptionDetails(session.company_id), getStorageUsage(session), getSettingsByGroup(session, "system"), getUsageCounts(session.company_id),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const meta = STATE_META[subscription.state] || STATE_META.no_subscription;
@@ -35,7 +35,7 @@ export default async function SubscriptionSettingsPage() {
           <p className="text-muted-foreground text-xs mt-1">Contact your platform administrator.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <p className="text-foreground font-medium">{subscription.planName} Plan</p>
@@ -50,7 +50,9 @@ export default async function SubscriptionSettingsPage() {
                   <span className={subscription.daysRemaining <= 7 ? "text-amber-400" : "text-foreground"}>{Math.max(0, subscription.daysRemaining)} day{subscription.daysRemaining === 1 ? "" : "s"}</span>
                 </div>
               )}
+              {subscription.price != null && <div className="flex justify-between"><span className="text-muted-foreground">Price</span><span className="text-foreground">{subscription.price ? `${subscription.currency} ${subscription.price}` : "Free"}</span></div>}
               {subscription.maxUsers && <div className="flex justify-between"><span className="text-muted-foreground">User Limit</span><span className="text-foreground">{subscription.maxUsers}</span></div>}
+              {subscription.maxLeads && <div className="flex justify-between"><span className="text-muted-foreground">Lead Limit</span><span className="text-foreground">{subscription.maxLeads}</span></div>}
             </div>
             {subscription.daysRemaining != null && subscription.daysRemaining <= 30 && subscription.daysRemaining >= 0 && (
               <div className="mt-4 pt-4 border-t border-border">
@@ -87,6 +89,31 @@ export default async function SubscriptionSettingsPage() {
               ))}
             </div>
           </div>
+
+          <div className="bg-card border border-border rounded-xl p-5">
+            <p className="text-foreground font-medium mb-4">Usage</p>
+            <UsageBar icon={Users} label="Users" used={usage.userCount} limit={subscription.maxUsers} />
+            <div className="mt-4">
+              <UsageBar icon={Contact2} label="Leads" used={usage.leadCount} limit={subscription.maxLeads} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UsageBar({ icon: Icon, label, used, limit }) {
+  const percent = limit ? Math.min(100, Math.round((used / limit) * 100)) : null;
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1.5">
+        <span className="flex items-center gap-1.5 text-foreground"><Icon className="h-3.5 w-3.5 text-muted-foreground" /> {label}</span>
+        <span className="text-muted-foreground">{used.toLocaleString()} {limit ? `/ ${Number(limit).toLocaleString()}` : "(Unlimited)"}</span>
+      </div>
+      {percent != null && (
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${percent >= 100 ? "bg-red-500" : percent >= 90 ? "bg-amber-500" : "bg-indigo-500"}`} style={{ width: `${percent}%` }} />
         </div>
       )}
     </div>

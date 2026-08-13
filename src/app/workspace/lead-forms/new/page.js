@@ -15,7 +15,7 @@ export default async function NewLeadFormPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Create Lead Form</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Create Query Form</h1>
       <p className="text-muted-foreground text-sm mb-6">Build a public form — anyone with the link or QR code can submit it, no login required.</p>
       <LeadFormBuilder sources={sources} services={services} users={usersResult.users} />
     </div>

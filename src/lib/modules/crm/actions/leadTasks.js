@@ -5,7 +5,7 @@ import { createNotification } from "@/lib/actions/notifications";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 
 export async function listAllTasks(session, { includeCompleted = true } = {}) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const completedFilter = includeCompleted ? "" : "AND t.is_completed = 0";
   const [rows] = await pool.query(
     `SELECT t.*, l.name AS lead_name, l.lead_number, u.name AS assigned_name

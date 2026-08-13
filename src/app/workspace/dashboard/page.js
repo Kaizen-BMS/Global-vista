@@ -18,10 +18,14 @@ import {
   getEmployeesWithMissingDocuments, getPendingApprovalDocuments, getExpiringDocuments, getRecentlyUploadedDocuments,
 } from "@/lib/actions/employeeDocuments";
 import { getStorageUsage } from "@/lib/actions/storage";
+import { getEmployeePaymentDashboard, getSuperAdminPaymentDashboard } from "@/lib/modules/crm/actions/payments";
+import { isSuperAdmin } from "@/lib/helpers/permissions";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
 import RangeFilter from "@/components/shared/RangeFilter";
 import { CrmKpiGrid, OrgKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
+import { EmployeePaymentKpiGrid, SuperAdminPaymentKpiGrid, RecentPaymentsTable, CollectionsBreakdown } from "@/components/workspace/dashboard/PaymentWidgets";
 import { WorkspaceCrmChartsSection, WorkspaceOrgChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
 import {
   RecentLeadsTable, TeamPerformanceTable, RecentActivityTable,
@@ -40,8 +44,16 @@ export default async function DashboardPage({ searchParams }) {
   // inside the Promise.all.
   const systemSettings = await getSettingsByGroup(session, "system");
   const timezone = systemSettings.timezone || "UTC";
-  const range = resolveRange(rangeKey, sp?.from, sp?.to, { timeZone: timezone, quarter: sp?.quarter, qyear: sp?.qyear, years: sp?.years });
+  // 1-12, month the company's financial year starts in. No dedicated column
+  // for this — reuses the same crm_settings key/value store `timezone` and
+  // `date_format` already live in, so this needed no schema change. Not
+  // hardcoded to April: defaults to it only when the company hasn't set one,
+  // and is fully configurable in Settings > System.
+  const fyStartMonth = Number(systemSettings.fiscal_year_start_month) || 4;
+  const range = resolveRange(rangeKey, sp?.from, sp?.to, { timeZone: timezone, quarter: sp?.quarter, qyear: sp?.qyear, years: sp?.years, fyStartMonth });
   const canManageDocuments = await can(session, "employee_documents.manage");
+  const isAdmin = isSuperAdmin(session);
+  const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
 
   const [
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
@@ -49,6 +61,7 @@ export default async function DashboardPage({ searchParams }) {
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
     recentActivity, unreadNotifications, branding,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
+    employeePayments, superAdminPayments,
   ] = await Promise.all([
     getDashboardStats(session),
     getLeadDashboardStats(session),
@@ -73,6 +86,8 @@ export default async function DashboardPage({ searchParams }) {
     canManageDocuments ? getExpiringDocuments(session) : [],
     canManageDocuments ? getRecentlyUploadedDocuments(session) : [],
     getStorageUsage(session),
+    paymentsEnabled ? getEmployeePaymentDashboard(session) : null,
+    paymentsEnabled && isAdmin ? getSuperAdminPaymentDashboard(session) : null,
   ]);
 
   return (
@@ -87,6 +102,7 @@ export default async function DashboardPage({ searchParams }) {
           quarter={sp?.quarter ? Number(sp.quarter) : undefined} qyear={sp?.qyear ? Number(sp.qyear) : undefined} years={sp?.years ? Number(sp.years) : undefined}
           rangeStart={range.start} rangeEnd={range.end} timezone={timezone}
           basePath="/workspace/dashboard"
+          fyStartMonth={fyStartMonth}
         />
       </div>
 
@@ -99,6 +115,25 @@ export default async function DashboardPage({ searchParams }) {
           <TeamPerformanceTable team={teamPerformance} />
         </div>
       </section>
+
+      {paymentsEnabled && employeePayments && (
+        <section className="space-y-4">
+          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Payments</p>
+          <EmployeePaymentKpiGrid data={employeePayments} currency={branding.currency} />
+          {isAdmin && superAdminPayments && (
+            <>
+              <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide pt-2">Company-Wide (Super Admin)</p>
+              <SuperAdminPaymentKpiGrid data={superAdminPayments} currency={branding.currency} />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <CollectionsBreakdown title="Collections by Service" rows={superAdminPayments.byService} labelKey="service" currency={branding.currency} />
+                <CollectionsBreakdown title="Collections by Method" rows={superAdminPayments.byMethod} labelKey="method" currency={branding.currency} />
+                <CollectionsBreakdown title="Collections by Employee" rows={superAdminPayments.byEmployee} labelKey="employee" currency={branding.currency} />
+              </div>
+            </>
+          )}
+          <RecentPaymentsTable payments={employeePayments.recentPayments} timezone={timezone} />
+        </section>
+      )}
 
       <section className="space-y-4">
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>

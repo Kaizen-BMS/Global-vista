@@ -16,6 +16,18 @@ export async function getEnabledModuleSlugs(companyId) {
 export async function isModuleEnabledForCompany(companyId, slug) {
   return (await getEnabledModuleSlugs(companyId)).includes(slug);
 }
+
+/** Server-side module gate for a specific feature (e.g. "payments") — the
+ * real enforcement boundary. Hiding a nav link or a tab is UX only; this is
+ * what actually blocks the API/page when a company's plan doesn't include
+ * the module, independent of whatever permissions the user's role has. */
+export async function assertModuleEnabled(companyId, slug) {
+  if (!(await isModuleEnabledForCompany(companyId, slug))) {
+    const e = new Error(`This feature isn't included in your company's current plan.`);
+    e.status = 403;
+    throw e;
+  }
+}
 export async function getSubscriptionState(companyId) {
   const [[sub]] = await pool.query(
     `SELECT cs.*, p.name AS plan_name FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
@@ -37,12 +49,8 @@ export async function getSubscriptionState(companyId) {
  * client-state requirement this exists to satisfy.
  */
 export async function getSubscriptionDetails(companyId) {
-  // plans has no max_leads column (verified against live schema) — lead
-  // limits are explicitly optional per spec ("if the existing architecture
-  // supports it"), and it doesn't yet, so this reports what's real rather
-  // than inventing a limit that isn't actually enforced anywhere.
   const [[sub]] = await pool.query(
-    `SELECT cs.*, p.name AS plan_name, p.max_storage_mb, p.max_users
+    `SELECT cs.*, p.name AS plan_name, p.price, p.currency, p.trial_days, p.max_storage_mb, p.max_users, p.max_leads
      FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
      WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
     [companyId]
@@ -61,12 +69,49 @@ export async function getSubscriptionDetails(companyId) {
     state,
     subscriptionId: sub.id,
     planName: sub.plan_name,
+    price: sub.price,
+    currency: sub.currency,
+    trialDays: sub.trial_days,
     maxStorageMb: sub.max_storage_mb,
     maxUsers: sub.max_users,
+    maxLeads: sub.max_leads,
     startsAt: sub.starts_at,
     endsAt: sub.ends_at,
     daysRemaining,
+    isTrial: sub.status === "trial",
   };
+}
+
+/**
+ * Server-side, pre-create gate for the leads.max_leads plan limit — mirrors
+ * enforceStorageLimit's shape exactly (same null-means-unlimited convention,
+ * same "count what's actually there" approach rather than trusting a cached
+ * counter). Applies to every company on every lead creation — not just
+ * newly registered ones — since it's evaluated fresh against the company's
+ * current subscription every time, not seeded once at signup.
+ */
+export async function enforceLeadLimit(companyId) {
+  const [[plan]] = await pool.query(
+    `SELECT p.max_leads FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  if (!plan?.max_leads) return; // no subscription row, or unlimited
+
+  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM leads WHERE company_id = ? AND is_deleted = 0`, [companyId]);
+  if (count >= plan.max_leads) {
+    const e = new Error(`This plan's lead limit (${plan.max_leads}) has been reached. Upgrade the plan to add more leads.`);
+    e.status = 403;
+    throw e;
+  }
+}
+
+/** Real counts, computed fresh — same "count what's actually there" pattern
+ * as enforceStorageLimit/enforceLeadLimit, not a cached/stale counter. */
+export async function getUsageCounts(companyId) {
+  const [[{ userCount }]] = await pool.query(`SELECT COUNT(*) AS userCount FROM users WHERE company_id = ? AND is_deleted = 0`, [companyId]);
+  const [[{ leadCount }]] = await pool.query(`SELECT COUNT(*) AS leadCount FROM leads WHERE company_id = ? AND is_deleted = 0`, [companyId]);
+  return { userCount, leadCount };
 }
 
 export async function getCurrentCompany(companyId) {

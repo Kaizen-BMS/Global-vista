@@ -5,6 +5,7 @@ import { createNotification } from "@/lib/actions/notifications";
 import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
+import { enforceLeadLimit } from "@/lib/platform/tenant";
 
 // Correlated subquery, not a JOIN: a lead can have more than one
 // lead_form_submissions row (a repeat submitter gets linked to their
@@ -27,7 +28,7 @@ function applyAssignedToFilter(where, params, assignedTo, session) {
 }
 
 export async function listDistinctTags(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT DISTINCT tags FROM leads l WHERE ${where} AND l.${NOT_DELETED} AND l.tags IS NOT NULL AND l.tags != ''`,
     params
@@ -56,7 +57,7 @@ export async function listLeads(session, {
   sort = "created_at", dir = "DESC",
   page = 1, pageSize = 20,
 } = {}) {
-  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere];
   const params = [...rlsParams];
 
@@ -107,7 +108,7 @@ export async function listLeadsForExport(session, {
   priority = null, assignedTo = null, country = null, tag = null,
   createdFrom = null, createdTo = null,
 } = {}) {
-  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere];
   const params = [...rlsParams];
   if (status) { where.push("l.status = ?"); params.push(status); }
@@ -141,7 +142,7 @@ export async function listLeadsForExport(session, {
 }
 
 export async function listLeadsForKanban(session, { search = null, assignedTo = null, priority = null } = {}) {
-  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere, "l.stage NOT IN (?)"];
   const params = [...rlsParams, ["Lost", "Cancelled", "Duplicate"]];
   applyAssignedToFilter(where, params, assignedTo, session);
@@ -162,7 +163,7 @@ export async function listLeadsForKanban(session, { search = null, assignedTo = 
 }
 
 export async function getLeadById(session, id) {
-  const { where: rlsWhere, params: rlsParams } = getVisibleLeadFilter(session);
+  const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
             dup.name AS duplicate_of_name, dup.lead_number AS duplicate_of_number,
@@ -197,6 +198,10 @@ export async function claimLead(session, id, userId) {
     throw e;
   }
   const [[lead]] = await pool.query(`SELECT name, lead_number FROM leads WHERE id = ?`, [id]);
+  await pool.query(
+    `INSERT INTO lead_assignment_history (lead_id, assigned_from, assigned_to, assigned_by) VALUES (?, NULL, ?, ?)`,
+    [id, userId, userId]
+  );
   await logActivity({
     userId, module: "leads", action: "claim", entityType: "lead", entityId: id, companyId: session.company_id,
     description: `${session.name} claimed lead ${lead?.name || `#${id}`}${lead?.lead_number ? ` (${lead.lead_number})` : ""}`,
@@ -215,6 +220,7 @@ export async function claimLead(session, id, userId) {
 export async function releaseLead(session, id, userId, { force = false } = {}) {
   const ownershipClause = force ? "assigned_to IS NOT NULL" : "assigned_to = ?";
   const ownershipParams = force ? [] : [userId];
+  const [[before]] = await pool.query(`SELECT assigned_to, name, lead_number FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
   const [result] = await pool.query(
     `UPDATE leads SET assigned_to = NULL, status = IF(status = 'Assigned', 'New', status), updated_by = ?
      WHERE id = ? AND company_id = ? AND ${ownershipClause} AND ${NOT_DELETED}`,
@@ -225,15 +231,29 @@ export async function releaseLead(session, id, userId, { force = false } = {}) {
     e.status = 409;
     throw e;
   }
-  const [[lead]] = await pool.query(`SELECT name, lead_number FROM leads WHERE id = ?`, [id]);
   await logActivity({
     userId, module: "leads", action: "release", entityType: "lead", entityId: id, companyId: session.company_id,
-    description: `${session.name} released lead ${lead?.name || `#${id}`}${lead?.lead_number ? ` (${lead.lead_number})` : ""} back to the unassigned pool`,
+    description: `${session.name} released lead ${before?.name || `#${id}`}${before?.lead_number ? ` (${before.lead_number})` : ""} back to the unassigned pool`,
   });
+  // Only relevant on a forced release — a manager releasing someone ELSE's
+  // lead. A self-release has nothing to notify (the actor already knows).
+  // lead_assignment_history has no row for "released" (assigned_to is
+  // NOT NULL there — it only models "assigned to someone"), so this
+  // notification plus the activity_logs entry above are the release audit
+  // trail; the claim side is separately recorded in lead_assignment_history.
+  if (force && before?.assigned_to && before.assigned_to !== userId) {
+    await createNotification(session.company_id, before.assigned_to, {
+      title: "A lead was released from you",
+      message: `${session.name} released ${before.name || `lead #${id}`}${before.lead_number ? ` (${before.lead_number})` : ""} back to the unassigned pool`,
+      type: "lead_released",
+      link: `/workspace/lead-management/${id}`,
+    });
+  }
   return getLeadById(session, id);
 }
 
 export async function createLead(session, data, createdBy) {
+  await enforceLeadLimit(session.company_id);
   const duplicate = await findDuplicateLead(session.company_id, { phone: data.phone, email: data.email });
   const leadNumber = await generateLeadNumber();
 

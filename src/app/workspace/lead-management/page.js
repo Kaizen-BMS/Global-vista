@@ -7,6 +7,7 @@ import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadFilters from "@/components/crm/leads/LeadFilters";
+import AssignedToQuickTabs from "@/components/crm/leads/AssignedToQuickTabs";
 import LeadsTable from "@/components/crm/leads/LeadsTable";
 import LeadViewToggle from "@/components/crm/leads/LeadViewToggle";
 import Pagination from "@/components/shared/Pagination";
@@ -54,6 +55,7 @@ export default async function LeadManagementPage({ searchParams }) {
         </div>
       </div>
 
+      <AssignedToQuickTabs />
       <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} />
       <LeadsTable
         leads={result.leads}

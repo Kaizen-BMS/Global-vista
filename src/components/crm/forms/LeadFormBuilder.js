@@ -110,7 +110,8 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
         </section>
 
         <section className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-foreground font-medium">Lead Defaults</p>
+          <p className="text-foreground font-medium">Lead Routing</p>
+          <p className="text-muted-foreground text-xs -mt-2">How every lead created by this form gets classified and (optionally) assigned. This is routing configuration for the form, not a preview lead.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Lead Source *" hint="Required — leads must have a source.">
               <select required className={inputClass} value={form.defaultLeadSourceId} onChange={(e) => setField("defaultLeadSourceId", e.target.value)}>

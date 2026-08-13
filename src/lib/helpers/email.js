@@ -52,9 +52,13 @@ function wrap({ title, bodyFn, branding }) {
 export async function sendWelcomeEmail({ to, userId, name, email, tempPassword, roleName, createdBy, companyId }) {
   const loginUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "")}/login`;
   const branding = await getBranding(companyId);
+  // tempPassword is null for self-service registrations (the registrant set
+  // their own password and already knows it) — the temp-password line only
+  // makes sense for operator-provisioned accounts, where a real one exists.
+  const passwordLine = tempPassword ? `Temp password: ${tempPassword}<br/>` : "";
   const html = wrap({
     title: `Welcome, ${name}`,
-    bodyFn: (color) => `<p>Email: ${email}<br/>Temp password: ${tempPassword}<br/>Role: ${roleName}</p><a href="${loginUrl}" style="color:${color};">Log In</a>`,
+    bodyFn: (color) => `<p>Email: ${email}<br/>${passwordLine}Role: ${roleName}</p><a href="${loginUrl}" style="color:${color};">Log In</a>`,
     branding,
   });
   return send({ to, userId, subject: "Welcome", html, template: "welcome", createdBy });

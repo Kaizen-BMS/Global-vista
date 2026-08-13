@@ -5,12 +5,13 @@ import { getSettingsByGroup, updateSettings } from "@/lib/actions/settings";
 
 export async function getCompanyBranding(session) {
   const [[company]] = await pool.query(
-    `SELECT id, name, logo_url, favicon_url, primary_color, secondary_color, website, contact_email, contact_phone, address FROM companies WHERE id=?`,
+    `SELECT id, name, logo_url, favicon_url, primary_color, secondary_color, website, contact_email, contact_phone, address, currency FROM companies WHERE id=?`,
     [session.company_id]
   );
   const extended = await getSettingsByGroup(session, "branding");
   return {
     name: company?.name || "",
+    currency: company?.currency || "INR",
     logoUrl: company?.logo_url || "",
     faviconUrl: company?.favicon_url || "",
     primaryColor: company?.primary_color || "#4f46e5",

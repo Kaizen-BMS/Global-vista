@@ -109,6 +109,10 @@ export async function submitPublicLeadForm(form, rawData, meta) {
       });
     }
   } else {
+    // createdBy = form.created_by, never the submitter or anyone browsing
+    // the public page — the resulting lead's attribution must trace back to
+    // whoever built/owns the Query Form, resolved server-side from the
+    // form row itself, not from anything the public request could supply.
     leadId = await createLead(pseudoSession, {
       name: rawData.name, phone: rawData.phone, email: rawData.email || null,
       country: rawData.country || null, state: rawData.state || null, city: rawData.city || null,
@@ -116,7 +120,7 @@ export async function submitPublicLeadForm(form, rawData, meta) {
       campaign: form.campaign || meta.utm?.campaign || null,
       tags: form.default_tags || null,
       remarks: rawData.message || null,
-    }, null);
+    }, form.created_by || null);
 
     if (form.default_assigned_to) {
       await assignLead(pseudoSession, leadId, form.default_assigned_to, null).catch(() => {});

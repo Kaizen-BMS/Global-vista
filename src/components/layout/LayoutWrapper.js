@@ -16,12 +16,17 @@ export default function LayoutWrapper({ children }) {
   // marketing nav, so it's excluded the same way the app itself is.
   // /forms/[slug] is a tenant's own public lead-capture page — it must
   // show THAT company's branding, not Global Vista's marketing nav.
+  // /register (AuthFlow-style full-viewport shell) owns its entire page
+  // too. /platform-home (the KaizenBMS Platform SaaS landing page,
+  // deliberately distinct from Global Vista Educators' identity) is already
+  // covered by the "/platform" prefix check above.
   const isApplication =
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/platform") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/register") ||
     pathname.startsWith("/crm") ||
     pathname.startsWith("/forms");
 

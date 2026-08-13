@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 
-const TABS = ["Overview", "Timeline", "Notes", "Follow Ups", "Tasks", "Documents"];
+const DEFAULT_TABS = ["Overview", "Timeline", "Notes", "Follow Ups", "Tasks", "Documents", "Payments"];
 
-export default function LeadTabs({ children }) {
+export default function LeadTabs({ children, tabs = DEFAULT_TABS }) {
   const [active, setActive] = useState(0);
   return (
     <div>
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1 border-b border-border">
-        {TABS.map((tab, i) => (
+        {tabs.map((tab, i) => (
           <button
             key={tab}
             onClick={() => setActive(i)}

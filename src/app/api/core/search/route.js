@@ -13,7 +13,7 @@ export const GET = withErrorHandling(async (request) => {
   const groups = [];
 
   if (await can(session, "leads.view")) {
-    const { where, params } = getVisibleLeadFilter(session);
+    const { where, params } = await getVisibleLeadFilter(session);
     const [leads] = await pool.query(
       `SELECT id, name, phone, email, lead_number, stage FROM leads l
        WHERE ${where} AND l.is_deleted=0 AND (l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?)

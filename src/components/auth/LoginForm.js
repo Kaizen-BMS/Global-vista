@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Mail, Lock, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
+import Link from "next/link";
 import { apiFetch } from "@/components/shared/apiClient";
 import FloatingInput from "@/components/auth/FloatingInput";
 import OAuthButtons from "@/components/auth/OAuthButtons";
@@ -91,7 +92,7 @@ export default function LoginForm({ onNavigate }) {
           </form>
 
           <p className="text-center text-white/35 text-xs mt-8">
-            Don&rsquo;t have an account? <span className="text-white/60">Contact your administrator.</span>
+            Don&rsquo;t have an account? <Link href="/register" className="text-indigo-400 hover:text-indigo-300">Start your free trial</Link>
           </p>
         </motion.div>
       )}

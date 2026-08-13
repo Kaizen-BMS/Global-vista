@@ -8,7 +8,7 @@ import FloatingPanel from "@/components/shared/FloatingPanel";
 const PLATFORM_ITEMS = [{ href: "/platform/companies", label: "New Company", icon: "Building2" }];
 const WORKSPACE_ITEMS = [
   { href: "/workspace/lead-management/new", label: "New Lead", icon: "Contact2" },
-  { href: "/workspace/lead-forms/new", label: "New Lead Form", icon: "ClipboardList" },
+  { href: "/workspace/lead-forms/new", label: "New Query Form", icon: "ClipboardList" },
   { href: "/workspace/users", label: "New User", icon: "Users" },
 ];
 

@@ -1,23 +1,28 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/helpers/dateFormat";
-import { QUARTER_LABELS, YEAR_RANGE_OPTIONS, currentQuarter, quarterYearOptions } from "@/lib/helpers/dateRange";
+import { QUARTER_LABELS, YEAR_RANGE_OPTIONS, currentQuarter, quarterYearOptions, quarterLabelForFY, financialYearOptions } from "@/lib/helpers/dateRange";
 
-const RANGES = [
+const BASE_RANGES = [
   { key: "today", label: "Today" },
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
   { key: "quarter", label: "Quarter" },
-  { key: "year", label: "Year" },
 ];
+const FY_RANGE = { key: "financial-year", label: "Financial Year" };
+const YEAR_RANGE = { key: "year", label: "Year" };
 
 export default function RangeFilter({
   active, from, to, quarter, qyear, years,
   rangeStart, rangeEnd, timezone = "UTC", basePath = "/platform",
+  fyStartMonth, // only passed where "Financial Year" is meaningful (a single company) — omitted, Quarter stays a plain calendar quarter (unchanged behavior for every other caller of this shared component, e.g. the Platform dashboard).
 }) {
   const router = useRouter();
-  const current = currentQuarter(timezone);
-  const yearOptions = quarterYearOptions(timezone);
+  const fiscalMode = Number.isInteger(fyStartMonth);
+  const fyMonth = fiscalMode ? fyStartMonth : 1;
+  const current = currentQuarter(timezone, fyMonth);
+  const yearOptions = quarterYearOptions(timezone, 2, fyMonth);
+  const RANGES = fiscalMode ? [...BASE_RANGES, FY_RANGE, YEAR_RANGE] : [...BASE_RANGES, YEAR_RANGE];
 
   function go(params) {
     const usp = new URLSearchParams(params);
@@ -26,6 +31,7 @@ export default function RangeFilter({
 
   function selectPreset(key) {
     if (key === "quarter") go({ range: "quarter", quarter: String(quarter || current.quarter), qyear: String(qyear || current.year) });
+    else if (key === "financial-year") go({ range: "financial-year", qyear: String(qyear || current.year) });
     else if (key === "year") go({ range: "year", years: String(years || 1) });
     else go({ range: key });
   }
@@ -53,19 +59,29 @@ export default function RangeFilter({
             <select
               value={quarter || current.quarter}
               onChange={(e) => go({ range: "quarter", quarter: e.target.value, qyear: String(qyear || current.year) })}
-              title={QUARTER_LABELS[quarter || current.quarter]}
+              title={fiscalMode ? quarterLabelForFY(quarter || current.quarter, fyMonth) : QUARTER_LABELS[quarter || current.quarter]}
               className="px-2.5 py-1.5 rounded-md bg-card border border-border text-foreground text-xs cursor-pointer"
             >
-              {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q} ({QUARTER_LABELS[q]})</option>)}
+              {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q} ({fiscalMode ? quarterLabelForFY(q, fyMonth) : QUARTER_LABELS[q]})</option>)}
             </select>
             <select
               value={qyear || current.year}
               onChange={(e) => go({ range: "quarter", quarter: String(quarter || current.quarter), qyear: e.target.value })}
               className="px-2.5 py-1.5 rounded-md bg-card border border-border text-foreground text-xs cursor-pointer"
             >
-              {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+              {yearOptions.map((y) => <option key={y} value={y}>{fiscalMode ? `FY-${y}` : y}</option>)}
             </select>
           </div>
+        )}
+
+        {active === "financial-year" && (
+          <select
+            value={qyear || current.year}
+            onChange={(e) => go({ range: "financial-year", qyear: e.target.value })}
+            className="px-2.5 py-1.5 rounded-md bg-card border border-border text-foreground text-xs cursor-pointer"
+          >
+            {financialYearOptions(timezone, fyMonth).map((y) => <option key={y} value={y}>FY-{y}</option>)}
+          </select>
         )}
 
         {active === "year" && (

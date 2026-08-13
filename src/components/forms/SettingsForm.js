@@ -3,6 +3,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import TimezoneSelect from "@/components/shared/TimezoneSelect";
+import ImageUploadField from "@/components/shared/ImageUploadField";
 
 export default function SettingsForm({ group, fields, initialValues }) {
   const [values, setValues] = useState(initialValues || {}); const [saving, setSaving] = useState(false);
@@ -14,17 +16,25 @@ export default function SettingsForm({ group, fields, initialValues }) {
   return (
     <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 max-w-xl space-y-4">
       {fields.map((f) => (
-        <div key={f.key}>
-          <label className="block text-sm text-foreground mb-1">{f.label}</label>
-          {f.type === "select" ? (
-            <select value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
-              {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          ) : (
-            <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
-          )}
-          {f.hint && <p className="text-muted-foreground text-xs mt-1">{f.hint}</p>}
-        </div>
+        f.type === "image" ? (
+          <ImageUploadField key={f.key} label={f.label} hint={f.hint} value={values[f.key] ?? ""} onChange={(v) => setValues((val) => ({ ...val, [f.key]: v }))} uploadUrl={f.uploadUrl} category={f.category} />
+        ) : (
+          <div key={f.key}>
+            <label className="block text-sm text-foreground mb-1">{f.label}</label>
+            {f.type === "select" ? (
+              <select value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : f.type === "timezone-search" ? (
+              <TimezoneSelect value={values[f.key] ?? ""} onChange={(z) => setValues((v) => ({ ...v, [f.key]: z }))} />
+            ) : f.type === "textarea" ? (
+              <textarea rows={f.rows || 3} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+            ) : (
+              <input type={f.type || "text"} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+            )}
+            {f.hint && <p className="text-muted-foreground text-xs mt-1">{f.hint}</p>}
+          </div>
+        )
       ))}
       <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save</button>
     </form>

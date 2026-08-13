@@ -9,6 +9,7 @@ import AiSearchButton from "@/components/layout/AiSearchButton";
 import QuickCreateButton from "@/components/layout/QuickCreateButton";
 import UserMenu from "@/components/layout/UserMenu";
 import CommandPalette from "@/components/layout/CommandPalette";
+import LiveClock from "@/components/shared/LiveClock";
 
 export default function Topbar({ company, session }) {
   const { setOpen } = useMobileNav();
@@ -21,6 +22,8 @@ export default function Topbar({ company, session }) {
       </div>
       {company?.name && <p className="hidden lg:block text-muted-foreground text-xs truncate max-w-[220px]">{company.name}</p>}
       <div className="flex items-center gap-2.5 shrink-0">
+        <LiveClock />
+        <div className="w-px h-6 bg-border mx-0.5 hidden lg:block" />
         <AiSearchButton />
         <QuickCreateButton scope="workspace" />
         <ThemeToggle />

@@ -20,18 +20,18 @@ export default async function LeadFormsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Lead Forms</h1>
+          <h1 className="text-xl font-semibold text-foreground">Query Forms</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Public forms that turn into leads automatically — share the link, print the QR code, or embed it anywhere.</p>
         </div>
         {canCreate && (
           <Link href="/workspace/lead-forms/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">
-            <Plus className="h-4 w-4" /> Create Form
+            <Plus className="h-4 w-4" /> Create Query Form
           </Link>
         )}
       </div>
 
       {forms.length === 0 ? (
-        <EmptyState icon={Contact2} title="No lead forms yet" description="Create your first public form to start capturing leads without manual entry." />
+        <EmptyState icon={Contact2} title="No query forms yet" description="Create your first public form to start capturing leads without manual entry." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {forms.map((f) => (
@@ -44,9 +44,10 @@ export default async function LeadFormsPage() {
               <p className="text-muted-foreground text-xs mb-3">
                 Created by {f.created_by_name || "—"} · {formatDate(f.created_at, timezone)}
               </p>
-              <div className="flex items-center gap-4 text-muted-foreground text-xs">
+              <div className="flex items-center gap-3 text-muted-foreground text-xs flex-wrap">
                 <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> {f.view_count} views</span>
-                <span className="flex items-center gap-1"><ScanLine className="h-3.5 w-3.5" /> {f.submission_count} leads</span>
+                <span className="flex items-center gap-1"><ScanLine className="h-3.5 w-3.5" /> {f.submission_count} submissions</span>
+                <span>{f.leads_created_count} leads created</span>
                 <span>{f.conversion_rate}% conv.</span>
                 <ExternalLink className="h-3.5 w-3.5 ml-auto" />
               </div>

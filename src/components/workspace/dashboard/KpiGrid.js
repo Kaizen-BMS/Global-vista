@@ -40,11 +40,12 @@ function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
 export function CrmKpiGrid({ crm }) {
   const cards = [
     { label: "Total Leads", value: crm.totalLeads, icon: "contact", accent: "indigo", href: "/workspace/lead-management" },
-    { label: "New Leads", value: crm.newLeads, icon: "sparkles", accent: "blue", href: "/workspace/lead-management?status=New" },
+    { label: "Assigned to Me", value: crm.myLeads, icon: "users", accent: "blue", href: "/workspace/lead-management?assignedTo=me" },
+    { label: "Unassigned", value: crm.unassignedLeads, icon: "sparkles", accent: crm.unassignedLeads > 0 ? "yellow" : "neutral", href: "/workspace/lead-management?assignedTo=unassigned" },
     { label: "Today's Follow-ups", value: crm.todaysFollowups, icon: "calendar", accent: "yellow", href: "/workspace/followups" },
     { label: "Conversion Rate", value: `${crm.conversionRate}%`, icon: "trending", accent: "green", href: "/workspace/lead-management" },
   ];
-  return <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
+  return <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
 }
 
 export function OrgKpiGrid({ activeUsers, roles, lockedAccounts, org, anniversaryCount, unreadNotifications, recentLoginCount }) {

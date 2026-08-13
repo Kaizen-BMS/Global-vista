@@ -39,6 +39,12 @@ export function withErrorHandling(handler) {
       if (err.status === 404) return notFound(err.message);
       if (err.status === 400) return badRequest(err.message);
       if (err.code === "ER_DUP_ENTRY") return fail(describeDuplicateEntry(err.sqlMessage), 409);
+      // Any other explicit status (e.g. 409 for a duplicate payment
+      // reference or an already-claimed lead) still deserves its own
+      // message, not the generic 500 below — this previously fell through
+      // silently and only "worked" because a couple of callers happened to
+      // hardcode a matching client-side fallback string.
+      if (err.status) return fail(err.message, err.status);
       console.error("Unhandled API error:", err);
       return fail();
     }

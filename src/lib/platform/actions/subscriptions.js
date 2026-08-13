@@ -10,7 +10,7 @@ export async function listSubscriptions() {
     SELECT
       c.id AS company_id, c.name AS company_name, c.status AS company_status,
       cs.id AS subscription_id, cs.status AS subscription_status, cs.starts_at, cs.ends_at,
-      p.id AS plan_id, p.name AS plan_name, p.max_storage_mb, p.max_users,
+      p.id AS plan_id, p.name AS plan_name, p.max_storage_mb, p.max_users, p.max_leads,
       (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.is_deleted = 0) AS user_count,
       (SELECT COUNT(*) FROM leads l WHERE l.company_id = c.id AND l.is_deleted = 0) AS lead_count,
       COALESCE((SELECT SUM(file_size) FROM employee_documents ed WHERE ed.company_id = c.id AND ed.is_deleted = 0), 0) +
@@ -44,6 +44,70 @@ export async function listPlansForAdmin() {
   return rows;
 }
 
+export async function getPlanModuleIds(planId) {
+  const [rows] = await pool.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
+  return rows.map((r) => r.module_id);
+}
+
+/** One query for every plan's module assignments, grouped — avoids N+1 when
+ * rendering the Plans manager's module checklist for every plan at once. */
+export async function listAllPlanModules() {
+  const [rows] = await pool.query(`SELECT plan_id, module_id FROM plan_modules`);
+  const byPlan = {};
+  for (const r of rows) { (byPlan[r.plan_id] ||= []).push(r.module_id); }
+  return byPlan;
+}
+
+/** Full reconciliation, not additive — Platform Operator explicitly setting
+ * a plan's module list means exactly that list, nothing more/less. */
+export async function setPlanModules(planId, moduleIds, operatorId) {
+  const ids = Array.isArray(moduleIds) ? moduleIds.map(Number).filter(Boolean) : [];
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(`DELETE FROM plan_modules WHERE plan_id = ?`, [planId]);
+    if (ids.length) {
+      await conn.query(`INSERT INTO plan_modules (plan_id, module_id) VALUES ?`, [ids.map((id) => [planId, id])]);
+    }
+    await conn.commit();
+  } catch (err) { await conn.rollback(); throw err; } finally { conn.release(); }
+  await logActivity({ userId: operatorId, module: "platform", action: "plan_modules_updated", entityType: "plan", entityId: planId, description: `Set plan modules (${ids.length})` }).catch(() => {});
+}
+
+/**
+ * Reconciles a company's `company_modules` to exactly match a plan's
+ * `plan_modules` — enables what the plan grants, disables what it doesn't.
+ * Used at provisioning (new company) and on an explicit plan change
+ * (existing company) — both deliberate, operator-or-registrant-initiated
+ * moments, never a silent background sweep. Modules with no plan_modules
+ * row at all (plan_modules empty) mean "not module-gated for this plan" —
+ * left alone, so a plan that hasn't configured module assignment yet
+ * doesn't suddenly strip every company on it down to nothing.
+ */
+async function syncCompanyModulesToPlan(conn, companyId, planId, actorId) {
+  const [planModuleRows] = await conn.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
+  if (planModuleRows.length === 0) return; // plan has no explicit module list configured — don't touch company_modules
+  const grantedIds = planModuleRows.map((r) => r.module_id);
+
+  const [existingRows] = await conn.query(`SELECT module_id, enabled FROM company_modules WHERE company_id = ?`, [companyId]);
+  const existingIds = new Set(existingRows.map((r) => r.module_id));
+
+  for (const moduleId of grantedIds) {
+    if (existingIds.has(moduleId)) {
+      await conn.query(`UPDATE company_modules SET enabled = 1, licensed = 1 WHERE company_id = ? AND module_id = ?`, [companyId, moduleId]);
+    } else {
+      await conn.query(`INSERT INTO company_modules (company_id, module_id, enabled, licensed, enabled_by) VALUES (?, ?, 1, 1, ?)`, [companyId, moduleId, actorId || null]);
+    }
+  }
+  const grantedSet = new Set(grantedIds);
+  for (const row of existingRows) {
+    if (!grantedSet.has(row.module_id) && row.enabled) {
+      await conn.query(`UPDATE company_modules SET enabled = 0 WHERE company_id = ? AND module_id = ?`, [companyId, row.module_id]);
+    }
+  }
+}
+export { syncCompanyModulesToPlan };
+
 // Plan CRUD is platform-wide configuration, not tied to any one company —
 // logActivity requires a real company_id (by design, so tenant activity
 // logs can never leak a null/cross-tenant row), which genuinely doesn't
@@ -53,16 +117,23 @@ export async function listPlansForAdmin() {
 export async function createPlan(data) {
   const slug = data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const [result] = await pool.query(
-    `INSERT INTO plans (name, slug, billing_cycle, max_users, max_storage_mb, max_api_calls_per_day, status) VALUES (?,?,?,?,?,?,?)`,
-    [data.name, slug, data.billingCycle || "monthly", data.maxUsers || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
+    `INSERT INTO plans (name, slug, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      data.name, slug, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
+      data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
+    ]
   );
   return result.insertId;
 }
 
 export async function updatePlan(id, data) {
   await pool.query(
-    `UPDATE plans SET name=?, billing_cycle=?, max_users=?, max_storage_mb=?, max_api_calls_per_day=?, status=? WHERE id=?`,
-    [data.name, data.billingCycle || "monthly", data.maxUsers || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active", id]
+    `UPDATE plans SET name=?, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=? WHERE id=?`,
+    [
+      data.name, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
+      data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active", id,
+    ]
   );
 }
 
@@ -137,6 +208,7 @@ export async function changeSubscriptionPlan(companyId, newPlanId, operatorId) {
     await conn.beginTransaction();
     await conn.query(`UPDATE company_subscriptions SET plan_id=? WHERE id=?`, [newPlanId, sub.id]);
     await recordHistory(conn, sub.id, "plan_changed", sub.plan_id, newPlanId, operatorId);
+    await syncCompanyModulesToPlan(conn, companyId, newPlanId, operatorId);
     await conn.commit();
   } catch (err) { await conn.rollback(); throw err; } finally { conn.release(); }
 

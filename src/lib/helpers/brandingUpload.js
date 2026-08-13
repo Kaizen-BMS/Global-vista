@@ -19,6 +19,7 @@ const ALLOWED_MIME = {
 };
 const ALLOWED_CATEGORIES = new Set([
   "logo", "sidebar_logo", "favicon", "watermark", "login_logo", "email_logo", "website_logo", "background",
+  "upi_qr", // receive-only UPI QR — encodes a company's UPI ID, not a secret, same public-by-design reasoning as the rest of this list
 ]);
 
 export function isAllowedCategory(category) {

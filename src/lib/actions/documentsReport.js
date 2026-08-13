@@ -9,7 +9,7 @@ import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
  * Lead documents additionally respect RLS visibility.
  */
 export async function listAllDocuments(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [leadDocs] = await pool.query(
     `SELECT d.id, 'Lead' AS source, d.type, d.file_name, d.file_size, u.name AS uploaded_by_name, d.created_at,
             l.name AS related_to, l.lead_number AS related_number

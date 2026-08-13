@@ -4,7 +4,7 @@ import { NOT_DELETED } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 
 export async function getLeadDashboardStats(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [[leadCount]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where}`, params);
   const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='New' AND l.${NOT_DELETED} AND ${where}`, params);
   const [[converted]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='Converted' AND l.${NOT_DELETED} AND ${where}`, params);
@@ -13,18 +13,25 @@ export async function getLeadDashboardStats(session) {
      WHERE ${where} AND DATE(f.scheduled_at) = CURDATE() AND f.status = 'Scheduled'`,
     params
   );
+  // Same visible pool, split by ownership — "how much of what I can see is
+  // mine to work vs still up for grabs," the same distinction the Leads
+  // list's quick tabs (Assigned to Me / Unassigned) surface.
+  const [[myLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.assigned_to = ?`, [...params, session.id]);
+  const [[unassignedLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.assigned_to IS NULL`, params);
   const conversionRate = leadCount.total > 0 ? Math.round((converted.total / leadCount.total) * 1000) / 10 : 0;
   return {
     totalLeads: leadCount.total,
     newLeads: newLeads.total,
     converted: converted.total,
     todaysFollowups: todaysFollowups.total,
+    myLeads: myLeads.total,
+    unassignedLeads: unassignedLeads.total,
     conversionRate,
   };
 }
 
 export async function getLeadsBySource(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT s.name AS source, COUNT(l.id) AS count
      FROM lead_sources s
@@ -37,7 +44,7 @@ export async function getLeadsBySource(session) {
 }
 
 export async function getLeadsByService(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT sv.name AS service, COUNT(l.id) AS count
      FROM services sv
@@ -50,7 +57,7 @@ export async function getLeadsByService(session) {
 }
 
 export async function getLeadsByStage(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT l.stage, COUNT(*) AS count FROM leads l WHERE l.${NOT_DELETED} AND ${where} GROUP BY l.stage`,
     params
@@ -59,7 +66,7 @@ export async function getLeadsByStage(session) {
 }
 
 export async function getMonthlyLeadTrend(session, range) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   if (range?.start && range?.end) {
     const [rows] = await pool.query(
       `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS month, COUNT(*) AS count
@@ -79,7 +86,7 @@ export async function getMonthlyLeadTrend(session, range) {
 }
 
 export async function getTeamPerformance(session) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT u.id, u.name, COUNT(l.id) AS total_leads, SUM(l.status='Converted') AS converted
      FROM users u LEFT JOIN leads l ON l.assigned_to = u.id AND l.${NOT_DELETED} AND ${where}
@@ -91,7 +98,7 @@ export async function getTeamPerformance(session) {
 }
 
 export async function getRecentLeads(session, limit = 6) {
-  const { where, params } = getVisibleLeadFilter(session);
+  const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
     `SELECT l.id, l.name, l.status, s.name AS source_name, sv.name AS service_name
      FROM leads l

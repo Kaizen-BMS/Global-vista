@@ -126,8 +126,19 @@ export async function provisionCompany(input, operatorId) {
   const {
     companyName,
     shortName,
+    companyEmail = null,
+    companyPhone = null,
+    companyAddress = null,
+    companyCountry = null,
+    companyWebsite = null,
     adminName,
     adminEmail,
+    adminPhone = null,
+    // Set only by public self-registration, where the registrant picks
+    // their own password. Operator-driven provisioning (the Platform
+    // Console wizard) never passes this — it keeps generating a random
+    // temp password + must_change_password + welcome email, unchanged.
+    adminPassword = null,
     planId,
     moduleIds = [],
     endsAt = null,
@@ -151,6 +162,11 @@ export async function provisionCompany(input, operatorId) {
   }
   if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
     const e = new Error("A valid admin email is required.");
+    e.status = 400;
+    throw e;
+  }
+  if (adminPassword != null && adminPassword.length < 8) {
+    const e = new Error("Password must be at least 8 characters.");
     e.status = 400;
     throw e;
   }
@@ -195,9 +211,9 @@ export async function provisionCompany(input, operatorId) {
     slug = await getUniqueCompanySlug(conn, baseSlug);
 
     const [companyResult] = await conn.query(
-      `INSERT INTO companies (name, short_name, slug, status, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [companyName, shortName || null, slug, "active", operatorId, operatorId]
+      `INSERT INTO companies (name, short_name, slug, status, country, contact_email, contact_phone, address, website, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyName, shortName || null, slug, "active", companyCountry || null, companyEmail || null, companyPhone || null, companyAddress || null, companyWebsite || null, operatorId, operatorId]
     );
     companyId = companyResult.insertId;
     stepLog.record("company_created", "success");
@@ -427,16 +443,21 @@ export async function provisionCompany(input, operatorId) {
     // dependency order preserved. users.email is UNIQUE (already
     // checked above, inside this same transaction).
     // -------------------------------------------------------------
-    tempPassword = Math.random().toString(36).slice(-10) + "A1!";
-    const passwordHash = await hashPassword(tempPassword);
+    // Self-service registration supplies its own password (the registrant
+    // typed it and confirmed it) — no temp password, no forced change.
+    // Operator-driven provisioning keeps the original random-password +
+    // must-change-password + welcome-email flow, unchanged.
+    const usesOwnPassword = !!adminPassword;
+    tempPassword = usesOwnPassword ? null : Math.random().toString(36).slice(-10) + "A1!";
+    const passwordHash = await hashPassword(usesOwnPassword ? adminPassword : tempPassword);
     const employeeId = `${slug.toUpperCase()}-001`;
 
     [adminResult] = await conn.query(
       `INSERT INTO users (
         company_id, employee_id, role_id, branch_id, department_id,
-        name, email, password_hash, is_super_admin, must_change_password,
+        name, email, phone, password_hash, is_super_admin, must_change_password,
         created_by, updated_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         employeeId,
@@ -445,9 +466,10 @@ export async function provisionCompany(input, operatorId) {
         departmentId,
         adminName,
         adminEmail.trim().toLowerCase(),
+        adminPhone || null,
         passwordHash,
         1,
-        1,
+        usesOwnPassword ? 0 : 1,
         operatorId,
         operatorId,
       ]
@@ -455,37 +477,23 @@ export async function provisionCompany(input, operatorId) {
     stepLog.record("admin_created", "success");
 
     // -------------------------------------------------------------
-    // Enable Modules
-    // company_modules columns used: company_id, module_id, enabled,
-    // licensed, enabled_by — 5 columns; enabled and licensed are
-    // hardcoded literals (1, 1), so only 3 placeholders/3 params are
-    // needed for company_id, module_id, enabled_by. Correct as-is.
-    // -------------------------------------------------------------
-    if (Array.isArray(moduleIds) && moduleIds.length) {
-      for (const moduleId of moduleIds) {
-        const [[existingModule]] = await conn.query(
-          `SELECT id FROM company_modules WHERE company_id=? AND module_id=? LIMIT 1`,
-          [companyId, moduleId]
-        );
-        if (!existingModule) {
-          await conn.query(
-            `INSERT INTO company_modules (company_id, module_id, enabled, licensed, enabled_by)
-             VALUES (?, ?, 1, 1, ?)`,
-            [companyId, moduleId, operatorId]
-          );
-        }
-      }
-    }
-    stepLog.record("modules_enabled", "success");
-
-    // -------------------------------------------------------------
     // Assign Subscription
-    // starts_at is always "today" (provisioning IS the start), status
-    // and ends_at are operator-configurable from the creation wizard —
-    // ends_at stays NULL (no expiry) unless explicitly set, preserving
-    // the pre-existing default behavior for callers that don't pass one.
+    // starts_at is always "today" (provisioning IS the start). If the
+    // caller didn't pass an explicit endsAt and this is a trial
+    // subscription, the expiry is computed from the SELECTED PLAN's own
+    // trial_days column — never a hardcoded day count. Changing a plan's
+    // trial_days in Platform Settings changes what future registrations
+    // get automatically; it does not touch any already-created subscription
+    // (this only runs once, at creation).
     // -------------------------------------------------------------
+    let resolvedEndsAt = endsAt || null;
+    let planRow = null;
     if (planId) {
+      [[planRow]] = await conn.query(`SELECT id, trial_days FROM plans WHERE id = ?`, [planId]);
+      if (!resolvedEndsAt && subscriptionStatus === "trial" && planRow?.trial_days) {
+        const trialEnd = new Date(Date.now() + planRow.trial_days * 86400000);
+        resolvedEndsAt = trialEnd.toISOString().slice(0, 10);
+      }
       const [[existingSubscription]] = await conn.query(
         `SELECT id FROM company_subscriptions WHERE company_id=? LIMIT 1`,
         [companyId]
@@ -494,11 +502,38 @@ export async function provisionCompany(input, operatorId) {
         await conn.query(
           `INSERT INTO company_subscriptions (company_id, plan_id, status, starts_at, ends_at)
            VALUES (?, ?, ?, CURDATE(), ?)`,
-          [companyId, planId, subscriptionStatus, endsAt || null]
+          [companyId, planId, subscriptionStatus, resolvedEndsAt]
         );
       }
     }
     stepLog.record("subscription_created", "success");
+
+    // -------------------------------------------------------------
+    // Enable Modules — explicit moduleIds (operator picked them in the
+    // creation wizard) take priority; otherwise fall back to whatever
+    // the selected plan grants via plan_modules, so a public registrant
+    // (who never sees a module picker at all) gets exactly what their
+    // chosen plan includes.
+    // -------------------------------------------------------------
+    let effectiveModuleIds = Array.isArray(moduleIds) && moduleIds.length ? moduleIds.map(Number) : [];
+    if (effectiveModuleIds.length === 0 && planId) {
+      const [planModuleRows] = await conn.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
+      effectiveModuleIds = planModuleRows.map((r) => r.module_id);
+    }
+    for (const moduleId of effectiveModuleIds) {
+      const [[existingModule]] = await conn.query(
+        `SELECT id FROM company_modules WHERE company_id=? AND module_id=? LIMIT 1`,
+        [companyId, moduleId]
+      );
+      if (!existingModule) {
+        await conn.query(
+          `INSERT INTO company_modules (company_id, module_id, enabled, licensed, enabled_by)
+           VALUES (?, ?, 1, 1, ?)`,
+          [companyId, moduleId, operatorId]
+        );
+      }
+    }
+    stepLog.record("modules_enabled", "success");
 
     // -------------------------------------------------------------
     // COMMIT — everything above this line is atomic. Nothing below
@@ -539,11 +574,17 @@ export async function provisionCompany(input, operatorId) {
     // reported as a provisioning failure.
     // -------------------------------------------------------------
     try {
-      const [operators] = await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0 AND id != ?`, [operatorId]);
+      // `id != ?` with operatorId=NULL (public self-registration — no
+      // operator initiated this) would match zero rows under SQL's
+      // three-valued NULL logic, silently notifying nobody. Only excluding
+      // the operator when one actually exists fixes that.
+      const [operators] = operatorId
+        ? await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0 AND id != ?`, [operatorId])
+        : await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0`);
       for (const op of operators) {
         await createNotification(op.company_id, op.id, {
-          title: "Company provisioned",
-          message: `${companyName} was provisioned`,
+          title: operatorId ? "Company provisioned" : "New company self-registered",
+          message: `${companyName} ${operatorId ? "was provisioned" : "registered itself via the public signup page"}`,
           type: "company_provisioned",
           link: `/platform/companies/${companyId}`,
         });
@@ -567,6 +608,7 @@ export async function provisionCompany(input, operatorId) {
         tempPassword,
         roleName: role?.name || "Company Admin",
         createdBy: operatorId,
+        companyId,
       }).catch((err) => {
         console.error("Welcome email failed:", err.message);
       });

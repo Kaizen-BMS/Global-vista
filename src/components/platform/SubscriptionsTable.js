@@ -166,7 +166,7 @@ export default function SubscriptionsTable({ subscriptions, plans, timezone }) {
               </td>
               <td className="px-4 py-3 text-foreground/90">{formatBytes(row.storage_bytes)}{row.max_storage_mb ? ` / ${formatBytes(row.max_storage_mb * 1024 * 1024)}` : ""}</td>
               <td className="px-4 py-3 text-foreground/90">{row.user_count}{row.max_users ? ` / ${row.max_users}` : ""}</td>
-              <td className="px-4 py-3 text-foreground/90">{row.lead_count}</td>
+              <td className="px-4 py-3 text-foreground/90">{row.lead_count}{row.max_leads ? ` / ${row.max_leads}` : ""}</td>
               <td className="px-4 py-3"><RowActions row={row} plans={plans} onChanged={onChanged} /></td>
             </tr>
           ))}

@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { can } from "@/lib/helpers/permissions";
+import { can, isSuperAdmin } from "@/lib/helpers/permissions";
 import { getLeadForm } from "@/lib/modules/crm/actions/leadForms";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
@@ -16,6 +16,10 @@ export default async function EditLeadFormPage({ params }) {
     getLeadForm(session, id), listLeadSources(session), listServices(session), listUsers(session, { status: "active", pageSize: 100 }),
   ]);
   if (!form) return <WorkspaceNotFound />;
+  // Same creator-or-Super-Admin rule the PUT/DELETE API enforces — this page
+  // gate is UX only, the API route is the real authorization boundary.
+  const isOwner = form.created_by && Number(form.created_by) === Number(session.id);
+  if (!isOwner && !isSuperAdmin(session)) return <ForbiddenState />;
 
   const initialData = {
     name: form.name, description: form.description || "", fields: form.fields_config,
@@ -28,7 +32,7 @@ export default async function EditLeadFormPage({ params }) {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Edit Lead Form</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Edit Query Form</h1>
       <p className="text-muted-foreground text-sm mb-6">/forms/{form.slug}</p>
       <LeadFormBuilder sources={sources} services={services} users={usersResult.users} initialData={initialData} formId={form.id} />
     </div>

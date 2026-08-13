@@ -2,18 +2,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
-const emptyForm = { name: "", billingCycle: "monthly", maxUsers: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
+const emptyForm = { name: "", billingCycle: "monthly", price: "", currency: "INR", trialDays: "", maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
 
-function PlanForm({ initial, onClose, onSaved }) {
+function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) {
   const [form, setForm] = useState(initial ? {
-    name: initial.name, billingCycle: initial.billing_cycle, maxUsers: initial.max_users || "",
+    name: initial.name, billingCycle: initial.billing_cycle, price: initial.price || "", currency: initial.currency || "INR", trialDays: initial.trial_days || "",
+    maxUsers: initial.max_users || "", maxLeads: initial.max_leads || "",
     maxStorageMb: initial.max_storage_mb || "", maxApiCallsPerDay: initial.max_api_calls_per_day || "", status: initial.status,
   } : emptyForm);
+  const [moduleIds, setModuleIds] = useState(new Set(initial ? (planModulesByPlan[initial.id] || []) : []));
   const [saving, setSaving] = useState(false);
   const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm";
+
+  function toggleModule(id) {
+    setModuleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   async function save(e) {
     e.preventDefault();
@@ -21,7 +31,13 @@ function PlanForm({ initial, onClose, onSaved }) {
     try {
       const url = initial ? `/api/platform/plans/${initial.id}` : "/api/platform/plans";
       const res = await apiFetch(url, { method: initial ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to save.");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save.");
+      const planId = initial ? initial.id : data.id;
+
+      const modRes = await apiFetch(`/api/platform/plans/${planId}/modules`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ moduleIds: [...moduleIds] }) });
+      if (!modRes.ok) throw new Error((await modRes.json()).error || "Plan saved, but modules failed to save.");
+
       toast.success(initial ? "Plan updated." : "Plan created.");
       onSaved();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
@@ -29,7 +45,7 @@ function PlanForm({ initial, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm bg-card border border-border rounded-2xl p-6">
+      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-card border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-foreground font-medium">{initial ? "Edit" : "New"} Plan</h2>
           <button type="button" onClick={onClose} className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
@@ -39,12 +55,32 @@ function PlanForm({ initial, onClose, onSaved }) {
           <select value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} className={inputClass}>
             <option value="trial">Trial</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
           </select>
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" min="0" step="0.01" placeholder="Price (blank = free)" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} />
+            <input placeholder="Currency" maxLength={10} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} className={inputClass} />
+          </div>
+          <input type="number" min="0" placeholder="Trial length in days (blank = no trial)" value={form.trialDays} onChange={(e) => setForm({ ...form, trialDays: e.target.value })} className={inputClass} />
           <input type="number" min="0" placeholder="Max users (blank = unlimited)" value={form.maxUsers} onChange={(e) => setForm({ ...form, maxUsers: e.target.value })} className={inputClass} />
+          <input type="number" min="0" placeholder="Max leads (blank = unlimited)" value={form.maxLeads} onChange={(e) => setForm({ ...form, maxLeads: e.target.value })} className={inputClass} />
           <input type="number" min="0" placeholder="Storage limit in MB (blank = unlimited)" value={form.maxStorageMb} onChange={(e) => setForm({ ...form, maxStorageMb: e.target.value })} className={inputClass} />
           <input type="number" min="0" placeholder="Max API calls/day (blank = unlimited)" value={form.maxApiCallsPerDay} onChange={(e) => setForm({ ...form, maxApiCallsPerDay: e.target.value })} className={inputClass} />
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={inputClass}>
             <option value="active">Active</option><option value="inactive">Inactive</option>
           </select>
+
+          <div>
+            <p className="text-foreground text-sm font-medium mb-2">Included Modules</p>
+            <p className="text-muted-foreground text-xs mb-2">Companies on this plan get exactly these modules — nothing not listed here is included.</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {allModules.map((m) => (
+                <label key={m.id} className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition ${moduleIds.has(m.id) ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted/40 text-muted-foreground"}`}>
+                  <input type="checkbox" checked={moduleIds.has(m.id)} onChange={() => toggleModule(m.id)} className="hidden" />
+                  {moduleIds.has(m.id) ? <Check className="h-3 w-3 text-indigo-400 shrink-0" /> : <span className="h-3 w-3 shrink-0" />}
+                  {m.name}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
         <button type="submit" disabled={saving} className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save
@@ -54,7 +90,7 @@ function PlanForm({ initial, onClose, onSaved }) {
   );
 }
 
-export default function PlansManager({ plans }) {
+export default function PlansManager({ plans, allModules = [], planModulesByPlan = {} }) {
   const router = useRouter();
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, object = edit
 
@@ -66,22 +102,36 @@ export default function PlansManager({ plans }) {
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {plans.map((p) => (
-          <div key={p.id} className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-start justify-between mb-2">
-              <p className="text-foreground font-medium">{p.name}</p>
-              <button onClick={() => setEditing(p)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+        {plans.map((p) => {
+          const planModuleIds = new Set(planModulesByPlan[p.id] || []);
+          const planModuleNames = allModules.filter((m) => planModuleIds.has(m.id)).map((m) => m.name);
+          return (
+            <div key={p.id} className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-start justify-between mb-2">
+                <p className="text-foreground font-medium">{p.name}</p>
+                <button onClick={() => setEditing(p)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+              </div>
+              <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
+              <div className="text-xs text-muted-foreground space-y-0.5 mb-2">
+                <p>Price: {p.price ? `${p.currency} ${p.price}` : "Free"}</p>
+                {!!p.trial_days && <p>Trial: {p.trial_days} days</p>}
+                <p>Users: {p.max_users || "Unlimited"}</p>
+                <p>Leads: {p.max_leads || "Unlimited"}</p>
+                <p>Storage: {p.max_storage_mb ? `${p.max_storage_mb} MB` : "Unlimited"}</p>
+              </div>
+              <div className="flex flex-wrap gap-1 pt-2 border-t border-border">
+                {planModuleNames.length === 0 ? (
+                  <span className="text-muted-foreground text-[11px]">No modules assigned yet</span>
+                ) : planModuleNames.map((name) => (
+                  <span key={name} className="px-1.5 py-0.5 rounded text-[11px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">{name}</span>
+                ))}
+              </div>
             </div>
-            <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>Users: {p.max_users || "Unlimited"}</p>
-              <p>Storage: {p.max_storage_mb ? `${p.max_storage_mb} MB` : "Unlimited"}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {editing !== undefined && (
-        <PlanForm initial={editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); router.refresh(); }} />
+        <PlanForm initial={editing} allModules={allModules} planModulesByPlan={planModulesByPlan} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); router.refresh(); }} />
       )}
     </div>
   );
