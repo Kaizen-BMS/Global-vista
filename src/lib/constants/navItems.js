@@ -1,5 +1,5 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare };
 
 export const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
@@ -16,11 +16,14 @@ export const ALL_NAV_ITEMS = [
   { href: "/workspace/lead-forms", label: "Query Forms", icon: "ClipboardList", permission: "leads.view" },
   { href: "/workspace/followups", label: "Follow-ups", icon: "CalendarClock", permission: "leads.view" },
   { href: "/workspace/reports", label: "Reports", icon: "BarChart3", permission: null },
-  { href: "/workspace/users", label: "Users", icon: "Users", permission: "users.view" },
+  { href: "/workspace/users", label: "Employees", icon: "Users", permission: "users.view" },
   { href: "/workspace/roles", label: "Roles", icon: "ShieldCheck", permission: "roles.manage" },
-  { href: "/workspace/settings/organization", label: "Organization", icon: "Building2", permission: "settings.manage" },
+  // "Organization" intentionally has no separate sidebar entry — it already
+  // lives at Settings > Organization (see SettingsTabs.js) and stays fully
+  // reachable there; this just removes the duplicate top-level link.
   { href: "/workspace/settings", label: "Settings", icon: "Settings", permission: "settings.manage" },
   { href: "/workspace/documents", label: "Documents", icon: "FileText", permission: "employee_documents.manage" },
+  { href: "/workspace/messages", label: "Messages", icon: "MessageSquare", permission: null },
   { href: "/workspace/notifications", label: "Notifications", icon: "Bell", permission: null },
   { href: "/workspace/activity-logs", label: "Activity Logs", icon: "ScrollText", permission: "activity_logs.view" },
   { href: "/workspace/profile", label: "Profile", icon: "UserCircle", permission: null },

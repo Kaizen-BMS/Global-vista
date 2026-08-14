@@ -30,6 +30,34 @@ export async function listLeadFollowups(session, leadId) {
   return rows;
 }
 
+/**
+ * Follow-ups due within the next `windowMinutes` (default 15) or very
+ * recently overdue (default 2 min grace, so "due now" still shows for a
+ * moment after the exact time passes) — for the client-side escalating
+ * toast/sound reminder. Deliberately NOT the same mechanism as the
+ * existing 24-hour-before EMAIL reminder cron (reminder_sent_at) — this is
+ * a short-horizon, in-app-only nudge. Idempotency for "have I already
+ * shown this toast" lives in the browser (sessionStorage), not the
+ * database, specifically to avoid needing new columns for it — the cost is
+ * that it's only a best-effort nudge while a tab is open, not a guaranteed
+ * push notification, which is an honest tradeoff for a feature with no
+ * dedicated infrastructure (no push service, no websockets) rather than
+ * a schema change to fake more.
+ */
+export async function getUpcomingFollowupReminders(session, windowMinutes = 15, graceMinutes = 2) {
+  const { where, params } = await getVisibleLeadFilter(session);
+  const [rows] = await pool.query(
+    `SELECT f.id, f.type, f.scheduled_at, l.id AS lead_id, l.name AS lead_name
+     FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted = 0 AND ${where}
+     WHERE f.status = 'Scheduled'
+       AND f.scheduled_at <= DATE_ADD(NOW(), INTERVAL ? MINUTE)
+       AND f.scheduled_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+     ORDER BY f.scheduled_at ASC LIMIT 50`,
+    [...params, windowMinutes, graceMinutes]
+  );
+  return rows;
+}
+
 export async function getTodaysFollowups(session) {
   const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(

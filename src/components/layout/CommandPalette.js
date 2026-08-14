@@ -11,7 +11,7 @@ const PLATFORM_CREATE_ITEMS = [
 const WORKSPACE_CREATE_ITEMS = [
   { href: "/workspace/lead-management/new", label: "New Lead", icon: "Contact2", group: "Create" },
   { href: "/workspace/lead-forms/new", label: "New Query Form", icon: "ClipboardList", group: "Create" },
-  { href: "/workspace/users", label: "New User", icon: "Users", group: "Create" },
+  { href: "/workspace/users", label: "New Employee", icon: "Users", group: "Create" },
 ];
 
 export default function CommandPalette({ scope }) {

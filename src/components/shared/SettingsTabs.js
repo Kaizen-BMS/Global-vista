@@ -5,9 +5,10 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/workspace/settings/branding", label: "Branding" }, { href: "/workspace/settings/email", label: "Email" },
   { href: "/workspace/settings/notifications", label: "Notifications" }, { href: "/workspace/settings/system", label: "System" },
-  { href: "/workspace/settings/organization", label: "Organization" }, { href: "/workspace/settings/academic-sessions", label: "Academic Sessions" },
+  { href: "/workspace/settings/organization", label: "Organization" },
   { href: "/workspace/settings/geography", label: "Geography" }, { href: "/workspace/settings/lead-sources", label: "Lead Sources" },
-  { href: "/workspace/settings/services", label: "Services" }, { href: "/workspace/settings/document-types", label: "Document Types" },
+  { href: "/workspace/settings/services", label: "Services" }, { href: "/workspace/settings/document-types", label: "Employee Document Types" },
+  { href: "/workspace/settings/lead-document-types", label: "Lead Document Types" }, { href: "/workspace/settings/lead-fields", label: "Lead Fields" },
   { href: "/workspace/settings/integrations", label: "Integrations" },
   { href: "/workspace/settings/payments", label: "Payments" },
   { href: "/workspace/settings/subscription", label: "Subscription" },

@@ -12,9 +12,10 @@ export const POST = withCsrf(withErrorHandling(async (request, ctx) => {
   const formData = await request.formData();
   const file = formData.get("file");
   const type = formData.get("type");
+  const documentTypeId = formData.get("documentTypeId") || null;
   if (!file || typeof file === "string") return badRequest("No file provided.");
   if (!type) return badRequest("Document type is required.");
 
-  const docId = await uploadLeadDocument(session, id, { type, file }, session.id);
+  const docId = await uploadLeadDocument(session, id, { type, documentTypeId, file }, session.id);
   return created({ id: docId });
 }));

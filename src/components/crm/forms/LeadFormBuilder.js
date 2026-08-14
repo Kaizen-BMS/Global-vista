@@ -12,7 +12,7 @@ function Field({ label, hint, children }) {
   return (<div><label className="block text-sm text-foreground mb-1">{label}</label>{children}{hint && <p className="text-muted-foreground text-xs mt-1">{hint}</p>}</div>);
 }
 
-export default function LeadFormBuilder({ sources, services, users, initialData, formId }) {
+export default function LeadFormBuilder({ sources, services, users, initialData, formId, customFields = [] }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
@@ -26,13 +26,27 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
     }
   );
 
+  // Company custom fields (Settings > Lead Fields) join the same catalog the
+  // standard fields come from — `custom:<field_key>` keeps them from ever
+  // colliding with a standard field type. Their full shape (type, options)
+  // is captured into fields_config at add-time so the public renderer never
+  // needs a live lookup, and old submissions keep rendering correctly even
+  // if the field definition changes later.
+  const allAvailableFields = [
+    ...AVAILABLE_FORM_FIELDS,
+    ...customFields.map((f) => ({ type: `custom:${f.field_key}`, label: f.label, inputType: "custom", lockedRequired: false, fieldType: f.field_type, options: f.options, customFieldId: f.id })),
+  ];
+
   function setField(key, value) { setForm((f) => ({ ...f, [key]: value })); }
   const usedTypes = new Set(form.fields.map((f) => f.type));
-  const availableToAdd = AVAILABLE_FORM_FIELDS.filter((f) => !usedTypes.has(f.type));
+  const availableToAdd = allAvailableFields.filter((f) => !usedTypes.has(f.type));
 
   function addField(fieldType) {
-    const def = AVAILABLE_FORM_FIELDS.find((f) => f.type === fieldType);
-    setForm((f) => ({ ...f, fields: [...f.fields, { type: def.type, label: def.label, placeholder: "", required: def.lockedRequired }] }));
+    const def = allAvailableFields.find((f) => f.type === fieldType);
+    setForm((f) => ({
+      ...f,
+      fields: [...f.fields, { type: def.type, label: def.label, placeholder: "", required: def.lockedRequired, ...(def.fieldType ? { fieldType: def.fieldType, options: def.options, customFieldId: def.customFieldId } : {}) }],
+    }));
   }
   function removeField(index) {
     if (form.fields[index].type === "name" || form.fields[index].type === "phone") { toast.error("Name and Phone can't be removed — they're required to create a lead."); return; }

@@ -288,11 +288,43 @@ export async function createLead(session, data, createdBy) {
     description: `Created lead ${data.name} (${leadNumber})${duplicate ? " — flagged duplicate" : ""}`,
   });
 
-  const [[creator]] = await pool.query(`SELECT reporting_manager_id FROM users WHERE id = ?`, [createdBy]);
-  if (creator?.reporting_manager_id) {
-    await createNotification(session.company_id, creator.reporting_manager_id, {
-      title: "New lead created",
-      message: `${data.name} (${leadNumber})`,
+  if (createdBy) {
+    const [[creator]] = await pool.query(`SELECT reporting_manager_id FROM users WHERE id = ?`, [createdBy]);
+    if (creator?.reporting_manager_id) {
+      await createNotification(session.company_id, creator.reporting_manager_id, {
+        title: "New lead created",
+        message: `${data.name} (${leadNumber})`,
+        type: "lead_created",
+        link: `/workspace/lead-management/${result.insertId}`,
+      });
+    }
+  }
+
+  // Every new lead starts unassigned (createLead never sets assigned_to —
+  // assignment is always a separate, explicit step) — so it lands straight
+  // in the unassigned pool. Notify everyone who could actually see/claim it
+  // there: the same "leads.view permission or an active Super Admin" set
+  // getVisibleLeadFilter's unassigned-pool branch already grants visibility
+  // to, not a hand-picked list. Covers every lead source that funnels
+  // through this one function — manual creation, public form submission,
+  // and spreadsheet sync alike.
+  const [notifyTargets] = await pool.query(
+    `SELECT DISTINCT u.id FROM users u
+     JOIN roles r ON r.id = u.role_id AND r.is_deleted = 0
+     WHERE u.company_id = ? AND u.is_deleted = 0 AND u.status = 'active' AND u.id != ?
+       AND (
+         (u.is_super_admin = 1 AND r.slug = 'super-admin')
+         OR EXISTS (
+           SELECT 1 FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
+           WHERE rp.role_id = r.id AND p.slug = 'leads.view' AND p.status = 'active'
+         )
+       )`,
+    [session.company_id, createdBy || 0]
+  );
+  for (const target of notifyTargets) {
+    await createNotification(session.company_id, target.id, {
+      title: "New lead received",
+      message: `${data.name} (${leadNumber}) is unassigned and ready to claim`,
       type: "lead_created",
       link: `/workspace/lead-management/${result.insertId}`,
     });

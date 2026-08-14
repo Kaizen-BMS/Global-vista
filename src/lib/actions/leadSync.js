@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createLead, findDuplicateLead } from "@/lib/modules/crm/actions/leads";
 import { fetchSheetRows, isGoogleSheetsConfigured } from "@/lib/integrations/googleSheets";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function listSyncSources(session) {
   const [rows] = await pool.query(
@@ -117,6 +118,14 @@ export async function runSync(source) {
           created++;
           if (source.default_assigned_to) {
             await pool.query(`UPDATE leads SET assigned_to=?, status='Assigned' WHERE id=?`, [source.default_assigned_to, leadId]);
+            // createLead's own bulk "unassigned pool" notification already
+            // fired before this UPDATE ran (the lead was briefly unassigned
+            // between insert and this line) — that's fine, it's informational,
+            // not a claim. This is the one that actually matters: the
+            // assignee specifically needs to know a synced lead landed on them.
+            await createNotification(source.company_id, source.default_assigned_to, {
+              title: "Lead assigned to you", message: `${name} (via ${source.name})`, type: "lead_assigned", link: `/workspace/lead-management/${leadId}`,
+            }).catch(() => {});
           }
         }
 

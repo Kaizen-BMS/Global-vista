@@ -37,7 +37,7 @@ export default function UsersTable({ users, roles, canManage, canUnlock, isSuper
     catch { toast.error("Failed."); } finally { setBusyId(null); setOpenMenuId(null); }
   }
 
-  if (users.length === 0) return <EmptyState icon={UsersIcon} title="No users found" />;
+  if (users.length === 0) return <EmptyState icon={UsersIcon} title="No employees found" />;
 
   const columns = [
     {

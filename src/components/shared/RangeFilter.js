@@ -22,7 +22,10 @@ export default function RangeFilter({
   const fyMonth = fiscalMode ? fyStartMonth : 1;
   const current = currentQuarter(timezone, fyMonth);
   const yearOptions = quarterYearOptions(timezone, 2, fyMonth);
-  const RANGES = fiscalMode ? [...BASE_RANGES, FY_RANGE, YEAR_RANGE] : [...BASE_RANGES, YEAR_RANGE];
+  // Fiscal mode (the workspace/tenant dashboard) replaces the generic
+  // rolling "Year" preset with "Financial Year" entirely — Platform Console
+  // (never passes fyStartMonth) keeps the old Year picker unchanged.
+  const RANGES = fiscalMode ? [...BASE_RANGES, FY_RANGE] : [...BASE_RANGES, YEAR_RANGE];
 
   function go(params) {
     const usp = new URLSearchParams(params);

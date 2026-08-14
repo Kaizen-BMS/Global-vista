@@ -9,7 +9,7 @@ const PLATFORM_ITEMS = [{ href: "/platform/companies", label: "New Company", ico
 const WORKSPACE_ITEMS = [
   { href: "/workspace/lead-management/new", label: "New Lead", icon: "Contact2" },
   { href: "/workspace/lead-forms/new", label: "New Query Form", icon: "ClipboardList" },
-  { href: "/workspace/users", label: "New User", icon: "Users" },
+  { href: "/workspace/users", label: "New Employee", icon: "Users" },
 ];
 
 export default function QuickCreateButton({ scope }) {

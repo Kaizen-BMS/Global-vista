@@ -6,6 +6,19 @@ export async function getUserNotifications(session, { unreadOnly = false, limit 
   const [rows] = await pool.query(`SELECT * FROM notifications WHERE user_id=? AND company_id=? ${where} ORDER BY created_at DESC LIMIT ?`, [session.id, session.company_id, limit]);
   return rows;
 }
+const LEAD_NOTIFICATION_TYPES = ["lead_created", "lead_assigned", "lead_form_resubmission", "lead_released"];
+
+/** Sidebar dot counts — one lightweight query, not the full notification
+ * list. `leadUnread` drives the Leads nav dot; `totalUnread` drives both
+ * the Notifications nav dot and the existing bell badge. */
+export async function getNotificationBadges(session) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount FROM notifications WHERE user_id=? AND company_id=? AND is_read=0`,
+    [LEAD_NOTIFICATION_TYPES, session.id, session.company_id]
+  );
+  return { totalUnread: Number(row.total), leadUnread: Number(row.leadCount || 0) };
+}
+
 export async function markAllNotificationsRead(session) {
   await pool.query(`UPDATE notifications SET is_read=1 WHERE user_id=? AND company_id=?`, [session.id, session.company_id]);
 }

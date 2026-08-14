@@ -7,9 +7,17 @@ import { toast } from "sonner";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
 import TagInput from "@/components/shared/TagInput";
+import GeoAutocomplete from "@/components/shared/GeoAutocomplete";
+import CustomFieldInput from "@/components/crm/leads/CustomFieldInput";
 import { apiFetch } from "@/components/shared/apiClient";
 
 const SECTIONS = ["Personal", "Academic", "Study Preferences", "Passport", "Source & Assignment", "Notes"];
+
+function customFieldSections(customFields) {
+  const seen = [];
+  for (const f of customFields) if (!seen.includes(f.section)) seen.push(f.section);
+  return seen;
+}
 
 function Field({ label, children }) {
   return (
@@ -22,7 +30,7 @@ function Field({ label, children }) {
 
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
-export default function LeadForm({ sources = [], services = [], counsellors = [], tagSuggestions = [], initialData = null }) {
+export default function LeadForm({ sources = [], services = [], counsellors = [], tagSuggestions = [], initialData = null, customFields = [], initialCustomValues = {} }) {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -38,9 +46,15 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
       remarks: "", notes: "",
     }
   );
+  const [customValues, setCustomValues] = useState(initialCustomValues);
+  const extraSections = customFieldSections(customFields);
+  const allSections = [...SECTIONS, ...extraSections];
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+  function setCustomField(fieldId, value) {
+    setCustomValues((v) => ({ ...v, [fieldId]: value }));
   }
 
   async function checkDuplicate(phone) {
@@ -76,8 +90,22 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
         return;
       }
 
-      toast.success(isEdit ? "Lead updated." : "Lead created.");
       const targetId = isEdit ? initialData.id : data.id;
+
+      // Custom field values save as a second call against the lead that
+      // now definitely exists — keeps leads.js untouched by a schema this
+      // deployment may not have yet (see schemaFlags.js); a failure here
+      // is surfaced but never blocks the lead itself from being saved.
+      if (customFields.length > 0) {
+        try {
+          const cfRes = await apiFetch(`/api/leads/${targetId}/custom-field-values`, {
+            method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values: customValues }),
+          });
+          if (!cfRes.ok) { const cfData = await cfRes.json().catch(() => ({})); toast.error(cfData.error || "Lead saved, but custom fields failed to save."); }
+        } catch { toast.error("Lead saved, but custom fields failed to save."); }
+      }
+
+      toast.success(isEdit ? "Lead updated." : "Lead created.");
 
       // Explicit navigation + refresh so the toast is followed by a real
       // redirect into the lead's details page and a fresh server render
@@ -104,7 +132,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
       )}
 
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-        {SECTIONS.map((section, i) => (
+        {allSections.map((section, i) => (
           <button
             type="button"
             key={section}
@@ -133,9 +161,9 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
             </Field>
             <Field label="Email"><input type="email" className={inputClass} value={form.email} onChange={(e) => setField("email", e.target.value)} /></Field>
             <Field label="WhatsApp"><input className={inputClass} value={form.whatsapp} onChange={(e) => setField("whatsapp", e.target.value)} /></Field>
-            <Field label="Country"><input className={inputClass} value={form.country} onChange={(e) => setField("country", e.target.value)} /></Field>
-            <Field label="State"><input className={inputClass} value={form.state} onChange={(e) => setField("state", e.target.value)} /></Field>
-            <Field label="City"><input className={inputClass} value={form.city} onChange={(e) => setField("city", e.target.value)} /></Field>
+            <Field label="Country"><GeoAutocomplete type="country" value={form.country} onChange={(v) => setField("country", v)} placeholder="e.g. India" /></Field>
+            <Field label="State"><GeoAutocomplete type="state" value={form.state} onChange={(v) => setField("state", v)} placeholder="e.g. Punjab" /></Field>
+            <Field label="City"><GeoAutocomplete type="city" value={form.city} onChange={(v) => setField("city", v)} placeholder="e.g. Sirsa" /></Field>
             <Field label="Gender">
               <select className={inputClass} value={form.gender} onChange={(e) => setField("gender", e.target.value)}>
                 <option value="">Select</option>
@@ -172,7 +200,7 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
 
         {activeSection === 2 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Preferred Country"><input className={inputClass} value={form.preferredCountry} onChange={(e) => setField("preferredCountry", e.target.value)} /></Field>
+            <Field label="Preferred Country"><GeoAutocomplete type="country" value={form.preferredCountry} onChange={(v) => setField("preferredCountry", v)} placeholder="e.g. United Kingdom" /></Field>
             <Field label="Preferred University"><input className={inputClass} value={form.preferredUniversity} onChange={(e) => setField("preferredUniversity", e.target.value)} /></Field>
             <Field label="Preferred Intake"><input className={inputClass} value={form.preferredIntake} onChange={(e) => setField("preferredIntake", e.target.value)} /></Field>
             <Field label="Budget"><input className={inputClass} value={form.budget} onChange={(e) => setField("budget", e.target.value)} /></Field>
@@ -228,6 +256,19 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
             <Field label="Notes"><textarea rows={3} className={inputClass} value={form.notes} onChange={(e) => setField("notes", e.target.value)} /></Field>
           </div>
         )}
+
+        {activeSection >= SECTIONS.length && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {customFields.filter((f) => f.section === allSections[activeSection]).map((field) => (
+              <div key={field.id} className={field.field_type === "textarea" ? "sm:col-span-2" : ""}>
+                <Field label={`${field.label}${field.is_required_on_lead_form ? " *" : ""}`}>
+                  <CustomFieldInput field={field} value={customValues[field.id]} onChange={(v) => setCustomField(field.id, v)} leadId={initialData?.id} />
+                </Field>
+                {field.help_text && <p className="text-muted-foreground text-xs mt-1">{field.help_text}</p>}
+              </div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       <div className="flex items-center justify-between mt-6">
@@ -240,10 +281,10 @@ export default function LeadForm({ sources = [], services = [], counsellors = []
           Back
         </button>
 
-        {activeSection < SECTIONS.length - 1 ? (
+        {activeSection < allSections.length - 1 ? (
           <button
             type="button"
-            onClick={() => setActiveSection((s) => Math.min(SECTIONS.length - 1, s + 1))}
+            onClick={() => setActiveSection((s) => Math.min(allSections.length - 1, s + 1))}
             className="btn-brand px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer"
           >
             Next

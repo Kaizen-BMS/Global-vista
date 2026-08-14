@@ -10,6 +10,10 @@ import { listPaymentPlansForLead, getPaymentPlanDetail } from "@/lib/modules/crm
 import { listServices } from "@/lib/actions/leadMeta";
 import { getAvailablePaymentMethods } from "@/lib/payments/providers";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
+import { getLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
+import { listLeadDocumentTypes } from "@/lib/modules/crm/actions/leadDocumentTypes";
+import { hasLeadCustomFieldsSchema, hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
+import LeadCustomFieldsDisplay from "@/components/crm/leads/LeadCustomFieldsDisplay";
 import Link from "next/link";
 import { Pencil, Phone, Mail, Globe2, Briefcase, UserRound, PlaneTakeoff, FileCheck2 } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
@@ -39,8 +43,10 @@ export default async function LeadDetailsPage({ params }) {
   if (!lead) return <WorkspaceNotFound />;
 
   const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
+  const customFieldsSchemaReady = await hasLeadCustomFieldsSchema();
+  const documentTypesSchemaReady = await hasLeadDocumentTypesSchema();
 
-  const [notes, followups, tasks, documents, timeline, paymentPlans, services, availableMethods, canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment] = await Promise.all([
+  const [notes, followups, tasks, documents, timeline, paymentPlans, services, availableMethods, canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment, customFieldValues, documentTypes] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
     paymentsEnabled ? listPaymentPlansForLead(session, id) : [],
@@ -48,6 +54,8 @@ export default async function LeadDetailsPage({ params }) {
     paymentsEnabled ? getAvailablePaymentMethods(session) : [],
     can(session, "leads.update"), can(session, "leads.notes.manage"), can(session, "leads.followups.manage"),
     can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"), can(session, "leads.assign"),
+    customFieldsSchemaReady ? getLeadCustomFieldValues(session, id) : [],
+    documentTypesSchemaReady ? listLeadDocumentTypes(session, { activeOnly: true }) : [],
   ]);
 
   // The "active" plan is the most recent one that isn't Cancelled/Refunded —
@@ -56,7 +64,8 @@ export default async function LeadDetailsPage({ params }) {
   const activePlan = paymentPlans.find((p) => !["Cancelled", "Refunded"].includes(p.status)) || paymentPlans[0] || null;
   const activePlanDetail = paymentsEnabled && activePlan ? await getPaymentPlanDetail(session, activePlan.id) : null;
 
-  const tabLabels = ["Overview", "Timeline", "Notes", "Follow Ups", "Tasks", "Documents", ...(paymentsEnabled ? ["Payments"] : [])];
+  const showCustomFieldsTab = customFieldsSchemaReady && customFieldValues.length > 0;
+  const tabLabels = ["Overview", ...(showCustomFieldsTab ? ["Custom Fields"] : []), "Timeline", "Notes", "Follow Ups", "Tasks", "Documents", ...(paymentsEnabled ? ["Payments"] : [])];
 
   const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
   const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -136,11 +145,12 @@ export default async function LeadDetailsPage({ params }) {
         <div className="bg-card border border-border rounded-xl p-6">
           <p className="text-foreground text-sm whitespace-pre-wrap">{lead.remarks || "No remarks recorded."}</p>
         </div>
+        {showCustomFieldsTab && <LeadCustomFieldsDisplay leadId={id} values={customFieldValues} />}
         <LeadTimeline events={timeline} />
         <LeadNotes leadId={id} notes={notes} canManage={canManageNotes} />
         <LeadFollowups leadId={id} followups={followups} canManage={canManageFollowups} />
         <LeadTasks leadId={id} tasks={tasks} canManage={canManageTasks} />
-        <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} />
+        <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
         {paymentsEnabled && (
           <LeadPayments
             leadId={id}

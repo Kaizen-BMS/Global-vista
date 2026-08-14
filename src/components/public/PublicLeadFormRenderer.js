@@ -2,6 +2,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import GeoAutocomplete from "@/components/shared/GeoAutocomplete";
+import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
+
+const SELECT_OPTIONS = {
+  gender: ["Male", "Female", "Other"],
+  englishTest: ["IELTS", "PTE", "TOEFL", "Duolingo", "None"],
+  passportStatus: ["Yes", "No", "Applied"],
+};
+const GEO_TYPES = new Set(["country", "state", "city", "preferredCountry"]);
 
 /**
  * Also used, with `preview`, as the Lead Form Builder's live preview — so the
@@ -93,19 +102,68 @@ export default function PublicLeadFormRenderer({ form, branding, preview = false
           {form.description && <p className="text-neutral-500 text-sm mb-6">{form.description}</p>}
 
           <div className="space-y-4">
-            {form.fields_config.map((field, i) => (
+            {form.fields_config.map((field, i) => {
+              const isCustom = field.type.startsWith("custom:");
+              const custom = isCustom ? (field.fieldType || "text") : null;
+              return (
               <div key={i}>
-                <label className="block text-sm text-neutral-300 mb-1.5">{field.label}{field.required && <span style={{ color: primaryColor }}> *</span>}</label>
-                {field.type === "message" ? (
+                {custom !== "checkbox" && (
+                  <label className="block text-sm text-neutral-300 mb-1.5">{field.label}{field.required && <span style={{ color: primaryColor }}> *</span>}</label>
+                )}
+                {field.type === "message" || custom === "textarea" ? (
                   <textarea
                     rows={3} required={field.required} placeholder={field.placeholder}
                     value={values[field.type] || ""} onChange={(e) => setValue(field.type, e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-lg bg-neutral-900 border border-neutral-800 text-white text-sm focus:outline-none focus:ring-2"
                     style={{ "--tw-ring-color": primaryColor }}
                   />
+                ) : GEO_TYPES.has(field.type) || ["country", "state", "city"].includes(custom) ? (
+                  <GeoAutocomplete
+                    dark
+                    type={custom || (field.type === "city" ? "city" : field.type === "state" ? "state" : "country")}
+                    value={values[field.type] || ""} onChange={(v) => setValue(field.type, v)}
+                    placeholder={field.placeholder}
+                  />
+                ) : custom === "checkbox" ? (
+                  <label className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
+                    <input type="checkbox" checked={values[field.type] === "Yes"} onChange={(e) => setValue(field.type, e.target.checked ? "Yes" : "No")} />
+                    {field.label}{field.required && <span style={{ color: primaryColor }}> *</span>}
+                  </label>
+                ) : custom === "radio" ? (
+                  <div className="flex flex-wrap gap-3">
+                    {(field.options || []).map((o) => (
+                      <label key={o} className="flex items-center gap-1.5 text-sm text-neutral-300 cursor-pointer">
+                        <input type="radio" name={field.type} checked={values[field.type] === o} onChange={() => setValue(field.type, o)} /> {o}
+                      </label>
+                    ))}
+                  </div>
+                ) : custom === "multiselect" ? (
+                  <div className="flex flex-wrap gap-3">
+                    {(field.options || []).map((o) => {
+                      let selected = [];
+                      try { selected = values[field.type] ? JSON.parse(values[field.type]) : []; } catch { selected = []; }
+                      return (
+                        <label key={o} className="flex items-center gap-1.5 text-sm text-neutral-300 cursor-pointer">
+                          <input
+                            type="checkbox" checked={selected.includes(o)}
+                            onChange={() => setValue(field.type, JSON.stringify(selected.includes(o) ? selected.filter((x) => x !== o) : [...selected, o]))}
+                          /> {o}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : SELECT_OPTIONS[field.type] || custom === "select" ? (
+                  <select
+                    required={field.required} value={values[field.type] || ""} onChange={(e) => setValue(field.type, e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-neutral-900 border border-neutral-800 text-white text-sm focus:outline-none focus:ring-2 cursor-pointer"
+                    style={{ "--tw-ring-color": primaryColor }}
+                  >
+                    <option value="">{field.placeholder || "Select"}</option>
+                    {(SELECT_OPTIONS[field.type] || field.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
                 ) : (
                   <input
-                    type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text"}
+                    type={custom === "number" ? "number" : custom === "date" ? "date" : custom === "datetime" ? "datetime-local" : custom === "email" || field.type === "email" ? "email" : custom === "phone" || field.type === "phone" ? "tel" : field.type === "dob" ? "date" : field.type === "budget" ? "number" : "text"}
                     required={field.required} placeholder={field.placeholder}
                     value={values[field.type] || ""} onChange={(e) => setValue(field.type, e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-lg bg-neutral-900 border border-neutral-800 text-white text-sm focus:outline-none focus:ring-2"
@@ -113,7 +171,8 @@ export default function PublicLeadFormRenderer({ form, branding, preview = false
                   />
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {/* Honeypot — hidden from real visitors via CSS, never rendered as a visible/tabbable field. Bots that fill every input trip this. */}
             <div className="absolute -left-[9999px] opacity-0" aria-hidden="true">
@@ -133,7 +192,7 @@ export default function PublicLeadFormRenderer({ form, branding, preview = false
           </button>
         </form>
 
-        <p className="text-center text-neutral-700 text-xs mt-6">Powered by Global Vista</p>
+        <p className="text-center text-neutral-700 text-xs mt-6">{GLOBAL_VISTA_BRANDING.poweredByLabel}</p>
       </div>
     </div>
   );

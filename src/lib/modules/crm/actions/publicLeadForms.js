@@ -4,6 +4,17 @@ import { logActivity } from "@/lib/activityLog";
 import { createLead, assignLead, findDuplicateLead } from "@/lib/modules/crm/actions/leads";
 import { createNotification } from "@/lib/actions/notifications";
 import { sendLeadFormNotificationEmail } from "@/lib/helpers/email";
+import { validateQueryFormCustomFieldValues, saveLeadCustomFieldValuesPublic } from "@/lib/modules/crm/actions/leadCustomFields";
+import { hasLeadCustomFieldsSchema } from "@/lib/db/schemaFlags";
+
+/** Query Form fields for custom fields are keyed "custom:<field_key>" in both fields_config and the submitted payload — see PublicLeadFormRenderer and LeadFormBuilder. */
+function extractCustomFieldValues(rawData) {
+  const values = {};
+  for (const key of Object.keys(rawData)) {
+    if (key.startsWith("custom:")) values[key.slice(7)] = rawData[key];
+  }
+  return values;
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
@@ -77,10 +88,14 @@ export async function submitPublicLeadForm(form, rawData, meta) {
   // is ever created, and it's still logged as spam for visibility.
   if (rawData.__hp) { await record("spam", null, "Honeypot field filled"); return { success: true, spam: true }; }
 
+  const customFieldsSchemaReady = await hasLeadCustomFieldsSchema();
+  const customValues = customFieldsSchemaReady ? extractCustomFieldValues(rawData) : {};
+
   const errors = [];
   if (!rawData.name || !String(rawData.name).trim()) errors.push("Name is required.");
   if (!rawData.phone || !PHONE_RE.test(rawData.phone)) errors.push("A valid phone number is required.");
   if (rawData.email && !EMAIL_RE.test(rawData.email)) errors.push("Email format looks invalid.");
+  if (customFieldsSchemaReady) errors.push(...(await validateQueryFormCustomFieldValues(form.company_id, customValues)));
 
   if (errors.length) { await record("failed", null, errors.join("; ")); return { success: false, errors }; }
 
@@ -115,7 +130,14 @@ export async function submitPublicLeadForm(form, rawData, meta) {
     // form row itself, not from anything the public request could supply.
     leadId = await createLead(pseudoSession, {
       name: rawData.name, phone: rawData.phone, email: rawData.email || null,
+      whatsapp: rawData.whatsapp || null,
       country: rawData.country || null, state: rawData.state || null, city: rawData.city || null,
+      address: rawData.address || null, gender: rawData.gender || null, dob: rawData.dob || null,
+      school: rawData.school || null, college: rawData.college || null,
+      currentQualification: rawData.currentQualification || null, englishTest: rawData.englishTest || null,
+      preferredCountry: rawData.preferredCountry || null, preferredUniversity: rawData.preferredUniversity || null,
+      preferredIntake: rawData.preferredIntake || null, budget: rawData.budget || null,
+      passportStatus: rawData.passportStatus || null,
       leadSourceId: form.default_lead_source_id, serviceId: form.default_service_id,
       campaign: form.campaign || meta.utm?.campaign || null,
       tags: form.default_tags || null,
@@ -130,6 +152,10 @@ export async function submitPublicLeadForm(form, rawData, meta) {
       userId: null, module: "leads", action: "form_submission", entityType: "lead", entityId: leadId,
       companyId: form.company_id, description: `Lead captured via public form "${form.name}"`,
     });
+  }
+
+  if (customFieldsSchemaReady && Object.keys(customValues).length > 0) {
+    await saveLeadCustomFieldValuesPublic(form.company_id, leadId, customValues);
   }
 
   if (form.notify_emails) {

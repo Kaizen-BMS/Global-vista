@@ -12,9 +12,10 @@ export const POST = withCsrf(withErrorHandling(async (request, ctx) => {
   const formData = await request.formData();
   const file = formData.get("file");
   const type = formData.get("type");
+  const documentTypeId = formData.get("documentTypeId") || null;
   if (!file || typeof file === "string") return badRequest("No file provided.");
   if (!type) return badRequest("Document type is required.");
 
-  const newId = await replaceLeadDocument(session, id, docId, { type, file }, session.id);
+  const newId = await replaceLeadDocument(session, id, docId, { type, documentTypeId, file }, session.id);
   return ok({ id: newId });
 }));

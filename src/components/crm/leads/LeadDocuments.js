@@ -11,8 +11,10 @@ import { formatDate } from "@/lib/helpers/dateFormat";
 import { formatBytes } from "@/lib/helpers/formatBytes";
 import EmptyState from "@/components/shared/EmptyState";
 
-function UploadDropzone({ leadId, onUploaded }) {
-  const [type, setType] = useState(DOCUMENT_TYPES[0]);
+function UploadDropzone({ leadId, documentTypes, onUploaded }) {
+  const usingConfiguredTypes = documentTypes && documentTypes.length > 0;
+  const [typeId, setTypeId] = useState(usingConfiguredTypes ? String(documentTypes[0].id) : "");
+  const [legacyType, setLegacyType] = useState(DOCUMENT_TYPES[0]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
@@ -21,22 +23,30 @@ function UploadDropzone({ leadId, onUploaded }) {
     if (!file) return;
     setUploading(true);
     try {
+      const selectedTypeName = usingConfiguredTypes ? documentTypes.find((t) => String(t.id) === typeId)?.name : legacyType;
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("type", type);
+      formData.append("type", selectedTypeName || "Other");
+      if (usingConfiguredTypes) formData.append("documentTypeId", typeId);
       const res = await apiFetch(`/api/leads/${leadId}/documents/upload`, { method: "POST", body: formData });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed.");
-      toast.success(`${type} document uploaded.`);
+      toast.success(`${selectedTypeName} document uploaded.`);
       onUploaded();
     } catch (err) { toast.error(err.message); } finally { setUploading(false); }
   }
 
   return (
     <div className="space-y-2 mb-4">
-      <select value={type} onChange={(e) => setType(e.target.value)} className="w-full sm:w-56 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
-        {DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
+      {usingConfiguredTypes ? (
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className="w-full sm:w-56 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
+          {documentTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_required ? " (Required)" : ""}</option>)}
+        </select>
+      ) : (
+        <select value={legacyType} onChange={(e) => setLegacyType(e.target.value)} className="w-full sm:w-56 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
+          {DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      )}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -84,6 +94,7 @@ function DocumentRow({ leadId, doc, canManage, timezone, onChanged }) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", doc.type);
+      if (doc.document_type_id) formData.append("documentTypeId", doc.document_type_id);
       const res = await apiFetch(`/api/leads/${leadId}/documents/${doc.id}/replace`, { method: "POST", body: formData });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Replace failed.");
@@ -99,7 +110,7 @@ function DocumentRow({ leadId, doc, canManage, timezone, onChanged }) {
         <div className="min-w-0">
           <p className="text-foreground text-sm truncate">{doc.file_name}</p>
           <p className="text-muted-foreground text-xs">
-            {doc.type} · {formatBytes(doc.file_size)} · {formatDate(doc.created_at, timezone)} · {doc.uploaded_by_name || "—"}
+            {doc.document_type_name || doc.type} · {formatBytes(doc.file_size)} · {formatDate(doc.created_at, timezone)} · {doc.uploaded_by_name || "—"}
           </p>
         </div>
       </div>
@@ -123,7 +134,7 @@ function DocumentRow({ leadId, doc, canManage, timezone, onChanged }) {
   );
 }
 
-export default function LeadDocuments({ leadId, documents: initialDocuments, canManage }) {
+export default function LeadDocuments({ leadId, documents: initialDocuments, canManage, documentTypes = [] }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [documents, setDocuments] = useState(initialDocuments);
@@ -141,7 +152,7 @@ export default function LeadDocuments({ leadId, documents: initialDocuments, can
 
   return (
     <div>
-      {canManage && <UploadDropzone leadId={leadId} onUploaded={reload} />}
+      {canManage && <UploadDropzone leadId={leadId} documentTypes={documentTypes} onUploaded={reload} />}
       <div className="space-y-2">
         {documents.length === 0 ? (
           <EmptyState icon={FileText} title="No documents uploaded" description="Upload passports, test scores, offer letters, or other files for this lead." />

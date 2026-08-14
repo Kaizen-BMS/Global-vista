@@ -1,7 +1,9 @@
-// Today/Week/Month keep their existing rolling-window meaning — this
-// feature only adds real calendar semantics to Quarter and Year, it
-// doesn't touch the three ranges that already worked.
-const RANGE_DAYS = { today: 1, week: 7, month: 30 };
+// Monday-start week (ISO-8601), used consistently by every "Week" range in
+// this app — documented once here rather than left implicit, per the
+// explicit "do not mix Sunday-start/Monday-start across components"
+// requirement. If a future feature genuinely needs Sunday-start, it must
+// say so explicitly rather than silently drifting from this.
+const WEEK_STARTS_ON_MONDAY = true;
 
 const QUARTER_MONTHS = { 1: [1, 3], 2: [4, 6], 3: [7, 9], 4: [10, 12] };
 export const QUARTER_LABELS = { 1: "Jan – Mar", 2: "Apr – Jun", 3: "Jul – Sep", 4: "Oct – Dec" };
@@ -50,6 +52,48 @@ export function zonedTimeToUtc(year, month, day, hour, minute, second, timeZone)
 
 function startOfDayInZone(year, month, day, timeZone) {
   return zonedTimeToUtc(year, month, day, 0, 0, 0, timeZone);
+}
+
+/** Today's (year, month, day) as observed on a wall clock in `timeZone` —
+ * the calendar-date half of "what day is it right now, there." */
+function currentDateInZone(timeZone) {
+  timeZone = safeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+/** 0 = Sunday .. 6 = Saturday — day-of-week is a property of the calendar
+ * date alone, so anchoring the already-zone-resolved (year, month, day) to
+ * UTC noon (not midnight, to stay clear of any DST-adjacent edge case in
+ * the anchor itself) and reading getUTCDay() back is exact. */
+function weekdayOf(year, month, day) {
+  return new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
+}
+
+/** Calendar-boundary ranges, all ending at "now" (not a rolling window):
+ *   Today = start of today .. now
+ *   Week  = start of this week (Monday) .. now
+ *   Month = start of this month .. now
+ * Every boundary is computed from the wall-clock date in `timeZone`, so a
+ * user in Asia/Kolkata gets a different "today" than a server running in
+ * UTC the instant local time crosses midnight — not up to 5.5 hours later. */
+function calendarRangeInZone(kind, timeZone) {
+  const { year, month, day } = currentDateInZone(timeZone);
+  const now = new Date();
+  if (kind === "today") return { start: startOfDayInZone(year, month, day, timeZone), end: now, label: "Today" };
+  if (kind === "week") {
+    const dow = weekdayOf(year, month, day);
+    const daysSinceMonday = WEEK_STARTS_ON_MONDAY ? (dow + 6) % 7 : dow;
+    // Subtract via a UTC calendar anchor (not ms arithmetic) so month/year
+    // rollovers (e.g. today is 3 Aug, week started 29 Jul) are handled by
+    // Date's own calendar math instead of being computed by hand.
+    const anchor = new Date(Date.UTC(year, month - 1, day));
+    anchor.setUTCDate(anchor.getUTCDate() - daysSinceMonday);
+    return { start: startOfDayInZone(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, anchor.getUTCDate(), timeZone), end: now, label: "Week" };
+  }
+  // month
+  return { start: startOfDayInZone(year, month, 1, timeZone), end: now, label: "Month" };
 }
 
 /**
@@ -143,8 +187,7 @@ export function resolveRange(range, from, to, { timeZone = "UTC", quarter, qyear
   }
 
   // A single financial year, e.g. FY-2026 = 1 Apr 2026 -> 31 Mar 2027 for
-  // fyStartMonth=4 — distinct from the "year" preset below (a rolling
-  // N-calendar-year window), which is unchanged.
+  // fyStartMonth=4.
   if (range === "financial-year") {
     const current = currentQuarter(timeZone, fyStartMonth);
     const y = Number(qyear) || current.year;
@@ -154,6 +197,11 @@ export function resolveRange(range, from, to, { timeZone = "UTC", quarter, qyear
     return { start, end, label: `FY-${y}`, qyear: y };
   }
 
+  // Legacy rolling N-calendar-year window — kept only for the Platform
+  // Console dashboard, which still passes range="year" and never sees
+  // fyStartMonth. The workspace (tenant) dashboard no longer offers this
+  // preset in its UI (Financial Year replaces it there) but the resolver
+  // stays intact so it isn't a breaking change for the caller that still uses it.
   if (range === "year") {
     const n = YEAR_RANGE_OPTIONS.some((o) => o.value === Number(years)) ? Number(years) : 1;
     const { year: currentYear } = currentQuarter(timeZone, 1);
@@ -164,8 +212,6 @@ export function resolveRange(range, from, to, { timeZone = "UTC", quarter, qyear
     return { start, end, label, years: n };
   }
 
-  const days = RANGE_DAYS[range] || RANGE_DAYS.month;
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  return { start, end, label: range && RANGE_DAYS[range] ? range[0].toUpperCase() + range.slice(1) : "Month" };
+  if (range === "today" || range === "week") return calendarRangeInZone(range, timeZone);
+  return calendarRangeInZone("month", timeZone);
 }

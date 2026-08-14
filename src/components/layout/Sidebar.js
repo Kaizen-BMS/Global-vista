@@ -10,7 +10,7 @@ import { useMobileNav } from "@/components/layout/MobileNavContext";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import SidebarTooltip from "@/components/layout/SidebarTooltip";
 
-function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigate, pinned, onTogglePin, showPin }) {
+function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigate, pinned, onTogglePin, showPin, showDot }) {
   const Icon = ICON_MAP[icon];
   const link = (
     <Link
@@ -19,7 +19,10 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
       className={`group/link relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer ${collapsed ? "justify-center" : ""} ${active ? "text-indigo-400 dark:text-indigo-400" : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:translate-x-0.5"}`}
       style={active ? { backgroundColor: `${primaryColor}1a`, border: `1px solid ${primaryColor}4d` } : undefined}
     >
-      {Icon && <Icon className="h-4 w-4 shrink-0" />}
+      <span className="relative shrink-0">
+        {Icon && <Icon className="h-4 w-4" />}
+        {showDot && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />}
+      </span>
       {!collapsed && <span className="truncate flex-1">{label}</span>}
       {!collapsed && showPin && (
         <button
@@ -36,8 +39,45 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
   return collapsed ? <SidebarTooltip label={label}>{link}</SidebarTooltip> : link;
 }
 
+// Which nav href gets a dot for which badge count — extend this map if more
+// sections grow their own unread concept later, rather than hardcoding
+// per-item checks throughout the render.
+const DOT_HREFS = {
+  "/workspace/lead-management": "leadUnread",
+  "/workspace/notifications": "totalUnread",
+  "/workspace/messages": "messageUnread",
+};
+
+// Two independent endpoints (general notifications vs. messaging) combined
+// client-side rather than one server import pulling in the other — messaging
+// actions already create a `notifications` row per message via
+// createNotification, so merging the two data sources server-side would
+// double-count and also risks a circular module import between the two
+// action files.
+function useSidebarBadges(scope) {
+  const [badges, setBadges] = useState({ totalUnread: 0, leadUnread: 0, messageUnread: 0 });
+  useEffect(() => {
+    if (scope !== "workspace") return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const [notifRes, msgRes] = await Promise.all([fetch("/api/core/notifications/badges"), fetch("/api/messaging/unread-count")]);
+        if (cancelled) return;
+        const notif = notifRes.ok ? await notifRes.json() : { totalUnread: 0, leadUnread: 0 };
+        const msg = msgRes.ok ? await msgRes.json() : { unread: 0 };
+        setBadges({ totalUnread: notif.totalUnread, leadUnread: notif.leadUnread, messageUnread: msg.unread });
+      } catch { /* next poll retries */ }
+    }
+    load();
+    const id = setInterval(load, 20000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [scope]);
+  return badges;
+}
+
 function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate, collapsed, onToggleCollapse, showToggle, scope }) {
   const pathname = usePathname();
+  const badges = useSidebarBadges(scope);
   const logoUrl = company?.sidebar_logo_url || company?.logo_url;
   // The upload succeeding and the file still being servable are different
   // things (deploy without persistent storage, cleared /public/uploads,
@@ -97,13 +137,13 @@ function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate,
           <>
             {!collapsed && <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 mb-1">Pinned</p>}
             {pinnedItems.map((item) => (
-              <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned onTogglePin={togglePin} showPin />
+              <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned onTogglePin={togglePin} showPin showDot={badges[DOT_HREFS[item.href]] > 0} />
             ))}
             {!collapsed && <div className="h-px bg-sidebar-border my-2 mx-1" />}
           </>
         )}
         {restItems.map((item) => (
-          <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned={false} onTogglePin={togglePin} showPin />
+          <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned={false} onTogglePin={togglePin} showPin showDot={badges[DOT_HREFS[item.href]] > 0} />
         ))}
       </nav>
 

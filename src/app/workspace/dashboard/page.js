@@ -36,7 +36,9 @@ import {
 export default async function DashboardPage({ searchParams }) {
   const session = await getSession();
   const sp = await searchParams;
-  const rangeKey = sp?.range || "year";
+  // "year" removed from this dashboard's own UI (Financial Year replaces
+  // it) — the default preset on first load matches.
+  const rangeKey = sp?.range || "financial-year";
   // Timezone has to be known before the range is resolved — a quarter or
   // multi-year boundary computed in the wrong zone can land on the wrong
   // calendar day, which is exactly the class of bug this feature exists

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { isPlatformOperator, isCompanySuspended } from "@/lib/helpers/permissions";
+import { can, isPlatformOperator, isCompanySuspended } from "@/lib/helpers/permissions";
 import { getVisibleNavItems } from "@/lib/helpers/menu";
 import { getCurrentCompany, getSubscriptionDetails } from "@/lib/platform/tenant";
 import { getPlatformSettingsByGroup } from "@/lib/platform/actions/settings";
@@ -14,6 +14,7 @@ import CompanySuspendedPage from "@/components/shared/CompanySuspendedPage";
 import SubscriptionExpiredPage from "@/components/shared/SubscriptionExpiredPage";
 import { TimezoneProvider } from "@/components/shared/TimezoneProvider";
 import { MobileNavProvider } from "@/components/layout/MobileNavContext";
+import FollowupReminderWatcher from "@/components/notifications/FollowupReminderWatcher";
 
 export default async function WorkspaceLayout({ children }) {
   const session = await getSession();
@@ -39,9 +40,9 @@ export default async function WorkspaceLayout({ children }) {
     );
   }
 
-  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings] = await Promise.all([
+  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads] = await Promise.all([
     getVisibleNavItems(session), getCurrentCompany(session.company_id), getPlatformSettingsByGroup("branding"), getSettingsByGroup(session, "branding"),
-    getSettingsByGroup(session, "system"),
+    getSettingsByGroup(session, "system"), can(session, "leads.view"),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const hour12 = systemSettings.time_format !== "24h";
@@ -56,6 +57,7 @@ export default async function WorkspaceLayout({ children }) {
           style={{ "--brand-primary": company?.primary_color || "#4f46e5", "--brand-secondary": company?.secondary_color || "#171717" }}
         >
           <BrandFavicon faviconUrl={company?.favicon_url} />
+          {canViewLeads && <FollowupReminderWatcher />}
           <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
           <div className="flex-1 flex flex-col min-w-0">
             <Topbar company={company} session={session} />
