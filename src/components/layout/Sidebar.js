@@ -10,7 +10,33 @@ import { useMobileNav } from "@/components/layout/MobileNavContext";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import SidebarTooltip from "@/components/layout/SidebarTooltip";
 
-function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigate, pinned, onTogglePin, showPin, showDot }) {
+/** A pulsing ring behind a solid core — CSS-only, no re-render cost — reads
+ * as "something just happened here" without being loud enough to make the
+ * row feel like an alert. Absolutely positioned in both states, so growing
+ * from 0 to a real count never shifts surrounding layout. */
+function NotificationDot({ count, collapsed }) {
+  if (!count) return null;
+  const label = `${count} unread`;
+  if (collapsed) {
+    return (
+      <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2" role="status" aria-label={label}>
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+      </span>
+    );
+  }
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none"
+    >
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
+function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigate, pinned, onTogglePin, showPin, badgeCount = 0 }) {
   const Icon = ICON_MAP[icon];
   const link = (
     <Link
@@ -21,9 +47,10 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
     >
       <span className="relative shrink-0">
         {Icon && <Icon className="h-4 w-4" />}
-        {showDot && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />}
+        {collapsed && <NotificationDot count={badgeCount} collapsed />}
       </span>
       {!collapsed && <span className="truncate flex-1">{label}</span>}
+      {!collapsed && <NotificationDot count={badgeCount} />}
       {!collapsed && showPin && (
         <button
           type="button"
@@ -41,38 +68,47 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
 
 // Which nav href gets a dot for which badge count — extend this map if more
 // sections grow their own unread concept later, rather than hardcoding
-// per-item checks throughout the render.
+// per-item checks throughout the render. There is no standalone "Payments"
+// nav item in the current sidebar IA (payments live inside Lead Detail and
+// Settings), so the `payments` count folds into the Notifications bell's
+// `totalUnread` rather than a dot with nowhere real to attach to.
 const DOT_HREFS = {
-  "/workspace/lead-management": "leadUnread",
+  "/workspace/lead-management": "leads",
+  "/workspace/followups": "followups",
   "/workspace/notifications": "totalUnread",
-  "/workspace/messages": "messageUnread",
+  "/workspace/messages": "messages",
 };
 
-// Two independent endpoints (general notifications vs. messaging) combined
-// client-side rather than one server import pulling in the other — messaging
-// actions already create a `notifications` row per message via
-// createNotification, so merging the two data sources server-side would
-// double-count and also risks a circular module import between the two
-// action files.
+// ONE endpoint drives every sidebar dot — /api/core/notifications/badges
+// (backed by getSidebarBadgeCounts) fans out server-side to the handful of
+// already-scoped queries this needs, so the client makes exactly one
+// request per poll instead of one per nav item.
 function useSidebarBadges(scope) {
-  const [badges, setBadges] = useState({ totalUnread: 0, leadUnread: 0, messageUnread: 0 });
+  const [badges, setBadges] = useState({ totalUnread: 0, leads: 0, followups: 0, messages: 0, payments: 0 });
   useEffect(() => {
     if (scope !== "workspace") return;
     let cancelled = false;
     async function load() {
       try {
-        const [notifRes, msgRes] = await Promise.all([fetch("/api/core/notifications/badges"), fetch("/api/messaging/unread-count")]);
-        if (cancelled) return;
-        const notif = notifRes.ok ? await notifRes.json() : { totalUnread: 0, leadUnread: 0 };
-        const msg = msgRes.ok ? await msgRes.json() : { unread: 0 };
-        setBadges({ totalUnread: notif.totalUnread, leadUnread: notif.leadUnread, messageUnread: msg.unread });
+        const res = await fetch("/api/core/notifications/badges");
+        if (cancelled || !res.ok) return;
+        setBadges(await res.json());
       } catch { /* next poll retries */ }
     }
     load();
     const id = setInterval(load, 20000);
-    return () => { cancelled = true; clearInterval(id); };
+    window.addEventListener("gv:badges:refresh", load);
+    return () => { cancelled = true; clearInterval(id); window.removeEventListener("gv:badges:refresh", load); };
   }, [scope]);
   return badges;
+}
+
+/** Call after an action that should clear a dot sooner than the next 20s
+ * poll (marking a notification read, sending/reading a message, completing
+ * a follow-up) — dispatched as a DOM event rather than a shared store so
+ * call sites don't need any new import/context wiring. */
+export function refreshSidebarBadges() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("gv:badges:refresh"));
 }
 
 function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate, collapsed, onToggleCollapse, showToggle, scope }) {
@@ -137,13 +173,13 @@ function SidebarContent({ session, navItems, company, showPoweredBy, onNavigate,
           <>
             {!collapsed && <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 mb-1">Pinned</p>}
             {pinnedItems.map((item) => (
-              <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned onTogglePin={togglePin} showPin showDot={badges[DOT_HREFS[item.href]] > 0} />
+              <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned onTogglePin={togglePin} showPin badgeCount={badges[DOT_HREFS[item.href]] || 0} />
             ))}
             {!collapsed && <div className="h-px bg-sidebar-border my-2 mx-1" />}
           </>
         )}
         {restItems.map((item) => (
-          <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned={false} onTogglePin={togglePin} showPin showDot={badges[DOT_HREFS[item.href]] > 0} />
+          <NavLink key={item.href} {...item} active={isActive(item.href)} collapsed={collapsed} primaryColor={primaryColor} onNavigate={onNavigate} pinned={false} onTogglePin={togglePin} showPin badgeCount={badges[DOT_HREFS[item.href]] || 0} />
         ))}
       </nav>
 

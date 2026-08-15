@@ -44,24 +44,29 @@ export default async function PlatformSettingsPage() {
         </p>
         <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs mb-4 border ${paypalStatus.configured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-muted/40 text-muted-foreground border-border"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${paypalStatus.configured ? "bg-emerald-400" : "bg-muted-foreground"}`} />
-          PayPal: {paypalStatus.configured ? `Configured (${paypalStatus.mode})` : "Not Configured"}
+          PayPal: {paypalStatus.configured ? `Connected (${paypalStatus.mode === "live" ? "Live" : "Sandbox"})` : "Not Connected"}
         </div>
         <PlatformSettingsForm
           group="payments"
           initialValues={paymentsValues}
           fields={[
-            { key: "paypal_mode", label: "PayPal Mode", type: "select", options: ["sandbox", "live"] },
             { key: "tax_percentage", label: "Default Tax %", hint: "Applied as a default when creating a payment plan — companies can still enter 0." },
             { key: "max_payment_amount", label: "Maximum Single Payment Amount", hint: "Leave blank for no limit." },
           ]}
         />
-        {!paypalStatus.configured && (
-          <p className="text-muted-foreground text-xs mt-3 max-w-xl">
-            To enable PayPal, set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_CLIENT_SECRET</code> in the server
-            environment (never in this form) and redeploy. Until then, PayPal stays hidden as a payment method
-            everywhere in the workspace.
+        <div className="mt-4 pt-4 border-t border-border text-xs text-muted-foreground max-w-xl space-y-2">
+          <p>
+            PayPal mode and credentials are environment-only (never a database toggle, so this status can never disagree
+            with where transactions actually go): <code>PAYPAL_CLIENT_ID</code>, <code>PAYPAL_CLIENT_SECRET</code>,{" "}
+            <code>PAYPAL_MODE</code> (<code>sandbox</code> or <code>live</code>), and <code>PAYPAL_WEBHOOK_ID</code>{" "}
+            (from the webhook you configure in the PayPal Developer Dashboard — required for signature verification).
           </p>
-        )}
+          <p>
+            Webhook URL to register with PayPal:{" "}
+            <code>{(process.env.NEXT_PUBLIC_APP_URL || "https://your-domain").replace(/\/$/, "")}/api/webhooks/paypal</code>
+          </p>
+          {!paypalStatus.configured && <p>PayPal stays hidden as a payment method everywhere in the workspace until it's configured.</p>}
+        </div>
       </div>
     </div>
   );

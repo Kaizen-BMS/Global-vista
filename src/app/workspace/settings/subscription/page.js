@@ -1,14 +1,22 @@
 import { getSession } from "@/lib/auth";
+import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getSubscriptionDetails, getUsageCounts } from "@/lib/platform/tenant";
 import { getStorageUsage, formatBytes } from "@/lib/actions/storage";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { listPublicPlans } from "@/lib/platform/actions/registration";
+import { listSubscriptionPayments } from "@/lib/platform/actions/paypalBilling";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import SettingsTabs from "@/components/shared/SettingsTabs";
-import { CheckCircle2, AlertTriangle, XCircle, Clock, Users, Contact2 } from "lucide-react";
+import SubscriptionManager from "@/components/crm/settings/SubscriptionManager";
+import { CheckCircle2, AlertTriangle, XCircle, Clock, Ban, Users, Contact2 } from "lucide-react";
 
 const STATE_META = {
   active: { label: "Active", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", icon: CheckCircle2 },
   trial: { label: "Trial", color: "text-indigo-400 bg-indigo-500/10 border-indigo-500/30", icon: Clock },
+  pending: { label: "Pending Payment", color: "text-sky-400 bg-sky-500/10 border-sky-500/30", icon: Clock },
+  past_due: { label: "Past Due", color: "text-amber-400 bg-amber-500/10 border-amber-500/30", icon: AlertTriangle },
+  payment_failed: { label: "Payment Failed", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
+  suspended: { label: "Suspended", color: "text-orange-400 bg-orange-500/10 border-orange-500/30", icon: Ban },
   expired: { label: "Expired", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
   cancelled: { label: "Cancelled", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
   no_subscription: { label: "No Subscription", color: "text-muted-foreground bg-muted/20 border-border/30", icon: AlertTriangle },
@@ -16,12 +24,15 @@ const STATE_META = {
 
 export default async function SubscriptionSettingsPage() {
   const session = await getSession();
-  const [subscription, storage, systemSettings, usage] = await Promise.all([
+  const [subscription, storage, systemSettings, usage, plans, payments] = await Promise.all([
     getSubscriptionDetails(session.company_id), getStorageUsage(session), getSettingsByGroup(session, "system"), getUsageCounts(session.company_id),
+    listPublicPlans(), isSuperAdmin(session) ? listSubscriptionPayments(session) : [],
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const meta = STATE_META[subscription.state] || STATE_META.no_subscription;
   const Icon = meta.icon;
+  const canManage = isSuperAdmin(session);
+  const canResume = canManage && subscription.state === "suspended" && subscription.provider === "paypal";
 
   return (
     <div>
@@ -32,7 +43,11 @@ export default async function SubscriptionSettingsPage() {
         <div className="bg-card border border-border rounded-xl p-6 text-center">
           <AlertTriangle className="h-6 w-6 text-amber-400 mx-auto mb-2" />
           <p className="text-foreground text-sm">No subscription is configured for this company yet.</p>
-          <p className="text-muted-foreground text-xs mt-1">Contact your platform administrator.</p>
+          {canManage ? (
+            <div className="mt-3 flex justify-center"><SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={false} /></div>
+          ) : (
+            <p className="text-muted-foreground text-xs mt-1">Contact your Company Super Admin.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -55,11 +70,13 @@ export default async function SubscriptionSettingsPage() {
               {subscription.maxLeads && <div className="flex justify-between"><span className="text-muted-foreground">Lead Limit</span><span className="text-foreground">{subscription.maxLeads}</span></div>}
             </div>
             {subscription.daysRemaining != null && subscription.daysRemaining <= 30 && subscription.daysRemaining >= 0 && (
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-amber-400 text-xs mb-2">Your plan expires {subscription.daysRemaining === 0 ? "today" : subscription.daysRemaining === 1 ? "tomorrow" : `in ${subscription.daysRemaining} days`}. Renew or upgrade your subscription to continue using the platform.</p>
-                <span className="inline-block px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs">Contact Platform Admin</span>
-              </div>
+              <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">
+                Your plan expires {subscription.daysRemaining === 0 ? "today" : subscription.daysRemaining === 1 ? "tomorrow" : `in ${subscription.daysRemaining} days`}.
+              </p>
             )}
+            {subscription.state === "past_due" && <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">PayPal reported a payment issue — please update your payment method to avoid interruption.</p>}
+            {subscription.state === "payment_failed" && <p className="text-red-400 text-xs mt-4 pt-4 border-t border-border">Your last payment failed. Please resolve this with PayPal.</p>}
+            {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} />}
           </div>
 
           <div className="bg-card border border-border rounded-xl p-5">

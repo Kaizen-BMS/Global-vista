@@ -1,5 +1,7 @@
 import "server-only";
 import { pool } from "@/lib/db";
+import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 
 export async function getUserNotifications(session, { unreadOnly = false, limit = 20 } = {}) {
   const where = unreadOnly ? "AND is_read=0" : "";
@@ -8,15 +10,52 @@ export async function getUserNotifications(session, { unreadOnly = false, limit 
 }
 const LEAD_NOTIFICATION_TYPES = ["lead_created", "lead_assigned", "lead_form_resubmission", "lead_released"];
 
-/** Sidebar dot counts — one lightweight query, not the full notification
- * list. `leadUnread` drives the Leads nav dot; `totalUnread` drives both
- * the Notifications nav dot and the existing bell badge. */
-export async function getNotificationBadges(session) {
-  const [[row]] = await pool.query(
-    `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount FROM notifications WHERE user_id=? AND company_id=? AND is_read=0`,
-    [LEAD_NOTIFICATION_TYPES, session.id, session.company_id]
-  );
-  return { totalUnread: Number(row.total), leadUnread: Number(row.leadCount || 0) };
+/**
+ * The ONE query set every sidebar dot is driven from — a single HTTP round
+ * trip fans out to a handful of already-indexed, already-permission-scoped
+ * queries instead of every nav item polling its own endpoint. Each count is
+ * scoped exactly the way the underlying feature already scopes visibility
+ * (notifications are only ever created for a user who was legitimately
+ * authorized to see that record at creation time; the follow-ups count
+ * reuses the same RLS filter `leads.view` gates everywhere else; messages
+ * reuses the exact query getUnreadMessageCount uses — duplicated inline
+ * rather than imported, since messaging.js's own notification creation
+ * would otherwise form a circular import with this file).
+ */
+export async function getSidebarBadgeCounts(session) {
+  const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
+  const { where: leadWhere, params: leadParams } = await getVisibleLeadFilter(session);
+
+  const [notifResult, followupResult, messageResult] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount, SUM(type = 'payment_received') AS paymentCount
+       FROM notifications WHERE user_id=? AND company_id=? AND is_read=0`,
+      [LEAD_NOTIFICATION_TYPES, session.id, session.company_id]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS n FROM lead_followups f
+       JOIN leads l ON l.id = f.lead_id AND l.is_deleted = 0 AND ${leadWhere}
+       WHERE f.status = 'Scheduled' AND f.scheduled_at <= NOW()`,
+      leadParams
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS n FROM messages m
+       JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
+       WHERE m.company_id = ? AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
+      [session.id, session.company_id, session.id]
+    ),
+  ]);
+  const notifRow = notifResult[0][0];
+  const followupRow = followupResult[0][0];
+  const messageRow = messageResult[0][0];
+
+  return {
+    totalUnread: Number(notifRow.total),
+    leads: Number(notifRow.leadCount || 0),
+    followups: Number(followupRow.n),
+    messages: Number(messageRow.n),
+    payments: paymentsEnabled ? Number(notifRow.paymentCount || 0) : 0,
+  };
 }
 
 export async function markAllNotificationsRead(session) {

@@ -514,12 +514,21 @@ export async function provisionCompany(input, operatorId) {
     // the selected plan grants via plan_modules, so a public registrant
     // (who never sees a module picker at all) gets exactly what their
     // chosen plan includes.
+    //
+    // Skipped entirely when subscriptionStatus === "pending" — that status
+    // means "awaiting PayPal payment confirmation" (see registerCompany's
+    // paid-plan path), and modules/limits must only activate once PayPal
+    // actually confirms the subscription, never merely because the
+    // registration form was submitted. confirmCompanySubscriptionFromPayPal
+    // grants them later via the same syncCompanyModulesToPlan this would
+    // have called.
     // -------------------------------------------------------------
     let effectiveModuleIds = Array.isArray(moduleIds) && moduleIds.length ? moduleIds.map(Number) : [];
-    if (effectiveModuleIds.length === 0 && planId) {
+    if (effectiveModuleIds.length === 0 && planId && subscriptionStatus !== "pending") {
       const [planModuleRows] = await conn.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
       effectiveModuleIds = planModuleRows.map((r) => r.module_id);
     }
+    if (subscriptionStatus === "pending") effectiveModuleIds = [];
     for (const moduleId of effectiveModuleIds) {
       const [[existingModule]] = await conn.query(
         `SELECT id FROM company_modules WHERE company_id=? AND module_id=? LIMIT 1`,

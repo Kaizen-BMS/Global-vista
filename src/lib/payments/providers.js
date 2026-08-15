@@ -1,5 +1,4 @@
 import "server-only";
-import { getPlatformSettingsByGroup } from "@/lib/platform/actions/settings";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 
 /**
@@ -15,14 +14,17 @@ import { getSettingsByGroup } from "@/lib/actions/settings";
 
 export const PAYMENT_METHODS = ["Cash", "Bank Transfer", "UPI", "PayPal", "Card", "Other"];
 
-// PayPal's client ID/secret live in env vars only — never in a DB settings
-// table, never sent to the browser. `paypal_mode` (sandbox/live) is the one
-// non-secret operational toggle, so it's the only PayPal field platform_settings
-// actually stores.
+// PayPal's client ID/secret AND mode all live in env vars only — never in a
+// DB settings table, never sent to the browser. Mode specifically must be
+// env-controlled (not a DB toggle an operator could flip in the UI without
+// also updating the matching credentials) since PAYPAL_MODE is what
+// actually routes every API call in src/lib/payments/paypalClient.js —
+// a DB-only toggle here would risk this status display disagreeing with
+// where transactions actually go.
 export async function getPayPalStatus() {
   const configured = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
-  const settings = await getPlatformSettingsByGroup("payments");
-  return { configured, mode: settings.paypal_mode || "sandbox" };
+  const mode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase() === "live" ? "live" : "sandbox";
+  return { configured, mode };
 }
 
 // UPI has no secrets to protect — a UPI ID is meant to be shared to receive

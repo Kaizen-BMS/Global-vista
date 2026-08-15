@@ -31,3 +31,17 @@ async function columnExists(tableName, columnName) {
 export async function hasLeadCustomFieldsSchema() { return tableExists("lead_custom_fields"); }
 export async function hasLeadDocumentTypesSchema() { return tableExists("lead_document_types"); }
 export async function hasLeadDocumentTypeIdColumn() { return columnExists("lead_documents", "document_type_id"); }
+
+export async function hasPlanDescriptionColumn() { return columnExists("plans", "description"); }
+export async function hasPlanPayPalColumns() { return columnExists("plans", "paypal_plan_id"); }
+export async function hasCompanySubscriptionsPayPalColumns() { return columnExists("company_subscriptions", "provider"); }
+export async function hasSubscriptionPaymentsTable() { return tableExists("subscription_payments"); }
+export async function hasPayPalWebhookEventsTable() { return tableExists("paypal_webhook_events"); }
+
+/** True only once the ENTIRE 2026-08-15 PayPal migration has been applied — every write path that touches the new plans/company_subscriptions columns or the two new tables gates on this single flag. */
+export async function hasPayPalBillingSchema() {
+  const [plan, sub, payments, events] = await Promise.all([
+    hasPlanPayPalColumns(), hasCompanySubscriptionsPayPalColumns(), hasSubscriptionPaymentsTable(), hasPayPalWebhookEventsTable(),
+  ]);
+  return plan && sub && payments && events;
+}

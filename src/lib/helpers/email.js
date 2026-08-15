@@ -72,6 +72,39 @@ export async function sendPasswordResetEmail({ to, userId, name, resetUrl, compa
   });
   return send({ to, userId, subject: "Reset your password", html, template: "password_reset" });
 }
+export async function sendSubscriptionReceiptEmail({ to, companyId, planName, amount, currency, billingCycle, paypalTransactionId, paypalSubscriptionId }) {
+  const branding = await getBranding(companyId);
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const html = wrap({
+    title: "Payment received",
+    bodyFn: (color) => `
+      <p>Thanks — your payment for the <strong style="color:#fff;">${planName}</strong> plan was received.</p>
+      <p style="color:#a3a3a3;font-size:13px;line-height:1.8;">
+        Amount: <strong style="color:#e5e5e5;">${currency} ${Number(amount).toFixed(2)}</strong><br/>
+        Billing cycle: ${billingCycle}<br/>
+        Transaction ID: ${paypalTransactionId || "—"}<br/>
+        Subscription ID: ${paypalSubscriptionId || "—"}
+      </p>
+      <a href="${appUrl}/workspace/settings/subscription" style="color:${color};">View Subscription</a>`,
+    branding,
+  });
+  return send({ to, subject: `Payment receipt — ${planName}`, html, template: "subscription_receipt" });
+}
+
+export async function sendSubscriptionPaymentFailedEmail({ to, companyId, planName }) {
+  const branding = await getBranding(companyId);
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const html = wrap({
+    title: "Payment problem with your subscription",
+    bodyFn: (color) => `
+      <p>PayPal reported a problem processing payment for your <strong style="color:#fff;">${planName}</strong> plan.</p>
+      <p style="color:#a3a3a3;font-size:13px;">Please update your payment method with PayPal to avoid interruption.</p>
+      <a href="${appUrl}/workspace/settings/subscription" style="color:${color};">Manage Subscription</a>`,
+    branding,
+  });
+  return send({ to, subject: `Action needed — payment failed for ${planName}`, html, template: "subscription_payment_failed" });
+}
+
 export async function sendLeadFormNotificationEmail({ to, formName, leadName, leadPhone, companyId, leadId }) {
   const branding = await getBranding(companyId);
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");

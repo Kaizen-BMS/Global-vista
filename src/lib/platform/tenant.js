@@ -36,6 +36,13 @@ export async function getSubscriptionState(companyId) {
   if (!sub) return "no_subscription";
   if (sub.status === "cancelled") return "cancelled";
   if (sub.ends_at && new Date(sub.ends_at) < new Date()) return "expired";
+  // Any other stored status (trial, pending, active, past_due, suspended,
+  // payment_failed) passes through unchanged — pending/past_due/
+  // payment_failed are deliberately NOT treated as expired/cancelled here:
+  // a company mid-checkout or mid-payment-retry keeps whatever access it
+  // already had until PayPal actually reports the subscription cancelled/
+  // suspended/expired, per the "don't cut access over a transient billing
+  // hiccup" requirement.
   return sub.status;
 }
 
@@ -63,11 +70,19 @@ export async function getSubscriptionDetails(companyId) {
   const state = sub.status === "cancelled" ? "cancelled" : expiredByDate ? "expired" : sub.status;
   const daysRemaining = endsAt ? Math.ceil((endsAt.getTime() - now.getTime()) / 86400000) : null;
 
+  // "suspended" (PayPal itself paused billing after repeated failures) is
+  // treated the same as expired/cancelled — access blocked, data untouched.
+  // "pending" (mid-checkout), "past_due"/"payment_failed" (still within
+  // PayPal's own retry window) are deliberately NOT blocked — a grace
+  // period, not an outage, per the standing "never delete data / don't cut
+  // access over a transient billing hiccup" requirement.
   return {
     hasSubscription: true,
-    blocked: state === "expired" || state === "cancelled",
+    blocked: ["expired", "cancelled", "suspended"].includes(state),
     state,
     subscriptionId: sub.id,
+    planId: sub.plan_id,
+    provider: sub.provider,
     planName: sub.plan_name,
     price: sub.price,
     currency: sub.currency,

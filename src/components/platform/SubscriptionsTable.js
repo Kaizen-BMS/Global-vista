@@ -16,6 +16,9 @@ const STATE_META = {
   expired: { label: "Expired", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
   cancelled: { label: "Cancelled", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
   suspended: { label: "Suspended", color: "text-orange-400 bg-orange-500/10 border-orange-500/30", icon: Ban },
+  pending: { label: "Pending Payment", color: "text-sky-400 bg-sky-500/10 border-sky-500/30", icon: Clock },
+  past_due: { label: "Past Due", color: "text-amber-400 bg-amber-500/10 border-amber-500/30", icon: AlertTriangle },
+  payment_failed: { label: "Payment Failed", color: "text-red-400 bg-red-500/10 border-red-500/30", icon: XCircle },
   deleted: { label: "Deleted", color: "text-muted-foreground bg-muted/20 border-border/30", icon: XCircle },
   no_subscription: { label: "No Subscription", color: "text-muted-foreground bg-muted/20 border-border/30", icon: AlertTriangle },
 };

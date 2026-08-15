@@ -47,7 +47,7 @@ export async function runSubscriptionWarningsCheck() {
     FROM company_subscriptions cs
     JOIN companies c ON c.id = cs.company_id AND c.status = 'active'
     JOIN plans p ON p.id = cs.plan_id
-    WHERE cs.status IN ('trial','active') AND cs.ends_at IS NOT NULL
+    WHERE cs.status IN ('trial','active','past_due') AND cs.ends_at IS NOT NULL
   `);
   const now = new Date();
   for (const sub of subs) {

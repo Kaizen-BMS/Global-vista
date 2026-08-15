@@ -1,12 +1,17 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { provisionCompany } from "@/lib/platform/actions/provisioning";
+import { createPayPalCheckoutForCompany } from "@/lib/platform/actions/paypalBilling";
+import { hasPlanDescriptionColumn } from "@/lib/db/schemaFlags";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
- * only, no internal-only fields. */
+ * only, no internal-only fields. `description` only selected once the
+ * migration adding it has run (see schemaFlags.js) — this is a public,
+ * currently-working page, so it must never 500 ahead of that migration. */
 export async function listPublicPlans() {
+  const withDescription = await hasPlanDescriptionColumn();
   const [rows] = await pool.query(
-    `SELECT id, name, slug, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
+    `SELECT id, name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
   return rows;
@@ -32,23 +37,29 @@ export async function registerCompany(input) {
   if (adminPassword !== confirmPassword) { const e = new Error("Passwords do not match."); e.status = 400; throw e; }
   if (!planId) { const e = new Error("Please select a plan."); e.status = 400; throw e; }
 
-  const [[plan]] = await pool.query(`SELECT id, name, price, trial_days, billing_cycle FROM plans WHERE id = ? AND status = 'active'`, [planId]);
+  // SELECT * (not named columns) — paypal_plan_id may not exist yet on this
+  // environment (see schemaFlags.js); when it doesn't, plan.paypal_plan_id
+  // is simply undefined, which correctly falls through the requiresPayment
+  // check below exactly as if PayPal weren't connected — never a crash.
+  const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Selected plan is not available."); e.status = 400; throw e; }
-
-  // A priced, non-trial plan needs real payment collection before a company
-  // is created for it — PayPal isn't wired to actually charge anyone yet
-  // (see src/lib/payments/providers.js: getPayPalStatus). Rather than
-  // create the company and pretend payment happened, self-service signup
-  // is only offered for plans that don't require payment up front.
-  if (plan.price && Number(plan.price) > 0 && plan.billing_cycle !== "trial") {
-    const e = new Error("This plan requires payment, which isn't available for self-service signup yet. Please contact us to get started on this plan.");
-    e.status = 409;
-    throw e;
-  }
 
   const [[existingCompany]] = await pool.query(`SELECT id FROM companies WHERE LOWER(name) = LOWER(?) LIMIT 1`, [companyName.trim()]);
   if (existingCompany) { const e = new Error("A company with this name is already registered."); e.status = 409; throw e; }
 
+  const requiresPayment = plan.price && Number(plan.price) > 0 && plan.billing_cycle !== "trial";
+  if (requiresPayment && !plan.paypal_plan_id) {
+    const e = new Error("This plan requires payment, but hasn't been connected to PayPal yet. Please contact us to get started.");
+    e.status = 409;
+    throw e;
+  }
+
+  // Paid plan: the company + admin account are created NOW (so the admin
+  // can log in immediately) but with subscriptionStatus="pending" — this
+  // deliberately does NOT grant any modules (see provisionCompany's guard
+  // on subscriptionStatus==="pending"). Nothing is "active" until PayPal
+  // confirms the subscription server-side, per the standing "never activate
+  // a paid subscription merely because the form was submitted" rule.
   const result = await provisionCompany(
     {
       companyName: companyName.trim(),
@@ -62,10 +73,23 @@ export async function registerCompany(input) {
       adminPhone: input.adminPhone || null,
       adminPassword,
       planId: plan.id,
-      subscriptionStatus: "trial",
+      subscriptionStatus: requiresPayment ? "pending" : "trial",
     },
     null
   );
+
+  if (requiresPayment) {
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const { approveUrl } = await createPayPalCheckoutForCompany({
+      companyId: result.companyId,
+      planId: plan.id,
+      subscriberEmail: adminEmail.trim().toLowerCase(),
+      subscriberName: adminName.trim(),
+      returnUrl: `${appUrl}/register/confirm`,
+      cancelUrl: `${appUrl}/login?checkout=cancelled`,
+    });
+    return { companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, approveUrl };
+  }
 
   const [[subscription]] = await pool.query(
     `SELECT starts_at, ends_at FROM company_subscriptions WHERE company_id = ? ORDER BY created_at DESC LIMIT 1`,
@@ -77,6 +101,7 @@ export async function registerCompany(input) {
     companyId: result.companyId,
     companyName: companyName.trim(),
     planName: plan.name,
+    requiresPayment: false,
     trialStart: subscription?.starts_at || null,
     trialEnd: subscription?.ends_at || null,
     daysRemaining,

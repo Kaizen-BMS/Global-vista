@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
+import { hasPlanDescriptionColumn, hasPlanPayPalColumns } from "@/lib/db/schemaFlags";
 
 /** One row per company — its most recent subscription, joined with plan,
  * storage usage, user count, and lead count for the Platform Console table. */
@@ -114,27 +115,48 @@ export { syncCompanyModulesToPlan };
 // exist for this event. Not on the spec's required audit-event list
 // either (that list is about a COMPANY's subscription/plan changing,
 // which changeSubscriptionPlan below does log correctly).
+// Both functions branch on whether the 2026-08-15 migration (plans.description
+// / paypal_product_id / paypal_plan_id) has landed yet — see schemaFlags.js.
+// Until it has, these run the exact INSERT/UPDATE shape that already works
+// in production today; the description field and PayPal linkage activate
+// automatically, with no redeploy, the moment the migration is applied.
 export async function createPlan(data) {
   const slug = data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const withDescription = await hasPlanDescriptionColumn();
   const [result] = await pool.query(
-    `INSERT INTO plans (name, slug, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      data.name, slug, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
-      data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
-    ]
+    withDescription
+      ? `INSERT INTO plans (name, slug, description, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      : `INSERT INTO plans (name, slug, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    withDescription
+      ? [data.name, slug, data.description || null, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
+      : [data.name, slug, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
   );
   return result.insertId;
 }
 
+// Changing price/billing_cycle after a plan has already been synced to
+// PayPal would silently desync what PayPal bills from what the DB says —
+// PayPal billing plans are immutable on price/cycle by design, so instead
+// of trying to update them in place, clear the PayPal linkage so the
+// operator is prompted to re-sync (creating a fresh PayPal plan) rather
+// than the two silently drifting apart.
 export async function updatePlan(id, data) {
+  const [withDescription, withPayPal] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns()]);
+
+  let pricingChanged = false;
+  if (withPayPal) {
+    const [[existing]] = await pool.query(`SELECT price, billing_cycle, paypal_plan_id FROM plans WHERE id=?`, [id]);
+    pricingChanged = !!(existing?.paypal_plan_id && (Number(existing.price) !== Number(data.price || 0) || existing.billing_cycle !== (data.billingCycle || "monthly")));
+  }
+
   await pool.query(
-    `UPDATE plans SET name=?, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=? WHERE id=?`,
+    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${pricingChanged ? ", paypal_plan_id=NULL" : ""} WHERE id=?`,
     [
-      data.name, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
+      data.name, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
       data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active", id,
     ]
   );
+  return { paypalLinkCleared: pricingChanged };
 }
 
 export async function getSubscriptionForCompany(companyId) {

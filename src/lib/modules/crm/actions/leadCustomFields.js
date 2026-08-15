@@ -168,8 +168,12 @@ export async function reorderLeadCustomFieldSections(session, orderedSectionName
 // ---------------------------------------------------------------------------
 
 async function assertLeadVisible(session, leadId) {
+  // getVisibleLeadFilter's WHERE fragment is written against a `leads l`
+  // alias (matches every other caller in leads.js) — this query must alias
+  // the table the same way, or the `l.` prefix references a table that
+  // doesn't exist in this query and MySQL throws ER_BAD_FIELD_ERROR.
   const { where, params } = await getVisibleLeadFilter(session);
-  const [[lead]] = await pool.query(`SELECT id FROM leads WHERE id=? AND company_id=? AND is_deleted=0 AND ${where} LIMIT 1`, [leadId, session.company_id, ...params]);
+  const [[lead]] = await pool.query(`SELECT l.id FROM leads l WHERE l.id=? AND l.company_id=? AND l.is_deleted=0 AND ${where} LIMIT 1`, [leadId, session.company_id, ...params]);
   if (!lead) { const e = new Error("Lead not found."); e.status = 404; throw e; }
   return lead;
 }

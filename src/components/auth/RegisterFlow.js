@@ -54,8 +54,24 @@ export default function RegisterFlow() {
       const res = await apiFetch("/api/public/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed.");
+      if (data.requiresPayment) {
+        // Company + admin account already exist at this point (see
+        // registerCompany) with subscriptionStatus="pending" — no modules
+        // are enabled yet. Redirecting to PayPal now (component unmounts
+        // on navigation, so `submitting` intentionally stays true rather
+        // than flickering the button back to enabled just before the
+        // browser leaves); nothing here treats this redirect itself as
+        // proof of payment — /register/confirm re-verifies with PayPal
+        // server-side once the browser returns.
+        window.location.href = data.approveUrl;
+        return;
+      }
       setResult(data);
-    } catch (err) { toast.error(err.message); } finally { setSubmitting(false); }
+      setSubmitting(false);
+    } catch (err) {
+      toast.error(err.message);
+      setSubmitting(false);
+    }
   }
 
   if (result) {
@@ -142,6 +158,7 @@ export default function RegisterFlow() {
                           <p className="text-white text-sm font-medium">{p.name}</p>
                           <p className="text-white text-sm">{p.price ? `${p.currency} ${p.price}/${p.billing_cycle === "yearly" ? "yr" : "mo"}` : "Free"}</p>
                         </div>
+                        {p.description && <p className="text-white/50 text-xs mt-0.5">{p.description}</p>}
                         <p className="text-white/40 text-xs mt-0.5">
                           {p.trial_days ? `${p.trial_days}-day free trial · ` : ""}
                           {p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
@@ -166,8 +183,8 @@ export default function RegisterFlow() {
                 ) : null}
               </div>
               {planRequiresPayment ? (
-                <p className="text-amber-400 text-xs bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                  This plan requires payment, and self-service payment isn&apos;t available yet. Please contact us to get started on this plan, or go back and choose a free/trial plan.
+                <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">
+                  This plan requires payment. Submitting creates your account, then sends you to PayPal to complete a secure {selectedPlan?.currency} {Number(selectedPlan?.price).toLocaleString()} / {selectedPlan?.billing_cycle} subscription. Your plan activates automatically once PayPal confirms.
                 </p>
               ) : (
                 <p className="text-white/30 text-xs">No payment required — your trial starts immediately after you submit.</p>
@@ -186,8 +203,8 @@ export default function RegisterFlow() {
             Continue <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </button>
         ) : (
-          <button type="button" onClick={submit} disabled={submitting || planRequiresPayment} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Create Company
+          <button type="button" onClick={submit} disabled={submitting} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />} {planRequiresPayment ? "Continue to PayPal" : "Create Company"}
           </button>
         )}
       </div>

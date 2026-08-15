@@ -2,14 +2,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X, Check } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check, CreditCard } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
-const emptyForm = { name: "", billingCycle: "monthly", price: "", currency: "INR", trialDays: "", maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
+const emptyForm = { name: "", description: "", billingCycle: "monthly", price: "", currency: "INR", trialDays: "", maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
 
 function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) {
   const [form, setForm] = useState(initial ? {
-    name: initial.name, billingCycle: initial.billing_cycle, price: initial.price || "", currency: initial.currency || "INR", trialDays: initial.trial_days || "",
+    name: initial.name, description: initial.description || "", billingCycle: initial.billing_cycle, price: initial.price || "", currency: initial.currency || "INR", trialDays: initial.trial_days || "",
     maxUsers: initial.max_users || "", maxLeads: initial.max_leads || "",
     maxStorageMb: initial.max_storage_mb || "", maxApiCallsPerDay: initial.max_api_calls_per_day || "", status: initial.status,
   } : emptyForm);
@@ -39,6 +39,7 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
       if (!modRes.ok) throw new Error((await modRes.json()).error || "Plan saved, but modules failed to save.");
 
       toast.success(initial ? "Plan updated." : "Plan created.");
+      if (data.paypalLinkCleared) toast.warning("Price or billing cycle changed — this plan's PayPal link was cleared. Use \"Sync to PayPal\" to create a new PayPal billing plan for it.");
       onSaved();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
@@ -52,6 +53,7 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
         </div>
         <div className="space-y-3">
           <input required placeholder="Plan name (e.g. Professional)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
+          <textarea rows={2} placeholder="Description (shown to companies on the subscription page)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputClass} />
           <select value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} className={inputClass}>
             <option value="trial">Trial</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
           </select>
@@ -90,6 +92,33 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
   );
 }
 
+function PayPalSyncButton({ plan, onSynced }) {
+  const [busy, setBusy] = useState(false);
+  const isPaidRecurring = Number(plan.price) > 0 && ["monthly", "yearly"].includes(plan.billing_cycle);
+  if (!isPaidRecurring) return null;
+
+  if (plan.paypal_plan_id) {
+    return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><CreditCard className="h-3 w-3" /> Synced to PayPal</span>;
+  }
+
+  async function sync() {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/platform/plans/${plan.id}/paypal-sync`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync to PayPal.");
+      toast.success("Plan synced to PayPal.");
+      onSynced();
+    } catch (err) { toast.error(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <button onClick={sync} disabled={busy} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border bg-muted text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />} Sync to PayPal
+    </button>
+  );
+}
+
 export default function PlansManager({ plans, allModules = [], planModulesByPlan = {} }) {
   const router = useRouter();
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, object = edit
@@ -112,6 +141,8 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
                 <button onClick={() => setEditing(p)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
               </div>
               <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
+              {p.description && <p className="text-muted-foreground text-xs mb-2">{p.description}</p>}
+              <div className="mb-2"><PayPalSyncButton plan={p} onSynced={() => router.refresh()} /></div>
               <div className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 <p>Price: {p.price ? `${p.currency} ${p.price}` : "Free"}</p>
                 {!!p.trial_days && <p>Trial: {p.trial_days} days</p>}

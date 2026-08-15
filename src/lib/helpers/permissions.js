@@ -41,7 +41,7 @@ export async function can(session, permissionSlug) {
   const isPlatformSlug = moduleSlug === "platform";
   if (!isPlatformSlug && moduleSlug !== "core") {
     const state = await getSubscriptionState(session.company_id);
-    if (["expired", "cancelled", "no_subscription"].includes(state) && permissionSlug.split(".").pop() !== "view") return false;
+    if (["expired", "cancelled", "no_subscription", "suspended"].includes(state) && permissionSlug.split(".").pop() !== "view") return false;
     if (!(await isModuleEnabledForCompany(session.company_id, moduleSlug))) return false;
   }
   if (isSuperAdmin(session)) return true;

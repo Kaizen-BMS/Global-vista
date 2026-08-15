@@ -10,6 +10,6 @@ export const PUT = withCsrf(withErrorHandling(async (request, ctx) => {
   assertPlatformOperator(session);
   const body = await request.json();
   if (!body.name) return badRequest("Plan name is required.");
-  await updatePlan(id, body);
-  return ok();
+  const result = await updatePlan(id, body);
+  return ok(result);
 }));
