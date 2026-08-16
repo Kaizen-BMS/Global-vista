@@ -17,13 +17,25 @@ export const PAYMENT_METHODS = ["Cash", "Bank Transfer", "UPI", "PayPal", "Card"
 // PayPal's client ID/secret AND mode all live in env vars only — never in a
 // DB settings table, never sent to the browser. Mode specifically must be
 // env-controlled (not a DB toggle an operator could flip in the UI without
-// also updating the matching credentials) since PAYPAL_MODE is what
+// also updating the matching credentials) since PAYPAL_ENVIRONMENT is what
 // actually routes every API call in src/lib/payments/paypalClient.js —
 // a DB-only toggle here would risk this status display disagreeing with
 // where transactions actually go.
 export async function getPayPalStatus() {
   const configured = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
-  const mode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase() === "live" ? "live" : "sandbox";
+  const mode = (process.env.PAYPAL_ENVIRONMENT || "sandbox").toLowerCase() === "live" ? "live" : "sandbox";
+  return { configured, mode };
+}
+
+// Razorpay status for the COMPANY SUBSCRIPTION billing checkout (platform
+// billing a company for its CRM plan) — a different domain from
+// PAYMENT_METHODS below (a company billing its own leads/students). Key
+// secret/webhook secret never leave the server; only configured/mode is
+// exposed, and the public key_id is handed to the browser separately, only
+// at actual checkout time (see razorpayBilling.js).
+export async function getRazorpayStatus() {
+  const configured = !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+  const mode = (process.env.RAZORPAY_KEY_ID || "").startsWith("rzp_live_") ? "live" : "test";
   return { configured, mode };
 }
 

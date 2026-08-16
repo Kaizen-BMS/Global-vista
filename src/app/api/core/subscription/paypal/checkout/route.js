@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { ok, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { startCompanyPayPalCheckout, assertPlanChangeAllowed } from "@/lib/platform/actions/paypalBilling";
+import { startCompanyPayPalCheckout } from "@/lib/platform/actions/paypalBilling";
+import { assertPlanChangeAllowed } from "@/lib/platform/actions/subscriptionBilling";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 

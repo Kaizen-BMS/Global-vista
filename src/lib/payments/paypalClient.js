@@ -12,7 +12,7 @@ import "server-only";
  */
 
 function getMode() {
-  const mode = (process.env.PAYPAL_MODE || "sandbox").toLowerCase();
+  const mode = (process.env.PAYPAL_ENVIRONMENT || "sandbox").toLowerCase();
   return mode === "live" ? "live" : "sandbox";
 }
 

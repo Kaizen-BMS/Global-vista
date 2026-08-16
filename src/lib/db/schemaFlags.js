@@ -34,14 +34,21 @@ export async function hasLeadDocumentTypeIdColumn() { return columnExists("lead_
 
 export async function hasPlanDescriptionColumn() { return columnExists("plans", "description"); }
 export async function hasPlanPayPalColumns() { return columnExists("plans", "paypal_plan_id"); }
-export async function hasCompanySubscriptionsPayPalColumns() { return columnExists("company_subscriptions", "provider"); }
+export async function hasPlanRazorpayColumns() { return columnExists("plans", "razorpay_plan_id"); }
+export async function hasCompanySubscriptionsGatewayColumns() { return columnExists("company_subscriptions", "gateway"); }
 export async function hasSubscriptionPaymentsTable() { return tableExists("subscription_payments"); }
-export async function hasPayPalWebhookEventsTable() { return tableExists("paypal_webhook_events"); }
+export async function hasPaymentWebhookEventsTable() { return tableExists("payment_webhook_events"); }
 
-/** True only once the ENTIRE 2026-08-15 PayPal migration has been applied — every write path that touches the new plans/company_subscriptions columns or the two new tables gates on this single flag. */
-export async function hasPayPalBillingSchema() {
-  const [plan, sub, payments, events] = await Promise.all([
-    hasPlanPayPalColumns(), hasCompanySubscriptionsPayPalColumns(), hasSubscriptionPaymentsTable(), hasPayPalWebhookEventsTable(),
+/** True only once the ENTIRE 2026-08-16 company-subscription-billing migration
+ * has been applied — every write path that touches the new plans/
+ * company_subscriptions columns or the two new tables (shared by BOTH
+ * Razorpay and PayPal) gates on this single flag. */
+export async function hasSubscriptionBillingSchema() {
+  const [sub, payments, events] = await Promise.all([
+    hasCompanySubscriptionsGatewayColumns(), hasSubscriptionPaymentsTable(), hasPaymentWebhookEventsTable(),
   ]);
-  return plan && sub && payments && events;
+  return sub && payments && events;
 }
+
+export async function hasLeadNoteTypeColumn() { return columnExists("lead_notes", "type"); }
+export async function hasLeadMeetingsSchema() { return tableExists("lead_meetings"); }

@@ -39,7 +39,8 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
       if (!modRes.ok) throw new Error((await modRes.json()).error || "Plan saved, but modules failed to save.");
 
       toast.success(initial ? "Plan updated." : "Plan created.");
-      if (data.paypalLinkCleared) toast.warning("Price or billing cycle changed — this plan's PayPal link was cleared. Use \"Sync to PayPal\" to create a new PayPal billing plan for it.");
+      if (data.paypalLinkCleared) toast.warning("Price or billing cycle changed — this plan's PayPal link was cleared. Re-sync to create a new PayPal billing plan for it.");
+      if (data.razorpayLinkCleared) toast.warning("Price or billing cycle changed — this plan's Razorpay link was cleared. Re-sync to create a new Razorpay plan for it.");
       onSaved();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
@@ -92,29 +93,29 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
   );
 }
 
-function PayPalSyncButton({ plan, onSynced }) {
+function GatewaySyncButton({ plan, gatewayKey, label, syncPath, onSynced }) {
   const [busy, setBusy] = useState(false);
   const isPaidRecurring = Number(plan.price) > 0 && ["monthly", "yearly"].includes(plan.billing_cycle);
   if (!isPaidRecurring) return null;
 
-  if (plan.paypal_plan_id) {
-    return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><CreditCard className="h-3 w-3" /> Synced to PayPal</span>;
+  if (plan[gatewayKey]) {
+    return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><CreditCard className="h-3 w-3" /> Synced to {label}</span>;
   }
 
   async function sync() {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/platform/plans/${plan.id}/paypal-sync`, { method: "POST" });
+      const res = await apiFetch(syncPath, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to sync to PayPal.");
-      toast.success("Plan synced to PayPal.");
+      if (!res.ok) throw new Error(data.error || `Failed to sync to ${label}.`);
+      toast.success(`Plan synced to ${label}.`);
       onSynced();
     } catch (err) { toast.error(err.message); } finally { setBusy(false); }
   }
 
   return (
     <button onClick={sync} disabled={busy} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border bg-muted text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
-      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />} Sync to PayPal
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />} Sync to {label}
     </button>
   );
 }
@@ -142,7 +143,10 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
               </div>
               <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
               {p.description && <p className="text-muted-foreground text-xs mb-2">{p.description}</p>}
-              <div className="mb-2"><PayPalSyncButton plan={p} onSynced={() => router.refresh()} /></div>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                <GatewaySyncButton plan={p} gatewayKey="razorpay_plan_id" label="Razorpay" syncPath={`/api/platform/plans/${p.id}/razorpay-sync`} onSynced={() => router.refresh()} />
+                <GatewaySyncButton plan={p} gatewayKey="paypal_plan_id" label="PayPal" syncPath={`/api/platform/plans/${p.id}/paypal-sync`} onSynced={() => router.refresh()} />
+              </div>
               <div className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 <p>Price: {p.price ? `${p.currency} ${p.price}` : "Free"}</p>
                 {!!p.trial_days && <p>Trial: {p.trial_days} days</p>}

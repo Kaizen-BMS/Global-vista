@@ -10,6 +10,7 @@ import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { formatBytes } from "@/lib/helpers/formatBytes";
 import EmptyState from "@/components/shared/EmptyState";
+import { refreshSidebarBadges } from "@/components/layout/Sidebar";
 
 function UploadDropzone({ leadId, documentTypes, onUploaded }) {
   const usingConfiguredTypes = documentTypes && documentTypes.length > 0;
@@ -148,6 +149,7 @@ export default function LeadDocuments({ leadId, documents: initialDocuments, can
       if (res.ok) setDocuments(data.documents || []);
     } catch { /* keep showing last-known list */ }
     router.refresh();
+    refreshSidebarBadges();
   }, [leadId, router]);
 
   return (

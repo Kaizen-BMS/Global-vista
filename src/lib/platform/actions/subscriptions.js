@@ -2,15 +2,19 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasPlanDescriptionColumn, hasPlanPayPalColumns } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns } from "@/lib/db/schemaFlags";
 
 /** One row per company — its most recent subscription, joined with plan,
- * storage usage, user count, and lead count for the Platform Console table. */
+ * storage usage, user count, and lead count for the Platform Console table.
+ * `gateway` is only selected once the billing migration has landed — see
+ * schemaFlags.js; this is a page-load path and must never 500 ahead of it. */
 export async function listSubscriptions() {
+  const withGateway = await hasCompanySubscriptionsGatewayColumns();
   const [rows] = await pool.query(`
     SELECT
       c.id AS company_id, c.name AS company_name, c.status AS company_status,
       cs.id AS subscription_id, cs.status AS subscription_status, cs.starts_at, cs.ends_at,
+      ${withGateway ? "cs.gateway," : "'manual' AS gateway,"}
       p.id AS plan_id, p.name AS plan_name, p.max_storage_mb, p.max_users, p.max_leads,
       (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.is_deleted = 0) AS user_count,
       (SELECT COUNT(*) FROM leads l WHERE l.company_id = c.id AND l.is_deleted = 0) AS lead_count,
@@ -134,29 +138,34 @@ export async function createPlan(data) {
   return result.insertId;
 }
 
-// Changing price/billing_cycle after a plan has already been synced to
-// PayPal would silently desync what PayPal bills from what the DB says —
-// PayPal billing plans are immutable on price/cycle by design, so instead
-// of trying to update them in place, clear the PayPal linkage so the
-// operator is prompted to re-sync (creating a fresh PayPal plan) rather
-// than the two silently drifting apart.
+// Changing price/billing_cycle after a plan has already been synced to a
+// gateway would silently desync what the gateway bills from what the DB
+// says — both PayPal billing plans and Razorpay plans are immutable on
+// price/cycle by design, so instead of trying to update them in place,
+// clear the linkage so the operator is prompted to re-sync (creating a
+// fresh gateway plan) rather than the two silently drifting apart.
 export async function updatePlan(id, data) {
-  const [withDescription, withPayPal] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns()]);
+  const [withDescription, withPayPal, withRazorpay] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns()]);
 
-  let pricingChanged = false;
-  if (withPayPal) {
-    const [[existing]] = await pool.query(`SELECT price, billing_cycle, paypal_plan_id FROM plans WHERE id=?`, [id]);
-    pricingChanged = !!(existing?.paypal_plan_id && (Number(existing.price) !== Number(data.price || 0) || existing.billing_cycle !== (data.billingCycle || "monthly")));
+  let paypalLinkCleared = false;
+  let razorpayLinkCleared = false;
+  if (withPayPal || withRazorpay) {
+    const [[existing]] = await pool.query(`SELECT * FROM plans WHERE id=?`, [id]);
+    const pricingChanged = Number(existing?.price) !== Number(data.price || 0) || existing?.billing_cycle !== (data.billingCycle || "monthly");
+    paypalLinkCleared = !!(withPayPal && existing?.paypal_plan_id && pricingChanged);
+    razorpayLinkCleared = !!(withRazorpay && existing?.razorpay_plan_id && pricingChanged);
   }
 
+  const clearClauses = [paypalLinkCleared && "paypal_plan_id=NULL", razorpayLinkCleared && "razorpay_plan_id=NULL"].filter(Boolean).map((c) => `, ${c}`).join("");
+
   await pool.query(
-    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${pricingChanged ? ", paypal_plan_id=NULL" : ""} WHERE id=?`,
+    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${clearClauses} WHERE id=?`,
     [
       data.name, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
       data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active", id,
     ]
   );
-  return { paypalLinkCleared: pricingChanged };
+  return { paypalLinkCleared, razorpayLinkCleared };
 }
 
 export async function getSubscriptionForCompany(companyId) {

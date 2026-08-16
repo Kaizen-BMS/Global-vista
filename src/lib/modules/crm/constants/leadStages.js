@@ -25,6 +25,8 @@ export const DOCUMENT_TYPES = ["Passport", "IELTS", "PTE", "Academic", "Visa", "
 
 export const FOLLOWUP_TYPES = ["Phone Call", "WhatsApp", "Meeting", "Zoom", "Email", "Reminder", "SMS", "Custom"];
 
+export const MEETING_TYPES = ["Online", "Phone", "In Person", "Other"];
+
 export const FOLLOWUP_DISPOSITIONS = ["Interested", "Not Interested", "No Response", "Follow-up Needed"];
 
 export const DISPOSITION_COLORS = {

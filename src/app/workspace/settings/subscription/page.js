@@ -4,7 +4,8 @@ import { getSubscriptionDetails, getUsageCounts } from "@/lib/platform/tenant";
 import { getStorageUsage, formatBytes } from "@/lib/actions/storage";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { listPublicPlans } from "@/lib/platform/actions/registration";
-import { listSubscriptionPayments } from "@/lib/platform/actions/paypalBilling";
+import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
+import { getPayPalStatus, getRazorpayStatus } from "@/lib/payments/providers";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import SettingsTabs from "@/components/shared/SettingsTabs";
 import SubscriptionManager from "@/components/crm/settings/SubscriptionManager";
@@ -24,15 +25,17 @@ const STATE_META = {
 
 export default async function SubscriptionSettingsPage() {
   const session = await getSession();
-  const [subscription, storage, systemSettings, usage, plans, payments] = await Promise.all([
+  const [subscription, storage, systemSettings, usage, plans, payments, paypalStatus, razorpayStatus] = await Promise.all([
     getSubscriptionDetails(session.company_id), getStorageUsage(session), getSettingsByGroup(session, "system"), getUsageCounts(session.company_id),
     listPublicPlans(), isSuperAdmin(session) ? listSubscriptionPayments(session) : [],
+    getPayPalStatus(), getRazorpayStatus(),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const meta = STATE_META[subscription.state] || STATE_META.no_subscription;
   const Icon = meta.icon;
   const canManage = isSuperAdmin(session);
-  const canResume = canManage && subscription.state === "suspended" && subscription.provider === "paypal";
+  const canResume = canManage && subscription.state === "suspended" && ["paypal", "razorpay"].includes(subscription.gateway);
+  const gateways = { paypal: paypalStatus, razorpay: razorpayStatus };
 
   return (
     <div>
@@ -44,7 +47,7 @@ export default async function SubscriptionSettingsPage() {
           <AlertTriangle className="h-6 w-6 text-amber-400 mx-auto mb-2" />
           <p className="text-foreground text-sm">No subscription is configured for this company yet.</p>
           {canManage ? (
-            <div className="mt-3 flex justify-center"><SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={false} /></div>
+            <div className="mt-3 flex justify-center"><SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={false} gateways={gateways} /></div>
           ) : (
             <p className="text-muted-foreground text-xs mt-1">Contact your Company Super Admin.</p>
           )}
@@ -74,9 +77,9 @@ export default async function SubscriptionSettingsPage() {
                 Your plan expires {subscription.daysRemaining === 0 ? "today" : subscription.daysRemaining === 1 ? "tomorrow" : `in ${subscription.daysRemaining} days`}.
               </p>
             )}
-            {subscription.state === "past_due" && <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">PayPal reported a payment issue — please update your payment method to avoid interruption.</p>}
-            {subscription.state === "payment_failed" && <p className="text-red-400 text-xs mt-4 pt-4 border-t border-border">Your last payment failed. Please resolve this with PayPal.</p>}
-            {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} />}
+            {subscription.state === "past_due" && <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">Your payment gateway reported a payment issue — please update your payment method to avoid interruption.</p>}
+            {subscription.state === "payment_failed" && <p className="text-red-400 text-xs mt-4 pt-4 border-t border-border">Your last payment failed. Please resolve this with your payment gateway.</p>}
+            {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} gateways={gateways} />}
           </div>
 
           <div className="bg-card border border-border rounded-xl p-5">

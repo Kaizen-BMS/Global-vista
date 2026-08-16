@@ -33,7 +33,7 @@ function SubscriptionConfirmInner() {
 
     (async () => {
       try {
-        const res = await apiFetch(`/api/core/subscription/confirm?subscription_id=${encodeURIComponent(subscriptionId)}`);
+        const res = await apiFetch(`/api/core/subscription/paypal/confirm?subscription_id=${encodeURIComponent(subscriptionId)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not confirm the subscription.");
         setDetail(data);

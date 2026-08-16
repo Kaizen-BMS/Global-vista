@@ -149,6 +149,7 @@ export default function SubscriptionsTable({ subscriptions, plans, timezone }) {
           <tr className="text-left text-muted-foreground border-b border-border">
             <th className="px-4 py-3 font-medium">Company</th>
             <th className="px-4 py-3 font-medium">Plan</th>
+            <th className="px-4 py-3 font-medium">Gateway</th>
             <th className="px-4 py-3 font-medium">Status</th>
             <th className="px-4 py-3 font-medium">Expiry</th>
             <th className="px-4 py-3 font-medium">Storage</th>
@@ -162,6 +163,7 @@ export default function SubscriptionsTable({ subscriptions, plans, timezone }) {
             <tr key={row.company_id} className="border-b border-border/60 hover:bg-muted/20 transition-colors">
               <td className="px-4 py-3"><Link href={`/platform/companies/${row.company_id}`} className="text-foreground hover:text-indigo-400 font-medium">{row.company_name}</Link></td>
               <td className="px-4 py-3 text-foreground/90">{row.plan_name || "—"}</td>
+              <td className="px-4 py-3 text-muted-foreground text-xs capitalize">{row.gateway === "manual" ? "—" : row.gateway || "—"}</td>
               <td className="px-4 py-3"><StatusBadge state={row.state} /></td>
               <td className="px-4 py-3 text-foreground/90">
                 {row.ends_at ? formatDate(row.ends_at, timezone) : "No expiry"}

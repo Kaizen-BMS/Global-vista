@@ -3,33 +3,27 @@ import { can } from "@/lib/helpers/permissions";
 import { getLeadById } from "@/lib/modules/crm/actions/leads";
 import { listLeadNotes } from "@/lib/modules/crm/actions/leadNotes";
 import { listLeadFollowups } from "@/lib/modules/crm/actions/leadFollowups";
+import { listLeadMeetings } from "@/lib/modules/crm/actions/leadMeetings";
 import { listLeadTasks } from "@/lib/modules/crm/actions/leadTasks";
 import { listLeadDocuments } from "@/lib/modules/crm/actions/leadDocuments";
 import { getLeadTimeline } from "@/lib/modules/crm/actions/leadTimeline";
 import { listPaymentPlansForLead, getPaymentPlanDetail } from "@/lib/modules/crm/actions/payments";
 import { listServices } from "@/lib/actions/leadMeta";
+import { listUsers } from "@/lib/actions/users";
 import { getAvailablePaymentMethods } from "@/lib/payments/providers";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import { getLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { listLeadDocumentTypes } from "@/lib/modules/crm/actions/leadDocumentTypes";
 import { hasLeadCustomFieldsSchema, hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
+import { Globe2, Briefcase, UserRound, PlaneTakeoff, FileCheck2, ListChecks } from "lucide-react";
+import LeadHeader from "@/components/crm/leads/LeadHeader";
+import ActivityComposer from "@/components/crm/leads/ActivityComposer";
+import ActivityTimeline from "@/components/crm/leads/ActivityTimeline";
 import LeadCustomFieldsDisplay from "@/components/crm/leads/LeadCustomFieldsDisplay";
-import Link from "next/link";
-import { Pencil, Phone, Mail, Globe2, Briefcase, UserRound, PlaneTakeoff, FileCheck2 } from "lucide-react";
-import StageBadge from "@/components/crm/badges/StageBadge";
-import PriorityBadge from "@/components/crm/badges/PriorityBadge";
-import LeadScoreBadge from "@/components/crm/badges/LeadScoreBadge";
-import LeadScoreBar from "@/components/crm/badges/LeadScoreBar";
-import QuickActionBar from "@/components/crm/leads/QuickActionBar";
-import LeadTabs from "@/components/crm/leads/LeadTabs";
-import LeadTimeline from "@/components/crm/leads/LeadTimeline";
-import LeadNotes from "@/components/crm/leads/LeadNotes";
-import LeadFollowups from "@/components/crm/leads/LeadFollowups";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
 import LeadPayments from "@/components/crm/leads/LeadPayments";
 import DuplicateBanner from "@/components/crm/leads/DuplicateBanner";
-import { TakeLeadButton, ReleaseLeadButton } from "@/components/crm/leads/LeadAssignmentAction";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
 import { computeLeadScore } from "@/lib/modules/crm/leadScore";
@@ -46,8 +40,12 @@ export default async function LeadDetailsPage({ params }) {
   const customFieldsSchemaReady = await hasLeadCustomFieldsSchema();
   const documentTypesSchemaReady = await hasLeadDocumentTypesSchema();
 
-  const [notes, followups, tasks, documents, timeline, paymentPlans, services, availableMethods, canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment, customFieldValues, documentTypes] = await Promise.all([
-    listLeadNotes(session, id), listLeadFollowups(session, id), listLeadTasks(session, id),
+  const [
+    notes, followups, meetings, tasks, documents, timeline, paymentPlans, services, availableMethods,
+    canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment,
+    customFieldValues, documentTypes, employeesResult,
+  ] = await Promise.all([
+    listLeadNotes(session, id), listLeadFollowups(session, id), listLeadMeetings(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
     paymentsEnabled ? listPaymentPlansForLead(session, id) : [],
     paymentsEnabled ? listServices(session) : [],
@@ -56,6 +54,7 @@ export default async function LeadDetailsPage({ params }) {
     can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"), can(session, "leads.assign"),
     customFieldsSchemaReady ? getLeadCustomFieldValues(session, id) : [],
     documentTypesSchemaReady ? listLeadDocumentTypes(session, { activeOnly: true }) : [],
+    listUsers(session, { status: "active", pageSize: 100 }),
   ]);
 
   // The "active" plan is the most recent one that isn't Cancelled/Refunded —
@@ -64,11 +63,9 @@ export default async function LeadDetailsPage({ params }) {
   const activePlan = paymentPlans.find((p) => !["Cancelled", "Refunded"].includes(p.status)) || paymentPlans[0] || null;
   const activePlanDetail = paymentsEnabled && activePlan ? await getPaymentPlanDetail(session, activePlan.id) : null;
 
-  const showCustomFieldsTab = customFieldsSchemaReady && customFieldValues.length > 0;
-  const tabLabels = ["Overview", ...(showCustomFieldsTab ? ["Custom Fields"] : []), "Timeline", "Notes", "Follow Ups", "Tasks", "Documents", ...(paymentsEnabled ? ["Payments"] : [])];
-
   const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
   const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+  const showCustomFields = customFieldsSchemaReady && customFieldValues.length > 0;
 
   return (
     <div>
@@ -82,97 +79,81 @@ export default async function LeadDetailsPage({ params }) {
         />
       )}
 
-      <div className="bg-card border border-border rounded-2xl p-5 sm:p-6 mb-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-4 min-w-0">
-            <div className="h-12 w-12 shrink-0 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-lg font-semibold">
-              {lead.name?.trim()?.[0]?.toUpperCase() || "?"}
-            </div>
-            <div className="min-w-0">
-              <p className="text-muted-foreground text-xs mb-0.5">{lead.lead_number}</p>
-              <h1 className="text-xl font-semibold text-foreground truncate">{lead.name}</h1>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <StageBadge stage={lead.stage} />
-                <PriorityBadge priority={lead.priority} />
-                <LeadScoreBadge score={score} />
-                {tags.map((tag) => (
-                  <span key={tag} className="px-2 py-1 rounded-full text-xs border bg-muted text-foreground border-border">#{tag}</span>
-                ))}
-              </div>
-            </div>
+      <LeadHeader
+        lead={lead} leadId={id} score={score} tags={tags} session={session}
+        canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs}
+        paymentsEnabled={paymentsEnabled} employees={employeesResult.users}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main column — the activity workspace */}
+        <div className="lg:col-span-2 min-w-0">
+          <ActivityComposer lead={lead} canManageFollowups={canManageFollowups} canManageNotes={canManageNotes} />
+          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6">
+            <p className="text-foreground font-medium mb-4">Activity Timeline</p>
+            <ActivityTimeline
+              leadId={id} events={timeline} followups={followups} meetings={meetings} notes={notes} documents={documents}
+              canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
+            />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {canEdit && (
-              <Link href={`/workspace/lead-management/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer">
-                <Pencil className="h-4 w-4" /> Edit
-              </Link>
+        </div>
+
+        {/* Sidebar — supporting information, kept as existing components in compact cards */}
+        <div className="space-y-6 min-w-0">
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <p className="text-foreground font-medium mb-3">Lead Details</p>
+            <div className="space-y-3">
+              <DetailRow icon={Globe2} label="Country" value={lead.country || "—"} />
+              <DetailRow icon={UserRound} label="Created By" value={lead.created_by_name || (lead.source_form_name ? "System (Public Form)" : "—")} />
+              <DetailRow icon={Briefcase} label="Service" value={lead.service_name} />
+              <DetailRow icon={PlaneTakeoff} label="Preferred Country" value={lead.preferred_country || "—"} />
+              <DetailRow icon={FileCheck2} label="Passport" value={lead.passport_status || "—"} />
+            </div>
+            {lead.remarks && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-muted-foreground text-xs mb-1">Remarks</p>
+                <p className="text-foreground text-sm whitespace-pre-wrap">{lead.remarks}</p>
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="mt-5 pt-5 border-t border-border">
-          <QuickActionBar lead={lead} canManage={canManageFollowups} />
-        </div>
+          {showCustomFields && (
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <p className="text-foreground font-medium mb-3">Custom Fields</p>
+              <LeadCustomFieldsDisplay leadId={id} values={customFieldValues} />
+            </div>
+          )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          <InfoBlock icon={Phone} label="Phone" value={lead.phone} />
-          <InfoBlock icon={Mail} label="Email" value={lead.email || "—"} />
-          <InfoBlock icon={Globe2} label="Country" value={lead.country || "—"} />
-          <InfoBlock
-            icon={UserRound}
-            label="Assigned To"
-            value={
-              !lead.assigned_to
-                ? (canEdit ? <TakeLeadButton leadId={id} /> : "Unassigned")
-                : lead.assigned_to === session.id || canManageAssignment
-                  ? <span className="flex items-center gap-2"><span className="truncate">{lead.assigned_name}</span><ReleaseLeadButton leadId={id} /></span>
-                  : lead.assigned_name
-            }
-          />
-          <InfoBlock icon={Briefcase} label="Source" value={lead.source_form_name ? `${lead.source_name} — ${lead.source_form_name}` : lead.source_name} />
-          <InfoBlock icon={UserRound} label="Created By" value={lead.created_by_name || (lead.source_form_name ? "System (Public Form)" : "—")} />
-          <InfoBlock icon={Briefcase} label="Service" value={lead.service_name} />
-          <InfoBlock icon={PlaneTakeoff} label="Preferred Country" value={lead.preferred_country || "—"} />
-          <InfoBlock icon={FileCheck2} label="Passport" value={lead.passport_status || "—"} />
-        </div>
+          {paymentsEnabled && (
+            <div id="payments" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
+              <p className="text-foreground font-medium mb-3">Payments</p>
+              <LeadPayments
+                leadId={id} plans={paymentPlans} activePlan={activePlanDetail} services={services}
+                availableMethods={availableMethods} canManage={canEdit}
+              />
+            </div>
+          )}
 
-        <div className="mt-5">
-          <LeadScoreBar score={score} />
+          <div id="documents" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
+            <p className="text-foreground font-medium mb-3">Documents</p>
+            <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <p className="text-foreground font-medium mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-muted-foreground" /> Tasks</p>
+            <LeadTasks leadId={id} tasks={tasks} canManage={canManageTasks} />
+          </div>
         </div>
       </div>
-
-      <LeadTabs tabs={tabLabels}>
-        <div className="bg-card border border-border rounded-xl p-6">
-          <p className="text-foreground text-sm whitespace-pre-wrap">{lead.remarks || "No remarks recorded."}</p>
-        </div>
-        {showCustomFieldsTab && <LeadCustomFieldsDisplay leadId={id} values={customFieldValues} />}
-        <LeadTimeline events={timeline} />
-        <LeadNotes leadId={id} notes={notes} canManage={canManageNotes} />
-        <LeadFollowups leadId={id} followups={followups} canManage={canManageFollowups} />
-        <LeadTasks leadId={id} tasks={tasks} canManage={canManageTasks} />
-        <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
-        {paymentsEnabled && (
-          <LeadPayments
-            leadId={id}
-            plans={paymentPlans}
-            activePlan={activePlanDetail}
-            services={services}
-            availableMethods={availableMethods}
-            canManage={canEdit}
-          />
-        )}
-      </LeadTabs>
     </div>
   );
 }
 
-function InfoBlock({ icon: Icon, label, value }) {
+function DetailRow({ icon: Icon, label, value }) {
   return (
-    <div className="bg-muted/40 border border-border rounded-lg p-3">
-      <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1.5">
-        {Icon && <Icon className="h-3 w-3" />} {label}
-      </p>
-      <p className="text-foreground text-sm truncate">{value}</p>
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="flex items-center gap-1.5 text-muted-foreground text-xs shrink-0"><Icon className="h-3 w-3" /> {label}</span>
+      <span className="text-foreground text-right truncate">{value}</span>
     </div>
   );
 }

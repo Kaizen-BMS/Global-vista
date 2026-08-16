@@ -68,7 +68,7 @@ export async function uploadLeadDocument(session, leadId, { type, documentTypeId
       : [session.company_id, leadId, type, file.name, key, file.size, uploadedBy]
   );
 
-  await logActivity({ userId: uploadedBy, module: "leads", action: "document_upload", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Uploaded ${type} document: ${file.name}` });
+  await logActivity({ userId: uploadedBy, module: "leads", action: "document_upload", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Uploaded ${type} document: ${file.name}`, meta: { documentId: result.insertId } });
 
   if (lead.assigned_to && lead.assigned_to !== uploadedBy) {
     await createNotification(session.company_id, lead.assigned_to, {

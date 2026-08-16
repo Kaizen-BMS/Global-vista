@@ -5,8 +5,8 @@ import { processPayPalWebhookEvent } from "@/lib/platform/actions/paypalBilling"
 /**
  * PayPal webhook receiver. Every event is (1) signature-verified against
  * PayPal's own verification endpoint before anything else runs, (2)
- * recorded in paypal_webhook_events keyed by PayPal's event_id for
- * idempotency, then (3) dispatched. A duplicate delivery — PayPal retries
+ * recorded in payment_webhook_events (gateway='paypal') keyed by PayPal's
+ * event_id for idempotency, then (3) dispatched. A duplicate delivery — PayPal retries
  * webhooks that don't get a fast 2xx — is a guaranteed no-op past the
  * ledger insert. This route intentionally does NOT use withCsrf (PayPal
  * itself is the caller, not a browser with our session cookie) and does

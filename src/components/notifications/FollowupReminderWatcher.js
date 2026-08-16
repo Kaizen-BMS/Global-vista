@@ -59,7 +59,8 @@ export default function FollowupReminderWatcher() {
           shownRef.current[f.id] = stage;
           changed = true;
 
-          const title = stage === "due" ? "Follow-up due now" : `Follow-up in ${stage === "10min" ? "10" : stage === "5min" ? "5" : "1"} minute${stage === "1min" ? "" : "s"}`;
+          const noun = f.kind === "meeting" ? "Meeting" : "Follow-up";
+          const title = stage === "due" ? `${noun} due now` : `${noun} in ${stage === "10min" ? "10" : stage === "5min" ? "5" : "1"} minute${stage === "1min" ? "" : "s"}`;
           const urgent = stage === "1min" || stage === "due";
           toast[urgent ? "warning" : "info"](title, {
             description: `${f.type} — ${f.lead_name}`,

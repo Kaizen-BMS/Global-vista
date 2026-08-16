@@ -7,6 +7,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { formatMoney } from "@/lib/helpers/formatCurrency";
+import { refreshSidebarBadges } from "@/components/layout/Sidebar";
 
 const STATUS_STYLES = {
   Draft: "bg-muted/20 text-muted-foreground border-border/30",
@@ -212,7 +213,7 @@ export default function LeadPayments({ leadId, plans, activePlan, services, avai
     if (!res.ok) throw new Error(data.error || "Something went wrong.");
     return data;
   }
-  function close() { setModal(null); router.refresh(); }
+  function close() { setModal(null); router.refresh(); refreshSidebarBadges(); }
 
   if (!activePlan) {
     return (

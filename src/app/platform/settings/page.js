@@ -1,13 +1,14 @@
 import { getPlatformSettingsByGroup } from "@/lib/platform/actions/settings";
-import { getPayPalStatus } from "@/lib/payments/providers";
+import { getPayPalStatus, getRazorpayStatus } from "@/lib/payments/providers";
 import PlatformSettingsForm from "@/components/platform/PlatformSettingsForm";
 
 export default async function PlatformSettingsPage() {
-  const [values, brandingValues, paymentsValues, paypalStatus] = await Promise.all([
+  const [values, brandingValues, paymentsValues, paypalStatus, razorpayStatus] = await Promise.all([
     getPlatformSettingsByGroup("general"),
     getPlatformSettingsByGroup("branding"),
     getPlatformSettingsByGroup("payments"),
     getPayPalStatus(),
+    getRazorpayStatus(),
   ]);
   return (
     <div className="space-y-8">
@@ -39,12 +40,18 @@ export default async function PlatformSettingsPage() {
       <div>
         <p className="text-foreground font-medium mb-1">Payments</p>
         <p className="text-muted-foreground text-sm mb-4">
-          Platform-wide payment configuration. PayPal client credentials are read from server environment
+          Platform-wide payment configuration. Gateway credentials are read from server environment
           variables only — they are never stored in the database or sent to the browser.
         </p>
-        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs mb-4 border ${paypalStatus.configured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-muted/40 text-muted-foreground border-border"}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${paypalStatus.configured ? "bg-emerald-400" : "bg-muted-foreground"}`} />
-          PayPal: {paypalStatus.configured ? `Connected (${paypalStatus.mode === "live" ? "Live" : "Sandbox"})` : "Not Connected"}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${razorpayStatus.configured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-muted/40 text-muted-foreground border-border"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${razorpayStatus.configured ? "bg-emerald-400" : "bg-muted-foreground"}`} />
+            Razorpay: {razorpayStatus.configured ? `Connected (${razorpayStatus.mode === "live" ? "Live" : "Test"})` : "Not Connected"}
+          </div>
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${paypalStatus.configured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-muted/40 text-muted-foreground border-border"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${paypalStatus.configured ? "bg-emerald-400" : "bg-muted-foreground"}`} />
+            PayPal: {paypalStatus.configured ? `Connected (${paypalStatus.mode === "live" ? "Live" : "Sandbox"})` : "Not Connected"}
+          </div>
         </div>
         <PlatformSettingsForm
           group="payments"
@@ -56,16 +63,22 @@ export default async function PlatformSettingsPage() {
         />
         <div className="mt-4 pt-4 border-t border-border text-xs text-muted-foreground max-w-xl space-y-2">
           <p>
-            PayPal mode and credentials are environment-only (never a database toggle, so this status can never disagree
-            with where transactions actually go): <code>PAYPAL_CLIENT_ID</code>, <code>PAYPAL_CLIENT_SECRET</code>,{" "}
-            <code>PAYPAL_MODE</code> (<code>sandbox</code> or <code>live</code>), and <code>PAYPAL_WEBHOOK_ID</code>{" "}
-            (from the webhook you configure in the PayPal Developer Dashboard — required for signature verification).
+            Razorpay: <code>RAZORPAY_KEY_ID</code>, <code>RAZORPAY_KEY_SECRET</code>, <code>RAZORPAY_WEBHOOK_SECRET</code>{" "}
+            (from the webhook you configure in the Razorpay Dashboard). Mode (test/live) is read directly from
+            which key pair you set — Razorpay issues separate <code>rzp_test_...</code> / <code>rzp_live_...</code> keys, so there's no separate mode toggle to keep in sync.
           </p>
           <p>
-            Webhook URL to register with PayPal:{" "}
+            PayPal: <code>PAYPAL_CLIENT_ID</code>, <code>PAYPAL_CLIENT_SECRET</code>,{" "}
+            <code>PAYPAL_ENVIRONMENT</code> (<code>sandbox</code> or <code>live</code>), and <code>PAYPAL_WEBHOOK_ID</code>{" "}
+            (from the webhook you configure in the PayPal Developer Dashboard).
+          </p>
+          <p>
+            Webhook URLs to register:{" "}
+            <code>{(process.env.NEXT_PUBLIC_APP_URL || "https://your-domain").replace(/\/$/, "")}/api/webhooks/razorpay</code>
+            {" · "}
             <code>{(process.env.NEXT_PUBLIC_APP_URL || "https://your-domain").replace(/\/$/, "")}/api/webhooks/paypal</code>
           </p>
-          {!paypalStatus.configured && <p>PayPal stays hidden as a payment method everywhere in the workspace until it's configured.</p>}
+          {(!razorpayStatus.configured || !paypalStatus.configured) && <p>An unconfigured gateway stays hidden as a payment option everywhere in the workspace and on the subscription checkout page.</p>}
         </div>
       </div>
     </div>

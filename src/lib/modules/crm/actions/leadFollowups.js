@@ -105,7 +105,7 @@ export async function createFollowup(session, leadId, data, createdBy) {
     await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
   }
 
-  await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Scheduled ${data.type} follow-up` });
+  await logActivity({ userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Scheduled ${data.type} follow-up`, meta: { followupId: result.insertId } });
 
   const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
   if (lead?.assigned_to && lead.assigned_to !== createdBy) {
@@ -139,7 +139,7 @@ export async function rescheduleFollowup(session, id, leadId, newScheduledAt, up
   await pool.query(`UPDATE lead_followups SET scheduled_at = ?, updated_by = ? WHERE id = ? AND company_id = ?`, [scheduledAt, updatedBy, id, session.company_id]);
   await logActivity({
     userId: updatedBy, module: "leads", action: "followup_rescheduled", entityType: "lead", entityId: leadId, companyId: session.company_id,
-    description: `Rescheduled ${existing.type} follow-up`,
+    description: `Rescheduled ${existing.type} follow-up`, meta: { followupId: id },
   });
 
   sendFollowupRescheduledEmail(
@@ -161,7 +161,7 @@ export async function cancelFollowup(session, id, leadId, updatedBy) {
   await pool.query(`UPDATE lead_followups SET status = 'Cancelled', updated_by = ? WHERE id = ? AND company_id = ?`, [updatedBy, id, session.company_id]);
   await logActivity({
     userId: updatedBy, module: "leads", action: "followup_cancelled", entityType: "lead", entityId: leadId, companyId: session.company_id,
-    description: `Cancelled ${existing.type} follow-up`,
+    description: `Cancelled ${existing.type} follow-up`, meta: { followupId: id },
   });
 
   sendFollowupCancelledEmail({ id, lead_id: leadId, type: existing.type, scheduled_at: existing.scheduled_at }, session.company_id, updatedBy);
@@ -198,7 +198,7 @@ export async function logQuickActivity(session, leadId, { type, note, nextFollow
 
   const dispositionNote = disposition ? ` — ${disposition}` : "";
   const durationNote = durationSeconds ? ` (${Math.round(durationSeconds / 60)} min)` : "";
-  await logActivity({ userId: actorId, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `${type}: ${note || "logged"}${dispositionNote}${durationNote}${nextFollowUp ? " — next follow-up scheduled" : ""}` });
+  await logActivity({ userId: actorId, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `${type}: ${note || "logged"}${dispositionNote}${durationNote}${nextFollowUp ? " — next follow-up scheduled" : ""}`, meta: { followupId: completedId } });
 
   const [[lead]] = await pool.query(`SELECT assigned_to, name FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
   if (lead?.assigned_to && lead.assigned_to !== actorId && nextFollowUp) {
@@ -223,5 +223,5 @@ export async function completeFollowup(session, id, leadId, { outcome, nextFollo
     await pool.query(`UPDATE leads SET next_follow_up = ? WHERE id = ? AND company_id = ?`, [nextFollowUp, leadId, session.company_id]);
   }
   const dispositionNote = disposition ? ` — ${disposition}` : "";
-  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Follow-up completed: ${outcome || "no outcome noted"}${dispositionNote}` });
+  await logActivity({ userId: updatedBy, module: "leads", action: "followup_completed", entityType: "lead", entityId: leadId, companyId: session.company_id, description: `Follow-up completed: ${outcome || "no outcome noted"}${dispositionNote}`, meta: { followupId: id } });
 }

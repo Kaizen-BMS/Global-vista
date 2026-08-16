@@ -70,19 +70,20 @@ export async function getSubscriptionDetails(companyId) {
   const state = sub.status === "cancelled" ? "cancelled" : expiredByDate ? "expired" : sub.status;
   const daysRemaining = endsAt ? Math.ceil((endsAt.getTime() - now.getTime()) / 86400000) : null;
 
-  // "suspended" (PayPal itself paused billing after repeated failures) is
-  // treated the same as expired/cancelled — access blocked, data untouched.
-  // "pending" (mid-checkout), "past_due"/"payment_failed" (still within
-  // PayPal's own retry window) are deliberately NOT blocked — a grace
-  // period, not an outage, per the standing "never delete data / don't cut
-  // access over a transient billing hiccup" requirement.
+  // "suspended" (the gateway itself paused billing after repeated
+  // failures) is treated the same as expired/cancelled — access blocked,
+  // data untouched. "pending" (mid-checkout), "past_due"/"payment_failed"
+  // (still within the gateway's own retry window) are deliberately NOT
+  // blocked — a grace period, not an outage, per the standing "never
+  // delete data / don't cut access over a transient billing hiccup"
+  // requirement.
   return {
     hasSubscription: true,
     blocked: ["expired", "cancelled", "suspended"].includes(state),
     state,
     subscriptionId: sub.id,
     planId: sub.plan_id,
-    provider: sub.provider,
+    gateway: sub.gateway,
     planName: sub.plan_name,
     price: sub.price,
     currency: sub.currency,
