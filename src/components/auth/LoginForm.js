@@ -7,7 +7,6 @@ import { Mail, Lock, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { apiFetch } from "@/components/shared/apiClient";
 import FloatingInput from "@/components/auth/FloatingInput";
-import OAuthButtons from "@/components/auth/OAuthButtons";
 
 export default function LoginForm({ onNavigate }) {
   const router = useRouter();
@@ -57,14 +56,6 @@ export default function LoginForm({ onNavigate }) {
         <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <h1 className="text-2xl font-semibold text-white mb-1.5">Welcome back</h1>
           <p className="text-white/50 text-sm mb-7">Sign in to your KaizenBMS Platform workspace.</p>
-
-          <OAuthButtons />
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="h-px flex-1 bg-white/10" />
-            <span className="text-white/30 text-xs">or continue with email</span>
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <FloatingInput label="Email" type="email" icon={Mail} required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />

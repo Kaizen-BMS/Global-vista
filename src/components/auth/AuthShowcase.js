@@ -42,7 +42,7 @@ export default function AuthShowcase({ branding }) {
   const primary = branding?.primaryColor || "#4f46e5";
 
   return (
-    <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden bg-[#05050c]">
+    <div className="relative flex flex-col lg:flex-row flex-1 items-center justify-center overflow-hidden bg-[#05050c] min-h-[420px] gap-6 py-12 lg:min-h-screen lg:py-0 lg:gap-0">
       {/* Gradient base + animated blobs */}
       <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 30% 20%, ${primary}33 0%, transparent 55%), radial-gradient(circle at 75% 75%, ${accent}22 0%, transparent 50%)` }} />
       <motion.div
@@ -64,7 +64,7 @@ export default function AuthShowcase({ branding }) {
       {/* Headline */}
       <motion.div
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
-        className="relative z-10 max-w-md text-center px-8 -translate-y-40"
+        className="relative z-10 max-w-md text-center px-8 lg:-translate-y-40"
       >
         <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-white/70 backdrop-blur-md">
           <Sparkles className="h-3.5 w-3.5" style={{ color: accent }} />
@@ -75,8 +75,10 @@ export default function AuthShowcase({ branding }) {
         </h2>
       </motion.div>
 
-      {/* Floating preview cards */}
-      <div className="relative z-10 h-[420px] w-[520px]">
+      {/* Floating preview cards — scaled down on narrow viewports so the
+          fixed-size cluster (designed for desktop) never overflows; the
+          FloatingCard positions/logic themselves are untouched. */}
+      <div className="relative z-10 h-[420px] w-[520px] scale-[0.55] sm:scale-75 lg:scale-100 origin-center">
         <FloatingCard className="left-2 top-6 w-56 p-4" delay={0.1} floatDuration={5.5}>
           <div className="flex items-center gap-2 mb-3">
             <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${primary}30` }}>
