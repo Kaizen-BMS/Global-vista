@@ -12,14 +12,17 @@ import { listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
 import { getAvailablePaymentMethods } from "@/lib/payments/providers";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
-import { getLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { listLeadDocumentTypes } from "@/lib/modules/crm/actions/leadDocumentTypes";
-import { hasLeadCustomFieldsSchema, hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
-import { Globe2, Briefcase, UserRound, PlaneTakeoff, FileCheck2, ListChecks } from "lucide-react";
+import { getLeadDetailFieldGroups } from "@/lib/modules/crm/actions/leadFieldLayout";
+import { hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
+import { ListChecks } from "lucide-react";
 import LeadHeader from "@/components/crm/leads/LeadHeader";
 import ActivityComposer from "@/components/crm/leads/ActivityComposer";
 import ActivityTimeline from "@/components/crm/leads/ActivityTimeline";
-import LeadCustomFieldsDisplay from "@/components/crm/leads/LeadCustomFieldsDisplay";
+import LeadWorkspaceTabs from "@/components/crm/leads/LeadWorkspaceTabs";
+import LeadWhatsAppPanel from "@/components/crm/leads/LeadWhatsAppPanel";
+import LeadScoreMeter from "@/components/crm/badges/LeadScoreMeter";
+import LeadFieldsDisplay from "@/components/crm/leads/LeadFieldsDisplay";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
 import LeadPayments from "@/components/crm/leads/LeadPayments";
@@ -37,13 +40,12 @@ export default async function LeadDetailsPage({ params }) {
   if (!lead) return <WorkspaceNotFound />;
 
   const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
-  const customFieldsSchemaReady = await hasLeadCustomFieldsSchema();
   const documentTypesSchemaReady = await hasLeadDocumentTypesSchema();
 
   const [
     notes, followups, meetings, tasks, documents, timeline, paymentPlans, services, availableMethods,
     canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment,
-    customFieldValues, documentTypes, employeesResult,
+    fieldGroups, documentTypes, employeesResult,
   ] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadMeetings(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
@@ -52,7 +54,7 @@ export default async function LeadDetailsPage({ params }) {
     paymentsEnabled ? getAvailablePaymentMethods(session) : [],
     can(session, "leads.update"), can(session, "leads.notes.manage"), can(session, "leads.followups.manage"),
     can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"), can(session, "leads.assign"),
-    customFieldsSchemaReady ? getLeadCustomFieldValues(session, id) : [],
+    getLeadDetailFieldGroups(session, lead),
     documentTypesSchemaReady ? listLeadDocumentTypes(session, { activeOnly: true }) : [],
     listUsers(session, { status: "active", pageSize: 100 }),
   ]);
@@ -65,7 +67,6 @@ export default async function LeadDetailsPage({ params }) {
 
   const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
   const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
-  const showCustomFields = customFieldsSchemaReady && customFieldValues.length > 0;
 
   return (
     <div>
@@ -89,40 +90,24 @@ export default async function LeadDetailsPage({ params }) {
         {/* Main column — the activity workspace */}
         <div className="lg:col-span-2 min-w-0">
           <ActivityComposer lead={lead} canManageFollowups={canManageFollowups} canManageNotes={canManageNotes} />
-          <div className="bg-card border border-border rounded-2xl p-5 sm:p-6">
-            <p className="text-foreground font-medium mb-4">Activity Timeline</p>
-            <ActivityTimeline
-              leadId={id} events={timeline} followups={followups} meetings={meetings} notes={notes} documents={documents}
-              canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
-            />
-          </div>
+          <LeadWorkspaceTabs
+            timelineSlot={
+              <ActivityTimeline
+                leadId={id} events={timeline} followups={followups} meetings={meetings} notes={notes} documents={documents}
+                canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
+              />
+            }
+            whatsappSlot={
+              <LeadWhatsAppPanel leadId={id} lead={lead} initialFollowups={followups} canManageFollowups={canManageFollowups} />
+            }
+          />
         </div>
 
         {/* Sidebar — supporting information, kept as existing components in compact cards */}
         <div className="space-y-6 min-w-0">
-          <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-foreground font-medium mb-3">Lead Details</p>
-            <div className="space-y-3">
-              <DetailRow icon={Globe2} label="Country" value={lead.country || "—"} />
-              <DetailRow icon={UserRound} label="Created By" value={lead.created_by_name || (lead.source_form_name ? "System (Public Form)" : "—")} />
-              <DetailRow icon={Briefcase} label="Service" value={lead.service_name} />
-              <DetailRow icon={PlaneTakeoff} label="Preferred Country" value={lead.preferred_country || "—"} />
-              <DetailRow icon={FileCheck2} label="Passport" value={lead.passport_status || "—"} />
-            </div>
-            {lead.remarks && (
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-muted-foreground text-xs mb-1">Remarks</p>
-                <p className="text-foreground text-sm whitespace-pre-wrap">{lead.remarks}</p>
-              </div>
-            )}
-          </div>
+          <LeadScoreMeter score={score} />
 
-          {showCustomFields && (
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <p className="text-foreground font-medium mb-3">Custom Fields</p>
-              <LeadCustomFieldsDisplay leadId={id} values={customFieldValues} />
-            </div>
-          )}
+          <LeadFieldsDisplay leadId={id} groups={fieldGroups} />
 
           {paymentsEnabled && (
             <div id="payments" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
@@ -145,15 +130,6 @@ export default async function LeadDetailsPage({ params }) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function DetailRow({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="flex items-center gap-1.5 text-muted-foreground text-xs shrink-0"><Icon className="h-3 w-3" /> {label}</span>
-      <span className="text-foreground text-right truncate">{value}</span>
     </div>
   );
 }

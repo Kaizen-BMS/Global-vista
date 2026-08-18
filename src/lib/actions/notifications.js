@@ -9,6 +9,8 @@ export async function getUserNotifications(session, { unreadOnly = false, limit 
   return rows;
 }
 const LEAD_NOTIFICATION_TYPES = ["lead_created", "lead_assigned", "lead_form_resubmission", "lead_released"];
+const COMPLAINT_NOTIFICATION_TYPES = ["complaint_created", "complaint_status_changed", "complaint_reply"];
+const IDEA_NOTIFICATION_TYPES = ["idea_created", "idea_status_changed", "idea_reply"];
 
 /**
  * The ONE query set every sidebar dot is driven from — a single HTTP round
@@ -28,9 +30,10 @@ export async function getSidebarBadgeCounts(session) {
 
   const [notifResult, followupResult, messageResult] = await Promise.all([
     pool.query(
-      `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount, SUM(type = 'payment_received') AS paymentCount
+      `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount, SUM(type = 'payment_received') AS paymentCount,
+              SUM(type IN (?)) AS complaintCount, SUM(type IN (?)) AS ideaCount
        FROM notifications WHERE user_id=? AND company_id=? AND is_read=0`,
-      [LEAD_NOTIFICATION_TYPES, session.id, session.company_id]
+      [LEAD_NOTIFICATION_TYPES, COMPLAINT_NOTIFICATION_TYPES, IDEA_NOTIFICATION_TYPES, session.id, session.company_id]
     ),
     pool.query(
       `SELECT COUNT(*) AS n FROM lead_followups f
@@ -55,6 +58,8 @@ export async function getSidebarBadgeCounts(session) {
     followups: Number(followupRow.n),
     messages: Number(messageRow.n),
     payments: paymentsEnabled ? Number(notifRow.paymentCount || 0) : 0,
+    complaints: Number(notifRow.complaintCount || 0),
+    ideas: Number(notifRow.ideaCount || 0),
   };
 }
 

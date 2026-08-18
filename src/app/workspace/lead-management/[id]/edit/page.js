@@ -5,6 +5,8 @@ import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
 import { listDistinctTags } from "@/lib/modules/crm/actions/leads";
 import { listLeadCustomFields, getLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
+import { getFullLeadFormLayout } from "@/lib/modules/crm/actions/leadFieldLayout";
+import { leadRowToFormValues } from "@/lib/modules/crm/constants/builtinLeadFields";
 import { hasLeadCustomFieldsSchema } from "@/lib/db/schemaFlags";
 import LeadForm from "@/components/modules/crm/forms/LeadForm";
 import ForbiddenState from "@/components/shared/ForbiddenState";
@@ -16,11 +18,12 @@ export default async function EditLeadPage({ params }) {
 
   const { id } = await params;
   const schemaReady = await hasLeadCustomFieldsSchema();
-  const [lead, sources, services, counsellorsResult, tags, customFields, customValues] = await Promise.all([
+  const [lead, sources, services, counsellorsResult, tags, customFields, customValues, groups] = await Promise.all([
     getLeadById(session, id), listLeadSources(session), listServices(session),
     listUsers(session, { status: "active", pageSize: 100 }), listDistinctTags(session),
     schemaReady ? listLeadCustomFields(session, { activeOnly: true, context: "lead_form" }) : [],
     schemaReady ? getLeadCustomFieldValues(session, id) : [],
+    getFullLeadFormLayout(session, { context: "lead_form" }),
   ]);
 
   if (!lead) return <WorkspaceNotFound />;
@@ -33,7 +36,8 @@ export default async function EditLeadPage({ params }) {
       <p className="text-muted-foreground text-sm mb-6">{lead.lead_number}</p>
       <LeadForm
         sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags}
-        initialData={{ ...lead, id: lead.id }} customFields={customFields} initialCustomValues={initialCustomValues}
+        initialData={{ ...leadRowToFormValues(lead), id: lead.id }} customFields={customFields} initialCustomValues={initialCustomValues}
+        groups={groups}
       />
     </div>
   );

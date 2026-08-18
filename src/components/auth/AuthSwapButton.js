@@ -18,9 +18,9 @@ export default function AuthSwapButton({ swapped, onClick, label = "Switch layou
         onClick={onClick}
         aria-label={label}
         title={label}
-        whileHover={{ scale: 1.08 }}
+        whileHover={{ scale: 1.08, boxShadow: "0 0 0 1px rgba(129,140,248,0.4), 0 0 24px rgba(99,102,241,0.55)" }}
         whileTap={{ scale: 0.94 }}
-        className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] backdrop-blur-xl shadow-lg cursor-pointer transition-colors hover:border-indigo-400/50 hover:bg-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05050c]"
+        className="group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] backdrop-blur-xl shadow-lg cursor-pointer transition-colors duration-300 hover:border-indigo-400/50 hover:bg-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05050c]"
       >
         <motion.span
           animate={{ rotate: swapped ? 180 : 0 }}

@@ -52,3 +52,16 @@ export async function hasSubscriptionBillingSchema() {
 
 export async function hasLeadNoteTypeColumn() { return columnExists("lead_notes", "type"); }
 export async function hasLeadMeetingsSchema() { return tableExists("lead_meetings"); }
+
+export async function hasComplaintsSchema() { return tableExists("complaints"); }
+export async function hasIdeasSchema() { return tableExists("ideas"); }
+
+export async function hasLeadFieldSectionsSchema() { return tableExists("lead_field_sections"); }
+export async function hasLeadFieldLayoutSchema() { return tableExists("lead_field_layout"); }
+
+/** True only once BOTH new tables behind the Lead Form Builder exist —
+ * every read/write path in leadFieldLayout.js gates on this single flag. */
+export async function hasLeadFormBuilderSchema() {
+  const [sections, layout] = await Promise.all([hasLeadFieldSectionsSchema(), hasLeadFieldLayoutSchema()]);
+  return sections && layout;
+}

@@ -77,6 +77,8 @@ const DOT_HREFS = {
   "/workspace/followups": "followups",
   "/workspace/notifications": "totalUnread",
   "/workspace/messages": "messages",
+  "/workspace/complaints": "complaints",
+  "/workspace/ideas": "ideas",
 };
 
 // ONE endpoint drives every sidebar dot — /api/core/notifications/badges
@@ -84,7 +86,7 @@ const DOT_HREFS = {
 // already-scoped queries this needs, so the client makes exactly one
 // request per poll instead of one per nav item.
 function useSidebarBadges(scope) {
-  const [badges, setBadges] = useState({ totalUnread: 0, leads: 0, followups: 0, messages: 0, payments: 0 });
+  const [badges, setBadges] = useState({ totalUnread: 0, leads: 0, followups: 0, messages: 0, payments: 0, complaints: 0, ideas: 0 });
   useEffect(() => {
     if (scope !== "workspace") return;
     let cancelled = false;

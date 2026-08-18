@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileText, Download, Trash2, RefreshCw, UploadCloud, Loader2 } from "lucide-react";
+import { FileText, Download, Trash2, RefreshCw, UploadCloud, Loader2, ChevronDown, CheckCircle2 } from "lucide-react";
 import { DOCUMENT_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
@@ -135,6 +135,33 @@ function DocumentRow({ leadId, doc, canManage, timezone, onChanged }) {
   );
 }
 
+function TypeGroup({ type, docs, leadId, canManage, timezone, onChanged, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const uploaded = docs.length > 0;
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-muted/40 transition cursor-pointer">
+        <span className="flex items-center gap-2 text-sm text-foreground min-w-0">
+          <span className="truncate">{type.name}</span>
+          {!!type.is_required && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-amber-500/30 text-amber-400 bg-amber-500/10">Required</span>}
+        </span>
+        <span className="flex items-center gap-2 shrink-0">
+          <span className={`text-[11px] px-2 py-0.5 rounded-full border flex items-center gap-1 ${uploaded ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" : type.is_required ? "border-amber-500/30 text-amber-400 bg-amber-500/10" : "border-border text-muted-foreground"}`}>
+            {uploaded && <CheckCircle2 className="h-3 w-3" />}
+            {uploaded ? `Uploaded (${docs.length})` : "Pending"}
+          </span>
+          {uploaded && <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />}
+        </span>
+      </button>
+      {open && uploaded && (
+        <div className="p-2 pt-0 space-y-2">
+          {docs.map((doc) => <DocumentRow key={doc.id} leadId={leadId} doc={doc} canManage={canManage} timezone={timezone} onChanged={onChanged} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeadDocuments({ leadId, documents: initialDocuments, canManage, documentTypes = [] }) {
   const router = useRouter();
   const timezone = useTimezone();
@@ -152,18 +179,49 @@ export default function LeadDocuments({ leadId, documents: initialDocuments, can
     refreshSidebarBadges();
   }, [leadId, router]);
 
+  const groupByType = documentTypes.length > 0;
+  const byTypeId = new Map();
+  const unmatched = [];
+  if (groupByType) {
+    for (const doc of documents) {
+      const key = doc.document_type_id != null ? String(doc.document_type_id) : null;
+      const matches = key && documentTypes.some((t) => String(t.id) === key);
+      if (matches) {
+        if (!byTypeId.has(key)) byTypeId.set(key, []);
+        byTypeId.get(key).push(doc);
+      } else {
+        unmatched.push(doc);
+      }
+    }
+  }
+
   return (
     <div>
       {canManage && <UploadDropzone leadId={leadId} documentTypes={documentTypes} onUploaded={reload} />}
-      <div className="space-y-2">
-        {documents.length === 0 ? (
-          <EmptyState icon={FileText} title="No documents uploaded" description="Upload passports, test scores, offer letters, or other files for this lead." />
-        ) : (
-          documents.map((doc) => (
+      {documents.length === 0 && !groupByType ? (
+        <EmptyState icon={FileText} title="No documents uploaded" description="Upload passports, test scores, offer letters, or other files for this lead." />
+      ) : groupByType ? (
+        <div className="space-y-2">
+          {documentTypes.map((t) => {
+            const docs = byTypeId.get(String(t.id)) || [];
+            return <TypeGroup key={t.id} type={t} docs={docs} leadId={leadId} canManage={canManage} timezone={timezone} onChanged={reload} defaultOpen={docs.length > 0} />;
+          })}
+          {unmatched.length > 0 && (
+            <div className="pt-2">
+              <p className="text-muted-foreground text-xs mb-2">Other documents</p>
+              <div className="space-y-2">
+                {unmatched.map((doc) => <DocumentRow key={doc.id} leadId={leadId} doc={doc} canManage={canManage} timezone={timezone} onChanged={reload} />)}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {documents.map((doc) => (
             <DocumentRow key={doc.id} leadId={leadId} doc={doc} canManage={canManage} timezone={timezone} onChanged={reload} />
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

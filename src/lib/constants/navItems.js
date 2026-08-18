@@ -1,5 +1,5 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb };
 
 export const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
@@ -24,6 +24,8 @@ export const ALL_NAV_ITEMS = [
   { href: "/workspace/settings", label: "Settings", icon: "Settings", permission: "settings.manage" },
   { href: "/workspace/documents", label: "Documents", icon: "FileText", permission: "employee_documents.manage" },
   { href: "/workspace/messages", label: "Messages", icon: "MessageSquare", permission: null },
+  { href: "/workspace/complaints", label: "Complaints", icon: "MessageSquareWarning", permission: null },
+  { href: "/workspace/ideas", label: "Ideas", icon: "Lightbulb", permission: null },
   { href: "/workspace/notifications", label: "Notifications", icon: "Bell", permission: null },
   { href: "/workspace/activity-logs", label: "Activity Logs", icon: "ScrollText", permission: "activity_logs.view" },
   { href: "/workspace/profile", label: "Profile", icon: "UserCircle", permission: null },

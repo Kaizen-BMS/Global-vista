@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, X, CalendarClock, CalendarDays, StickyNote, Phone, Mail, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2, X, CalendarClock, CalendarDays, StickyNote, Phone, Mail, MessageCircle, Sparkles } from "lucide-react";
 import { FOLLOWUP_TYPES, FOLLOWUP_DISPOSITIONS, MEETING_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 import { refreshSidebarBadges } from "@/components/layout/Sidebar";
@@ -170,6 +171,7 @@ const BUTTONS = [
   { key: "note", label: "Note", icon: StickyNote },
   { key: "call", label: "Call", icon: Phone },
   { key: "email", label: "Email", icon: Mail },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { key: "activity", label: "Activity", icon: Sparkles },
 ];
 
@@ -186,6 +188,12 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
   function click(key) {
     if (key === "call") { if (lead.phone) window.open(`tel:${lead.phone}`, "_self"); if (canManageFollowups) setOpen("call"); return; }
     if (key === "email") { if (lead.email) window.open(`mailto:${lead.email}`, "_self"); if (canManageFollowups) setOpen("email"); return; }
+    if (key === "whatsapp") {
+      const number = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
+      if (number) window.open(`https://wa.me/${number}`, "_blank");
+      if (canManageFollowups) setOpen("whatsapp");
+      return;
+    }
     setOpen(key);
   }
 
@@ -195,13 +203,18 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
     <div className="bg-card border border-border rounded-xl p-4 mb-6">
       <p className="text-muted-foreground text-xs mb-2.5">What would you like to do?</p>
       <div className="flex flex-wrap gap-2">
-        {BUTTONS.map((b) => {
+        {BUTTONS.map((b, i) => {
           if ((b.key === "note" && !canManageNotes) || (b.key !== "note" && !canManageFollowups)) return null;
           const Icon = b.icon;
           return (
-            <button key={b.key} onClick={() => click(b.key)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm hover:border-indigo-500/40 hover:bg-indigo-500/5 transition cursor-pointer">
+            <motion.button
+              key={b.key} onClick={() => click(b.key)}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: i * 0.03 }}
+              whileHover={{ y: -1 }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm hover:border-indigo-500/40 hover:bg-indigo-500/5 transition cursor-pointer"
+            >
               <Icon className="h-4 w-4" /> {b.label}
-            </button>
+            </motion.button>
           );
         })}
       </div>
@@ -211,6 +224,7 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
       {open === "note" && <NoteModal leadId={lead.id} onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "call" && <QuickLogModal leadId={lead.id} activityType="Phone Call" onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "email" && <QuickLogModal leadId={lead.id} activityType="Email" onClose={() => setOpen(null)} onSaved={onSaved} />}
+      {open === "whatsapp" && <QuickLogModal leadId={lead.id} activityType="WhatsApp" onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "activity" && <QuickLogModal leadId={lead.id} activityType="Custom" onClose={() => setOpen(null)} onSaved={onSaved} />}
     </div>
   );

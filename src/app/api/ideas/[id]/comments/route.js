@@ -1,0 +1,13 @@
+import { getSession } from "@/lib/auth";
+import { created, badRequest, withErrorHandling } from "@/lib/helpers/response";
+import { addIdeaComment } from "@/lib/actions/ideas";
+import { withCsrf } from "@/lib/helpers/withCsrf";
+
+export const POST = withCsrf(withErrorHandling(async (request, context) => {
+  const { id } = await context.params;
+  const session = await getSession();
+  const body = await request.json();
+  if (!body.comment) return badRequest("Comment is required.");
+  const commentId = await addIdeaComment(session, id, body.comment, session.id);
+  return created({ id: commentId });
+}));
