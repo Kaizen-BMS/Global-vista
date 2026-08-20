@@ -39,6 +39,7 @@ export async function razorpayFetch(path, { method = "GET", body } = {}) {
     const e = new Error(json?.error?.description || `Razorpay API error (${res.status}) on ${method} ${path}`);
     e.status = res.status >= 500 ? 502 : 400;
     e.razorpayDetails = json;
+    console.error(`Razorpay API error on ${method} ${path}:`, JSON.stringify(json));
     throw e;
   }
   return json;

@@ -81,9 +81,22 @@ export async function paypalFetch(path, { method = "GET", body, headers = {}, id
   const json = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
-    const e = new Error(json?.message || json?.error_description || `PayPal API error (${res.status}) on ${method} ${path}`);
+    // json.message is PayPal's generic top-level wrapper text (e.g. "The
+    // requested action could not be performed, semantically incorrect, or
+    // failed business validation") — it's identical across many unrelated
+    // failure causes. The actual reason lives in json.details[].issue /
+    // .description, which was previously captured on the error object but
+    // never read anywhere, so every gateway failure looked the same and had
+    // to be diagnosed by re-running the call by hand. Fold it into the
+    // message itself so it shows up wherever this error is logged or surfaced.
+    const specific = Array.isArray(json?.details) && json.details.length
+      ? json.details.map((d) => d.description || d.issue).filter(Boolean).join("; ")
+      : null;
+    const baseMessage = json?.message || json?.error_description || `PayPal API error (${res.status}) on ${method} ${path}`;
+    const e = new Error(specific ? `${baseMessage} (${specific})` : baseMessage);
     e.status = res.status >= 500 ? 502 : 400;
     e.paypalDetails = json;
+    console.error(`PayPal API error on ${method} ${path}:`, JSON.stringify(json));
     throw e;
   }
   return { data: json, status: res.status, headers: res.headers };
