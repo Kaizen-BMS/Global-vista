@@ -3,12 +3,39 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
 const STEPS = ["Company", "Admin", "Plan", "Confirm"];
 const inputClass = "w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition";
 function Field({ label, children }) { return (<div><label className="block text-white/50 text-xs mb-1.5">{label}</label>{children}</div>); }
+
+/** Same show/hide interaction as FloatingInput's password fields on the
+ * Login page — Register's Admin step used plain always-masked inputs, with
+ * no way to check for typos before submitting. */
+function PasswordField({ value, onChange, required, autoComplete }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        required={required}
+        type={visible ? "text" : "password"}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={onChange}
+        className={`${inputClass} pr-10`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white cursor-pointer transition-colors"
+      >
+        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
 
 export default function RegisterFlow() {
   const [step, setStep] = useState(0);
@@ -134,8 +161,8 @@ export default function RegisterFlow() {
                 <Field label="Phone"><input value={form.adminPhone} onChange={(e) => set("adminPhone", e.target.value)} className={inputClass} /></Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Password *"><input required type="password" value={form.adminPassword} onChange={(e) => set("adminPassword", e.target.value)} className={inputClass} /></Field>
-                <Field label="Confirm Password *"><input required type="password" value={form.confirmPassword} onChange={(e) => set("confirmPassword", e.target.value)} className={inputClass} /></Field>
+                <Field label="Password *"><PasswordField required autoComplete="new-password" value={form.adminPassword} onChange={(e) => set("adminPassword", e.target.value)} /></Field>
+                <Field label="Confirm Password *"><PasswordField required autoComplete="new-password" value={form.confirmPassword} onChange={(e) => set("confirmPassword", e.target.value)} /></Field>
               </div>
               <p className="text-white/30 text-xs">You&apos;ll be the Company Super Admin — full control over your workspace.</p>
             </>
