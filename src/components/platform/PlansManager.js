@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X, Check, CreditCard } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check, CreditCard, Trash2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
 const emptyForm = { name: "", description: "", billingCycle: "monthly", price: "", currency: "INR", trialDays: "", maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
@@ -120,6 +120,29 @@ function GatewaySyncButton({ plan, gatewayKey, label, syncPath, onSynced }) {
   );
 }
 
+function DeletePlanButton({ plan, onDeleted }) {
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    if (!confirm(`Delete "${plan.name}"? If any company has ever been on this plan, it'll be archived (hidden from new assignments) instead of removed, so their billing history stays intact.`)) return;
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/platform/plans/${plan.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete plan.");
+      if (data.archived) toast.warning(`"${plan.name}" is used by ${data.companiesUsingIt} company subscription(s) — archived instead of deleted (set to inactive, hidden from new assignments).`);
+      else toast.success(`"${plan.name}" deleted.`);
+      onDeleted();
+    } catch (err) { toast.error(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <button onClick={remove} disabled={busy} className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60 transition">
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 export default function PlansManager({ plans, allModules = [], planModulesByPlan = {} }) {
   const router = useRouter();
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, object = edit
@@ -139,7 +162,10 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
             <div key={p.id} className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-start justify-between mb-2">
                 <p className="text-foreground font-medium">{p.name}</p>
-                <button onClick={() => setEditing(p)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setEditing(p)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+                  <DeletePlanButton plan={p} onDeleted={() => router.refresh()} />
+                </div>
               </div>
               <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
               {p.description && <p className="text-muted-foreground text-xs mb-2">{p.description}</p>}

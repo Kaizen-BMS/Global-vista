@@ -2,7 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable } from "@/lib/db/schemaFlags";
 
 /** One row per company — its most recent subscription, joined with plan,
  * storage usage, user count, and lead count for the Platform Console table.
@@ -136,6 +136,45 @@ export async function createPlan(data) {
       : [data.name, slug, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
   );
   return result.insertId;
+}
+
+/**
+ * A plan referenced by any company's subscription history (current or past)
+ * can never be hard-deleted — that would either violate the FK constraint
+ * outright or, worse, silently orphan real billing history. In that case
+ * this archives it instead (status='inactive', hidden from self-service
+ * registration and the "assign a plan" pickers, per listPublicPlans'
+ * status='active' filter) and reports that back so the UI can explain why
+ * a "Delete" click didn't remove the row. Only a plan nobody has ever been
+ * on is actually deleted, along with its now-orphaned plan_modules rows.
+ */
+export async function deletePlan(id, operatorId) {
+  const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ?`, [id]);
+  if (!plan) { const e = new Error("Plan not found."); e.status = 404; throw e; }
+
+  const [[subCount]] = await pool.query(`SELECT COUNT(*) AS n FROM company_subscriptions WHERE plan_id = ?`, [id]);
+  const paymentsExist = await hasSubscriptionPaymentsTable();
+  const [[payCount]] = paymentsExist
+    ? await pool.query(`SELECT COUNT(*) AS n FROM subscription_payments WHERE plan_id = ?`, [id])
+    : [{ n: 0 }];
+  const inUse = Number(subCount.n) > 0 || Number(payCount.n) > 0;
+
+  if (inUse) {
+    await pool.query(`UPDATE plans SET status = 'inactive' WHERE id = ?`, [id]);
+    await logActivity({ userId: operatorId, module: "platform", action: "plan_archived", entityType: "plan", entityId: id, description: `Archived plan "${plan.name}" — ${subCount.n} company subscription(s) reference it, so it can't be deleted.` }).catch(() => {});
+    return { deleted: false, archived: true, companiesUsingIt: Number(subCount.n) };
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(`DELETE FROM plan_modules WHERE plan_id = ?`, [id]);
+    await conn.query(`DELETE FROM plans WHERE id = ?`, [id]);
+    await conn.commit();
+  } catch (err) { await conn.rollback(); throw err; } finally { conn.release(); }
+
+  await logActivity({ userId: operatorId, module: "platform", action: "plan_deleted", entityType: "plan", entityId: id, description: `Deleted plan "${plan.name}"` }).catch(() => {});
+  return { deleted: true, archived: false };
 }
 
 // Changing price/billing_cycle after a plan has already been synced to a
