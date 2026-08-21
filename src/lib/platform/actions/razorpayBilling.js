@@ -118,6 +118,23 @@ export async function verifyAndConfirmRazorpaySubscription({ session, razorpaySu
   return confirmRazorpaySubscription(razorpaySubscriptionId);
 }
 
+/**
+ * Public registration variant — there's no session yet at the moment
+ * Razorpay Checkout's callback fires during signup (the admin account
+ * exists but hasn't logged in), so this can't scope by session.company_id
+ * the way verifyAndConfirmRazorpaySubscription does. The signature check is
+ * what actually proves authenticity here (a forged callback can't produce
+ * a valid HMAC without the webhook/checkout secret) — same trust boundary
+ * confirmCompanySubscriptionFromPayPal already relies on for PayPal's
+ * session-less register/confirm path.
+ */
+export async function verifyAndConfirmRazorpaySubscriptionPublic({ razorpaySubscriptionId, razorpayPaymentId, razorpaySignature }) {
+  if (!(await hasSubscriptionBillingSchema())) assertBillingSchemaReady();
+  const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
+  if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
+  return confirmRazorpaySubscription(razorpaySubscriptionId);
+}
+
 /** Gateway-of-truth confirmation, shared by the checkout-callback path
  * (after signature verification) and the webhook handler. Always re-fetches
  * from Razorpay before writing anything — safe to call twice. */

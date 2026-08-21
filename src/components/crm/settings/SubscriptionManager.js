@@ -7,21 +7,9 @@ import { Loader2, X, Ban, RotateCcw, ArrowUpRight, Receipt, ArrowLeft, CheckCirc
 import { apiFetch } from "@/components/shared/apiClient";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
+import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
 
 const GATEWAY_LABEL = { razorpay: "Razorpay", paypal: "PayPal" };
-
-/** Loads Razorpay's official Checkout overlay script once, on demand — not
- * on every page load, since most companies never open this modal. */
-function loadRazorpayScript() {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) return resolve();
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Couldn't load Razorpay Checkout. Check your connection and try again."));
-    document.body.appendChild(script);
-  });
-}
 
 function GatewayStep({ plan, gateways, onBack, onClose }) {
   const router = useRouter();
