@@ -166,7 +166,19 @@ export default function SubscriptionsTable({ subscriptions, plans, timezone }) {
               <td className="px-4 py-3 text-muted-foreground text-xs capitalize">{row.gateway === "manual" ? "—" : row.gateway || "—"}</td>
               <td className="px-4 py-3"><StatusBadge state={row.state} /></td>
               <td className="px-4 py-3 text-foreground/90">
-                {row.ends_at ? formatDate(row.ends_at, timezone) : "No expiry"}
+                {/* A gateway-billed subscription stuck in "pending" has no
+                    ends_at by design — the trial/billing clock lives inside
+                    the gateway's own billing plan and only starts once the
+                    customer actually approves it, not at company creation.
+                    "No expiry" would misleadingly read as "free forever";
+                    this makes clear it's still waiting on the customer. */}
+                {row.subscription_status === "pending" && row.gateway !== "manual" ? (
+                  <span className="text-sky-400">Awaiting approval</span>
+                ) : row.ends_at ? (
+                  formatDate(row.ends_at, timezone)
+                ) : (
+                  "No expiry"
+                )}
                 {row.daysRemaining != null && row.daysRemaining >= 0 && row.daysRemaining <= 30 && <span className="block text-amber-400 text-[10px]">{row.daysRemaining}d left</span>}
               </td>
               <td className="px-4 py-3 text-foreground/90">{formatBytes(row.storage_bytes)}{row.max_storage_mb ? ` / ${formatBytes(row.max_storage_mb * 1024 * 1024)}` : ""}</td>

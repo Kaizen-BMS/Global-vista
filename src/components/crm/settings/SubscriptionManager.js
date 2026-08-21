@@ -122,9 +122,14 @@ function GatewayCard({ name, subtitle, available, busy, disabled, onClick }) {
   );
 }
 
-function PlanPickerModal({ plans, currentPlanId, gateways, onClose }) {
+function PlanPickerModal({ plans, currentPlanId, subscriptionState, gateways, onClose }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const anyGatewayAvailable = !!(gateways.razorpay?.configured || gateways.paypal?.configured);
+  // "Current plan" only locks the Subscribe button when it's actually active
+  // — a plan stuck in pending/payment_failed/past_due means the checkout
+  // was started but never completed, and retrying on that exact same plan
+  // is exactly what the owner needs to be able to do here.
+  const needsPayment = ["pending", "payment_failed", "past_due"].includes(subscriptionState);
 
   function choosePlan(plan) {
     if (Number(plan.price) > 0) {
@@ -152,7 +157,8 @@ function PlanPickerModal({ plans, currentPlanId, gateways, onClose }) {
           ) : (
             <motion.div key="plans" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {plans.map((plan) => {
-                const isCurrent = plan.id === currentPlanId;
+                const isSamePlan = plan.id === currentPlanId;
+                const isCurrent = isSamePlan && !needsPayment;
                 const isPaid = Number(plan.price) > 0;
                 return (
                   <div key={plan.id} className={`rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30"}`}>
@@ -173,7 +179,7 @@ function PlanPickerModal({ plans, currentPlanId, gateways, onClose }) {
                       className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
                     >
                       {isCurrent && <CheckCircle2 className="h-3.5 w-3.5" />}
-                      {isCurrent ? "Current Plan" : isPaid ? "Subscribe" : "Contact Support"}
+                      {isCurrent ? "Current Plan" : isSamePlan && needsPayment ? "Complete Payment" : isPaid ? "Subscribe" : "Contact Support"}
                     </button>
                   </div>
                 );
@@ -256,7 +262,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
         )}
       </AnimatePresence>
 
-      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} gateways={gateways} onClose={() => setShowPicker(false)} />}
+      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} gateways={gateways} onClose={() => setShowPicker(false)} />}
     </div>
   );
 }
