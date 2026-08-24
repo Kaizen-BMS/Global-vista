@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X, Check, Trash2 } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check, Trash2, Link2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
@@ -100,6 +100,29 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
   );
 }
 
+function SyncToRazorpayButton({ plan, onSynced }) {
+  const [busy, setBusy] = useState(false);
+  async function sync() {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/platform/plans/${plan.id}/razorpay-sync`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync.");
+      toast.success(`"${plan.name}" synced to Razorpay.`);
+      onSynced();
+    } catch (err) { toast.error(err.message); } finally { setBusy(false); }
+  }
+  if (plan.razorpay_plan_id) {
+    return <span className="flex items-center gap-1 text-[11px] text-emerald-400"><Check className="h-3 w-3" /> Synced to Razorpay</span>;
+  }
+  if (!(Number(plan.price) > 0)) return null; // free/trial plans are never synced
+  return (
+    <button onClick={sync} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />} Sync to Razorpay
+    </button>
+  );
+}
+
 function DeletePlanButton({ plan, onDeleted }) {
   const [busy, setBusy] = useState(false);
 
@@ -162,6 +185,9 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
                 ) : planModuleNames.map((name) => (
                   <span key={name} className="px-1.5 py-0.5 rounded text-[11px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">{name}</span>
                 ))}
+              </div>
+              <div className="pt-2 mt-2 border-t border-border">
+                <SyncToRazorpayButton plan={p} onSynced={() => router.refresh()} />
               </div>
             </div>
           );

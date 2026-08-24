@@ -9,22 +9,23 @@ import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from
 import { hasSubscriptionBillingSchema, hasCouponsSchema } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
 import {
-  assertBillingSchemaReady, recordSubscriptionPayment,
+  assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
 } from "@/lib/platform/actions/subscriptionBilling";
 
 /**
- * BillDesk billing — the single gateway for company subscriptions. Shaped
- * exactly like the retired paypalBilling.js/razorpayBilling.js modules
- * (same checkout → pending-record → verify → activate → webhook pipeline,
- * same gateway-agnostic tables), so `company_subscriptions`/
+ * BillDesk billing — one of two company-subscription gateways (the other is
+ * razorpayBilling.js; companies pick one at checkout). Shaped the same way
+ * (checkout → pending-record → verify → activate → webhook pipeline, same
+ * gateway-agnostic tables), so `company_subscriptions`/
  * `subscription_payments`/`payment_webhook_events` needed no schema rewrite,
- * only `gateway='billdesk'` rows.
+ * just `gateway='billdesk'` rows alongside `gateway='razorpay'` ones.
  *
  * The actual HTTP calls to BillDesk live in billdeskClient.js and are not
  * implemented yet (see that file) — every function here is real and wired
  * up around that boundary, so completing billdeskClient.js is the only step
- * left once BillDesk's spec + credentials are available.
+ * left once BillDesk's spec + credentials are available. Razorpay, by
+ * contrast, is fully implemented — see razorpaySubscriptions.js.
  */
 
 // ---------------------------------------------------------------------------
@@ -139,22 +140,12 @@ export async function confirmCompanySubscriptionFromBillDesk(gatewayOrderId) {
           title: "Subscription activated", message: `Your "${plan?.name}" subscription is now active.`, type: "subscription_activated", link: `/workspace/settings/subscription`,
         }).catch(() => {});
       }
-      await notifyPlatformOperators(row.company_id, plan?.name);
+      await notifyPlatformOperators(row.company_id, plan?.name, "BillDesk");
       await logActivity({ userId: null, module: "platform", action: "billdesk_subscription_activated", entityType: "company_subscription", entityId: row.id, companyId: row.company_id, description: `BillDesk order ${gatewayOrderId} activated` }).catch(() => {});
     }
   }
 
   return { status: mappedStatus, companyId: row.company_id, subscriptionId: row.id };
-}
-
-async function notifyPlatformOperators(companyId, planName) {
-  const [[company]] = await pool.query(`SELECT name FROM companies WHERE id=?`, [companyId]);
-  const [operators] = await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0`);
-  for (const op of operators) {
-    await createNotification(op.company_id, op.id, {
-      title: "New company subscription", message: `${company?.name} subscribed to "${planName}" via BillDesk.`, type: "subscription_activated", link: `/platform/subscriptions`,
-    }).catch(() => {});
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -253,5 +244,3 @@ export async function processBillDeskWebhookEvent({ eventId, eventType, gatewayO
   }
   return { alreadyProcessed: false };
 }
-
-export { notifyPlatformOperators };

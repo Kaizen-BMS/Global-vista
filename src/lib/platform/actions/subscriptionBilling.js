@@ -4,7 +4,21 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
 import { cancelBillDeskMandate } from "@/lib/payments/billdeskClient";
+import { createNotification } from "@/lib/actions/notifications";
 import { hasSubscriptionBillingSchema } from "@/lib/db/schemaFlags";
+
+/** Shared by every gateway's activation path — a company's subscription
+ * just went active, so every Platform Operator gets notified regardless of
+ * which gateway (BillDesk, Razorpay, ...) processed the payment. */
+export async function notifyPlatformOperators(companyId, planName, gatewayLabel) {
+  const [[company]] = await pool.query(`SELECT name FROM companies WHERE id=?`, [companyId]);
+  const [operators] = await pool.query(`SELECT id, company_id FROM users WHERE is_platform_operator=1 AND is_deleted=0`);
+  for (const op of operators) {
+    await createNotification(op.company_id, op.id, {
+      title: "New company subscription", message: `${company?.name} subscribed to "${planName}" via ${gatewayLabel}.`, type: "subscription_activated", link: `/platform/subscriptions`,
+    }).catch(() => {});
+  }
+}
 
 /**
  * Gateway-AGNOSTIC subscription actions — cancel/resume/payment-history/

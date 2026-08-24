@@ -2,21 +2,28 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { provisionCompany } from "@/lib/platform/actions/provisioning";
 import { createBillDeskCheckoutForCompany } from "@/lib/platform/actions/billdeskBilling";
+import { createRazorpayCheckoutForCompany } from "@/lib/platform/actions/razorpayBilling";
 import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
-import { hasPlanDescriptionColumn, hasCouponsSchema } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns } from "@/lib/db/schemaFlags";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
  * only, no internal-only fields. `description` only selected once the
  * migration adding it has run (see schemaFlags.js) — this is a public,
- * currently-working page, so it must never 500 ahead of that migration. */
+ * currently-working page, so it must never 500 ahead of that migration.
+ * `hasRazorpay` exposes only WHETHER this specific plan is connected to
+ * Razorpay (never the actual gateway plan id) — BillDesk's availability is
+ * platform-wide (not per-plan), reported separately via billDeskAvailable
+ * so the registration UI knows which payment method(s) to offer. */
 export async function listPublicPlans() {
-  const withDescription = await hasPlanDescriptionColumn();
+  const [withDescription, withRazorpay] = await Promise.all([hasPlanDescriptionColumn(), hasPlanRazorpayColumns()]);
   const [rows] = await pool.query(
     `SELECT id, name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
+     ${withRazorpay ? ", (razorpay_plan_id IS NOT NULL) AS hasRazorpay" : ", 0 AS hasRazorpay"}
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
-  return rows;
+  const billDeskAvailable = getBillDeskStatus().configured;
+  return rows.map((r) => ({ ...r, hasRazorpay: !!r.hasRazorpay, hasBillDesk: billDeskAvailable }));
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,17 +54,30 @@ export async function registerCompany(input) {
 
   const requiresPayment = plan.price && Number(plan.price) > 0 && plan.billing_cycle !== "trial";
 
-  // BillDesk is the only payment gateway — if a paid plan is selected and
-  // BillDesk isn't configured server-side, registration stops here with a
-  // clear message rather than faking a checkout.
-  if (requiresPayment && !getBillDeskStatus().configured) {
-    const e = new Error("Payment is required for this plan, but the payment gateway isn't configured yet. Please contact us to get started.");
-    e.status = 409;
-    throw e;
+  // BillDesk's availability is platform-wide; Razorpay's is per-plan (the
+  // plan must already be synced to a real Razorpay Plan — see
+  // syncPlanToRazorpay). If both are available, the client must say which
+  // one the registrant picked; if only one is, that one is used regardless
+  // of what (or whether) the client sent.
+  let gateway = null;
+  if (requiresPayment) {
+    const billDeskAvailable = getBillDeskStatus().configured;
+    const razorpayAvailable = !!plan.razorpay_plan_id;
+    if (!billDeskAvailable && !razorpayAvailable) {
+      const e = new Error("Payment is required for this plan, but no payment gateway is configured yet. Please contact us to get started.");
+      e.status = 409;
+      throw e;
+    }
+    if (billDeskAvailable && razorpayAvailable) {
+      if (!["billdesk", "razorpay"].includes(input.gateway)) { const e = new Error("Please choose a payment method."); e.status = 400; throw e; }
+      gateway = input.gateway;
+    } else {
+      gateway = billDeskAvailable ? "billdesk" : "razorpay";
+    }
   }
 
   // Fail fast on a bad coupon code BEFORE the company/admin account is
-  // created — createBillDeskCheckoutForCompany re-validates it again later,
+  // created — the checkout-creation calls below re-validate it again later,
   // but catching a typo here avoids leaving a "pending" company behind for
   // something the user can just fix and resubmit.
   if (requiresPayment && input.couponCode && (await hasCouponsSchema())) {
@@ -88,7 +108,7 @@ export async function registerCompany(input) {
     null
   );
 
-  if (requiresPayment) {
+  if (requiresPayment && gateway === "billdesk") {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
     const { checkoutUrl } = await createBillDeskCheckoutForCompany({
       companyId: result.companyId,
@@ -99,6 +119,20 @@ export async function registerCompany(input) {
       couponCode: input.couponCode || null,
     });
     return { companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "billdesk", checkoutUrl };
+  }
+
+  if (requiresPayment && gateway === "razorpay") {
+    const { razorpaySubscriptionId, razorpayKeyId, amount, currency } = await createRazorpayCheckoutForCompany({
+      companyId: result.companyId,
+      planId: plan.id,
+      subscriberEmail: adminEmail.trim().toLowerCase(),
+      subscriberName: adminName.trim(),
+      couponCode: input.couponCode || null,
+    });
+    return {
+      companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "razorpay",
+      razorpaySubscriptionId, razorpayKeyId, amount, currency,
+    };
   }
 
   const [[subscription]] = await pool.query(

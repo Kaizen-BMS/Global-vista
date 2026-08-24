@@ -8,6 +8,9 @@ import { apiFetch } from "@/components/shared/apiClient";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
+import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
+
+const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 
 const STATUS_META = {
   completed: { label: "Paid", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
@@ -20,15 +23,19 @@ const STATUS_META = {
   expired: { label: "Expired", color: "text-muted-foreground border-border bg-muted/30" },
 };
 
-function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConfigured, onClose }) {
+function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
+  const router = useRouter();
   const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout
   const [couponCode, setCouponCode] = useState("");
+  const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
 
   // "Current plan" only locks the Subscribe button when it's actually
   // active — a plan stuck in pending/payment_failed/past_due means checkout
   // was started but never completed, and retrying on that exact plan is
   // exactly what the owner needs to be able to do here.
   const needsPayment = ["pending", "payment_failed", "past_due"].includes(subscriptionState);
+  const anyGatewayAvailable = plans.some((p) => p.hasBillDesk || p.hasRazorpay);
+  const anyPlanOffersChoice = plans.some((p) => p.hasBillDesk && p.hasRazorpay);
 
   useEffect(() => {
     function onKey(e) { if (e.key === "Escape") onClose(); }
@@ -36,21 +43,72 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  async function payWithRazorpayThenFinish(data) {
+    try {
+      await loadRazorpayScript();
+      const rzp = new window.Razorpay({
+        key: data.razorpayKeyId,
+        subscription_id: data.razorpaySubscriptionId,
+        name: "KaizenBMS Platform",
+        description: `${data.planName} subscription`,
+        theme: { color: "#4f46e5" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await apiFetch("/api/core/subscription/razorpay/verify", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpaySubscriptionId: response.razorpay_subscription_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
+            toast.success("Subscription activated.");
+            onClose();
+            router.refresh();
+          } catch (err) { toast.error(err.message); }
+          finally { setCheckingOut(null); }
+        },
+        modal: { ondismiss: () => setCheckingOut(null) },
+      });
+      rzp.on("payment.failed", () => { toast.error("Payment could not be completed. Please try again."); setCheckingOut(null); });
+      rzp.open();
+    } catch (err) { toast.error(err.message); setCheckingOut(null); }
+  }
+
   async function choosePlan(plan) {
     if (!(Number(plan.price) > 0)) {
       toast.error("Switching to a free/trial plan requires the platform team — contact support to change to this plan.");
       return;
     }
-    if (!billDeskConfigured) {
-      toast.error("Payment isn't configured yet. Please contact the platform team.");
+    if (!plan.hasBillDesk && !plan.hasRazorpay) {
+      toast.error("Payment isn't configured for this plan yet. Please contact the platform team.");
       return;
     }
+    const effectiveGateway = plan.hasBillDesk && plan.hasRazorpay ? gateway : plan.hasBillDesk ? "billdesk" : "razorpay";
+    if (!effectiveGateway) {
+      toast.error("Choose a payment method.");
+      return;
+    }
+
     setCheckingOut(plan.id);
+    if (effectiveGateway === "billdesk") {
+      try {
+        const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
+        window.location.href = data.checkoutUrl;
+      } catch (err) { toast.error(err.message); setCheckingOut(null); }
+      return;
+    }
+
+    // Razorpay Checkout is an in-page modal, not a redirect.
     try {
-      const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
+      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
-      window.location.href = data.checkoutUrl;
+      await payWithRazorpayThenFinish(data);
     } catch (err) { toast.error(err.message); setCheckingOut(null); }
   }
 
@@ -62,21 +120,38 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
             <p className="text-foreground font-semibold">Choose a Plan</p>
-            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by BillDesk</p>
+            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by BillDesk or Razorpay</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
-        {!billDeskConfigured && (
+        {!anyGatewayAvailable && (
           <div className="mx-6 mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            Payment isn't configured on this platform yet — paid plans can't be checked out until the platform team connects BillDesk.
+            Payment isn't configured on this platform yet — paid plans can't be checked out until the platform team connects a payment gateway.
           </div>
         )}
 
-        <div className="px-6 pt-4">
-          <label className="block text-muted-foreground text-xs mb-1.5">Coupon Code (optional)</label>
-          <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full sm:w-64 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+        <div className="px-6 pt-4 flex flex-wrap gap-4">
+          <div>
+            <label className="block text-muted-foreground text-xs mb-1.5">Coupon Code (optional)</label>
+            <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full sm:w-64 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+          </div>
+          {anyPlanOffersChoice && (
+            <div>
+              <label className="block text-muted-foreground text-xs mb-1.5">Payment Method</label>
+              <div className="flex gap-2">
+                {["billdesk", "razorpay"].map((gw) => (
+                  <button
+                    key={gw} type="button" onClick={() => setGateway(gw)}
+                    className={`px-3 py-2 rounded-lg border text-sm cursor-pointer transition ${gateway === gw ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
+                  >
+                    {GATEWAY_LABEL[gw]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -102,7 +177,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
                 </ul>
                 <button
                   onClick={() => choosePlan(plan)}
-                  disabled={isCurrent || checkingOut === plan.id || (isPaid && !billDeskConfigured)}
+                  disabled={isCurrent || checkingOut === plan.id || (isPaid && !plan.hasBillDesk && !plan.hasRazorpay)}
                   className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
                 >
                   {checkingOut === plan.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -119,7 +194,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
   );
 }
 
-export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume, billDeskStatus = { configured: false } }) {
+export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [showPicker, setShowPicker] = useState(false);
@@ -151,7 +226,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
   return (
     <div className="mt-4 pt-4 border-t border-border">
       <div className="flex items-center gap-1.5 mb-3 text-[11px] text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk
+        <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk or Razorpay
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setShowPicker(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer transition">
@@ -212,7 +287,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
         )}
       </AnimatePresence>
 
-      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} billDeskConfigured={billDeskStatus.configured} onClose={() => setShowPicker(false)} />}
+      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} onClose={() => setShowPicker(false)} />}
     </div>
   );
 }
