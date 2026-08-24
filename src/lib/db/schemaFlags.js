@@ -40,9 +40,10 @@ export async function hasSubscriptionPaymentsTable() { return tableExists("subsc
 export async function hasPaymentWebhookEventsTable() { return tableExists("payment_webhook_events"); }
 
 /** True only once the ENTIRE 2026-08-16 company-subscription-billing migration
- * has been applied — every write path that touches the new plans/
- * company_subscriptions columns or the two new tables (shared by BOTH
- * Razorpay and PayPal) gates on this single flag. */
+ * has been applied — every write path that touches the plans/
+ * company_subscriptions columns or the two payment-billing tables (shared by
+ * every gateway the platform has ever billed through) gates on this single
+ * flag. */
 export async function hasSubscriptionBillingSchema() {
   const [sub, payments, events] = await Promise.all([
     hasCompanySubscriptionsGatewayColumns(), hasSubscriptionPaymentsTable(), hasPaymentWebhookEventsTable(),

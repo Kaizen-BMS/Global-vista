@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { MotionConfig } from "framer-motion";
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = "gv:theme";
@@ -16,42 +17,44 @@ function applyTheme(resolved) {
 }
 
 /**
- * theme: what the user picked ("dark" | "light" | "system").
- * resolvedTheme: the actual applied theme ("dark" | "light"), with
- * "system" resolved against prefers-color-scheme. Toggles Tailwind's
- * existing `.dark` class on <html> — reusing the CSS-variable theme
- * system already defined in globals.css (@custom-variant dark) rather
- * than inventing a parallel one.
+ * theme / resolvedTheme: always "dark" | "light" — the user explicitly
+ * picks one, no "system" option (removed by design: the appearance setting
+ * is meant to be a deliberate choice, not something that silently changes
+ * under the user). Toggles Tailwind's existing `.dark` class on <html> —
+ * reusing the CSS-variable theme system already defined in globals.css
+ * (@custom-variant dark) rather than inventing a parallel one.
  */
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState("dark");
-  const [resolvedTheme, setResolvedTheme] = useState("dark");
 
   useEffect(() => {
-    let stored = "dark";
-    try { stored = window.localStorage.getItem(STORAGE_KEY) || "dark"; } catch { /* ignore */ }
-    setThemeState(stored);
-    const resolved = stored === "system" ? getSystemTheme() : stored;
-    setResolvedTheme(resolved);
+    let stored = null;
+    try { stored = window.localStorage.getItem(STORAGE_KEY); } catch { /* ignore */ }
+    // A pre-existing "system" value from before this option was removed is
+    // resolved once against the OS preference and persisted as a concrete
+    // choice — never silently re-evaluated on every load from then on.
+    const resolved = stored === "light" || stored === "dark" ? stored : getSystemTheme();
+    setThemeState(resolved);
     applyTheme(resolved);
-
-    if (stored === "system") {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      const onChange = () => { const r = getSystemTheme(); setResolvedTheme(r); applyTheme(r); };
-      mq.addEventListener("change", onChange);
-      return () => mq.removeEventListener("change", onChange);
-    }
+    if (stored !== resolved) { try { window.localStorage.setItem(STORAGE_KEY, resolved); } catch { /* ignore */ } }
   }, []);
 
   const setTheme = useCallback((next) => {
     setThemeState(next);
     try { window.localStorage.setItem(STORAGE_KEY, next); } catch { /* ignore */ }
-    const resolved = next === "system" ? getSystemTheme() : next;
-    setResolvedTheme(resolved);
-    applyTheme(resolved);
+    applyTheme(next);
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme }}>{children}</ThemeContext.Provider>;
+  // MotionConfig here (rather than at every animation call site) makes every
+  // framer-motion animation in the app respect the OS/browser
+  // prefers-reduced-motion setting automatically — the CSS-only
+  // prefers-reduced-motion rule in globals.css only catches CSS
+  // transitions/animations, not framer-motion's JS-driven ones.
+  return (
+    <ThemeContext.Provider value={{ theme, resolvedTheme: theme, setTheme }}>
+      <MotionConfig reducedMotion="user">{children}</MotionConfig>
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, ArrowRight } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const STEPS = ["Company", "Admin", "Modules & Plan"];
 
@@ -12,6 +13,12 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({ companyName: "", shortName: "", adminName: "", adminEmail: "", planId: plans[0]?.id || "", moduleIds: [], endsAt: "", subscriptionStatus: "trial" });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   function toggleModule(id) { setForm((f) => ({ ...f, moduleIds: f.moduleIds.includes(id) ? f.moduleIds.filter((m) => m !== id) : [...f.moduleIds, id] })); }
 
@@ -28,29 +35,30 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-card border border-border rounded-2xl p-6">
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="Create Company" className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl p-6">
         <div className="flex gap-2 mb-6">{STEPS.map((s, i) => <div key={s} className={`flex-1 text-center text-xs pb-2 border-b-2 ${i <= step ? "border-indigo-500 text-foreground" : "border-border text-muted-foreground"}`}>{s}</div>)}</div>
 
         {step === 0 && (
           <div className="space-y-3">
-            <input required placeholder="Company Name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-            <input placeholder="Short Name" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input required aria-label="Company Name" placeholder="Company Name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input aria-label="Short Name" placeholder="Short Name" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
           </div>
         )}
         {step === 1 && (
           <div className="space-y-3">
-            <input required placeholder="Admin Full Name" value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-            <input required type="email" placeholder="Admin Email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input required aria-label="Admin Full Name" placeholder="Admin Full Name" value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            <input required type="email" aria-label="Admin Email" placeholder="Admin Email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
           </div>
         )}
         {step === 2 && (
           <div>
-            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            <select aria-label="Plan" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
             <div className="grid grid-cols-2 gap-2 mb-3">
-              <select value={form.subscriptionStatus} onChange={(e) => setForm({ ...form, subscriptionStatus: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
+              <select aria-label="Subscription Status" value={form.subscriptionStatus} onChange={(e) => setForm({ ...form, subscriptionStatus: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
                 <option value="trial">Trial</option><option value="active">Active</option>
               </select>
-              <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} placeholder="Expiry date (optional)" title="Expiry date (leave blank for no expiry)" className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+              <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} aria-label="Expiry date (leave blank for no expiry)" title="Expiry date (leave blank for no expiry)" className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border text-sm text-foreground cursor-pointer transition hover:border-border"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
           </div>
@@ -65,6 +73,7 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
           )}
         </div>
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

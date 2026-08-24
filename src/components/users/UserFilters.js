@@ -14,10 +14,10 @@ export default function UserFilters({ roles, canManage, isSuperAdmin }) {
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
         <input defaultValue={searchParams.get("search") || ""} onChange={(e) => setParam("search", e.target.value)} placeholder="Search..." className="w-full pl-9 pr-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm" />
       </div>
-      <select defaultValue={searchParams.get("roleId") || ""} onChange={(e) => setParam("roleId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm">
+      <select defaultValue={searchParams.get("roleId") || ""} onChange={(e) => setParam("roleId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
         <option value="">All Roles</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
       </select>
-      {canManage && <button onClick={() => setCreateOpen(true)} className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"><Plus className="h-4 w-4" />Add Employee</button>}
+      {canManage && <button onClick={() => setCreateOpen(true)} className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium cursor-pointer"><Plus className="h-4 w-4" />Add Employee</button>}
       {createOpen && <CreateUserDialog roles={roles} isSuperAdmin={isSuperAdmin} onClose={() => setCreateOpen(false)} />}
     </div>
   );

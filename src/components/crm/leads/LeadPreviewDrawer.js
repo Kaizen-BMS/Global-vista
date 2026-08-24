@@ -8,6 +8,7 @@ import StageBadge from "@/components/crm/badges/StageBadge";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 export default function LeadPreviewDrawer({ leadId, onClose }) {
   const timezone = useTimezone();
@@ -39,10 +40,11 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <div className="relative w-full max-w-sm h-full bg-background border-l border-border shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="Lead Preview" className="relative w-full max-w-sm h-full bg-background border-l border-border shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
           <p className="text-foreground font-medium">Lead Preview</p>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
         </div>
 
         {!lead ? (
@@ -89,6 +91,7 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
           </div>
         )}
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default function Topbar({ company, session }) {
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 gap-3 print:hidden">
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <button onClick={() => setOpen(true)} className="md:hidden text-muted-foreground hover:text-foreground cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
+        <button onClick={() => setOpen(true)} aria-label="Open navigation" className="md:hidden text-muted-foreground hover:text-foreground cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
         <Breadcrumbs scope="workspace" />
         <div className="hidden sm:block flex-1 max-w-md ml-auto"><GlobalSearch /></div>
       </div>

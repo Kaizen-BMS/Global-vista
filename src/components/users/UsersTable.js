@@ -72,7 +72,7 @@ export default function UsersTable({ users, roles, canManage, canUnlock, isSuper
           headerRender: () => null,
           render: (u) => (
             <div className="relative">
-              <button onClick={() => setOpenMenuId(openMenuId === u.id ? null : u.id)} disabled={busyId === u.id} className="text-muted-foreground hover:text-foreground cursor-pointer"><MoreVertical className="h-4 w-4" /></button>
+              <button onClick={() => setOpenMenuId(openMenuId === u.id ? null : u.id)} disabled={busyId === u.id} aria-label={`Actions for ${u.name}`} aria-expanded={openMenuId === u.id} className="text-muted-foreground hover:text-foreground cursor-pointer"><MoreVertical className="h-4 w-4" /></button>
               {openMenuId === u.id && (
                 <div className="absolute left-0 top-8 z-20 w-48 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
                   <button onClick={() => { setEditingUser(u); setOpenMenuId(null); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted cursor-pointer"><Pencil className="h-3.5 w-3.5" />Edit</button>

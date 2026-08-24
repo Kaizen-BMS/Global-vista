@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Maximize2, X, Download } from "lucide-react";
 import { ResponsiveContainer } from "recharts";
 import { AnimatePresence, motion } from "framer-motion";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 function toCsv(data, columns) {
   const cols = columns || Object.keys(data[0] || {});
@@ -35,6 +36,13 @@ function downloadCsv(filename, data, columns) {
 export default function ChartCard({ title, subtitle, empty, emptyLabel, data, csvColumns, renderChart }) {
   const [open, setOpen] = useState(false);
   const hasData = !empty && data && data.length > 0;
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === "Escape") setOpen(false); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   function handleExport() {
     downloadCsv(`${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`, data, csvColumns);
@@ -73,6 +81,7 @@ export default function ChartCard({ title, subtitle, empty, emptyLabel, data, cs
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setOpen(false)}
             />
+            <ModalFocusTrap>
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ duration: 0.18 }}
@@ -108,6 +117,7 @@ export default function ChartCard({ title, subtitle, empty, emptyLabel, data, cs
                 </div>
               </div>
             </motion.div>
+            </ModalFocusTrap>
           </div>
         )}
       </AnimatePresence>

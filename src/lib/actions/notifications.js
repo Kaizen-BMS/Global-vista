@@ -52,14 +52,22 @@ export async function getSidebarBadgeCounts(session) {
   const followupRow = followupResult[0][0];
   const messageRow = messageResult[0][0];
 
+  const complaints = Number(notifRow.complaintCount || 0);
+  const ideas = Number(notifRow.ideaCount || 0);
+
   return {
     totalUnread: Number(notifRow.total),
     leads: Number(notifRow.leadCount || 0),
     followups: Number(followupRow.n),
     messages: Number(messageRow.n),
     payments: paymentsEnabled ? Number(notifRow.paymentCount || 0) : 0,
-    complaints: Number(notifRow.complaintCount || 0),
-    ideas: Number(notifRow.ideaCount || 0),
+    complaints,
+    ideas,
+    // Complaints and Ideas now share a single "Support & Feedback" nav
+    // entry (moved off the main sidebar into Settings) — one combined dot
+    // for that entry, while the individual counts above stay available for
+    // anything that still wants to distinguish them.
+    support: complaints + ideas,
   };
 }
 

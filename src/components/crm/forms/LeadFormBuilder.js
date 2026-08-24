@@ -108,7 +108,7 @@ export default function LeadFormBuilder({ sources, services, users, initialData,
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
                   <input type="checkbox" checked={field.required} disabled={AVAILABLE_FORM_FIELDS.find((f) => f.type === field.type)?.lockedRequired} onChange={(e) => updateField(i, { required: e.target.checked })} /> Required
                 </label>
-                <button type="button" onClick={() => removeField(i)} className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => removeField(i)} aria-label="Remove field" className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
           </div>

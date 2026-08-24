@@ -29,7 +29,7 @@ export default function LeadFormShareCard({ slug, formId }) {
 
       <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-muted border border-border">
         <p className="flex-1 text-foreground text-xs truncate">{publicUrl}</p>
-        <button onClick={copyLink} className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><Copy className="h-3.5 w-3.5" /></button>
+        <button onClick={copyLink} aria-label="Copy link" className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><Copy className="h-3.5 w-3.5" /></button>
       </div>
 
       <div id="qr-print-area" className="flex justify-center mb-4">

@@ -1,186 +1,119 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, X, Ban, RotateCcw, ArrowUpRight, Receipt, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Loader2, X, Ban, RotateCcw, ArrowUpRight, Receipt, CheckCircle2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
-import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
-const GATEWAY_LABEL = { razorpay: "Razorpay", paypal: "PayPal" };
+const STATUS_META = {
+  completed: { label: "Paid", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
+  pending: { label: "Pending", color: "text-sky-400 border-sky-500/30 bg-sky-500/10" },
+  processing: { label: "Processing", color: "text-sky-400 border-sky-500/30 bg-sky-500/10" },
+  failed: { label: "Failed", color: "text-red-400 border-red-500/30 bg-red-500/10" },
+  cancelled: { label: "Cancelled", color: "text-muted-foreground border-border bg-muted/30" },
+  refunded: { label: "Refunded", color: "text-violet-400 border-violet-500/30 bg-violet-500/10" },
+  reversed: { label: "Reversed", color: "text-violet-400 border-violet-500/30 bg-violet-500/10" },
+  expired: { label: "Expired", color: "text-muted-foreground border-border bg-muted/30" },
+};
 
-function GatewayStep({ plan, gateways, onBack, onClose }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(null); // "razorpay" | "paypal" | null
+function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConfigured, onClose }) {
+  const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout
 
-  async function payWithPayPal() {
-    setBusy("paypal");
-    try {
-      const res = await apiFetch("/api/core/subscription/paypal/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Couldn't start PayPal checkout.");
-      window.location.href = data.approveUrl;
-    } catch (err) { toast.error(err.message); setBusy(null); }
-  }
-
-  async function payWithRazorpay() {
-    setBusy("razorpay");
-    try {
-      await loadRazorpayScript();
-      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Couldn't start Razorpay checkout.");
-
-      const rzp = new window.Razorpay({
-        key: data.razorpayKeyId,
-        subscription_id: data.razorpaySubscriptionId,
-        name: "KaizenBMS Platform",
-        description: `${data.planName} subscription`,
-        theme: { color: "#4f46e5" },
-        handler: async (response) => {
-          // Razorpay Checkout reporting success is NOT proof of payment —
-          // the server re-derives the HMAC signature and re-fetches the
-          // subscription from Razorpay before ever marking it active.
-          try {
-            const verifyRes = await apiFetch("/api/core/subscription/razorpay/verify", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpaySubscriptionId: response.razorpay_subscription_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              }),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
-            toast.success(verifyData.status === "active" ? "Subscription activated!" : "Payment received — subscription is being confirmed.");
-            onClose();
-            router.refresh();
-          } catch (err) { toast.error(err.message); }
-        },
-        modal: { ondismiss: () => setBusy(null) },
-      });
-      rzp.on("payment.failed", () => { toast.error("Payment could not be completed. Please try again."); setBusy(null); });
-      rzp.open();
-    } catch (err) { toast.error(err.message); setBusy(null); }
-  }
-
-  return (
-    <div className="p-6">
-      <button onClick={onBack} className="flex items-center gap-1 text-muted-foreground hover:text-foreground text-xs cursor-pointer mb-4"><ArrowLeft className="h-3.5 w-3.5" /> Back to plans</button>
-      <p className="text-foreground font-semibold mb-1">Choose Payment Method</p>
-      <p className="text-muted-foreground text-xs mb-4">{plan.name} — {plan.currency} {Number(plan.price).toLocaleString()} / {plan.billing_cycle}</p>
-
-      <div className="space-y-3">
-        <GatewayCard
-          name="Razorpay" subtitle="UPI / Cards / Net Banking" available={gateways.razorpay?.configured}
-          busy={busy === "razorpay"} disabled={!!busy} onClick={payWithRazorpay}
-        />
-        <GatewayCard
-          name="PayPal" subtitle="International payments" available={gateways.paypal?.configured}
-          busy={busy === "paypal"} disabled={!!busy} onClick={payWithPayPal}
-        />
-      </div>
-    </div>
-  );
-}
-
-function GatewayCard({ name, subtitle, available, busy, disabled, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={!available || disabled}
-      className={`w-full flex items-center justify-between gap-3 rounded-xl border p-4 text-left transition ${available ? "border-border bg-muted/30 hover:border-indigo-500/40 hover:bg-indigo-500/5 cursor-pointer" : "border-border/50 bg-muted/10 cursor-not-allowed opacity-60"}`}
-    >
-      <div>
-        <p className="text-foreground text-sm font-medium">{name}</p>
-        <p className="text-muted-foreground text-xs mt-0.5">{available ? subtitle : "Not currently available"}</p>
-      </div>
-      <span className="shrink-0">
-        {busy ? (
-          <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
-        ) : (
-          <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full border ${available ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" : "text-muted-foreground border-border bg-muted/30"}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${available ? "bg-emerald-400" : "bg-muted-foreground"}`} /> {available ? "Available" : "Unavailable"}
-          </span>
-        )}
-      </span>
-    </button>
-  );
-}
-
-function PlanPickerModal({ plans, currentPlanId, subscriptionState, gateways, onClose }) {
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const anyGatewayAvailable = !!(gateways.razorpay?.configured || gateways.paypal?.configured);
-  // "Current plan" only locks the Subscribe button when it's actually active
-  // — a plan stuck in pending/payment_failed/past_due means the checkout
-  // was started but never completed, and retrying on that exact same plan
-  // is exactly what the owner needs to be able to do here.
+  // "Current plan" only locks the Subscribe button when it's actually
+  // active — a plan stuck in pending/payment_failed/past_due means checkout
+  // was started but never completed, and retrying on that exact plan is
+  // exactly what the owner needs to be able to do here.
   const needsPayment = ["pending", "payment_failed", "past_due"].includes(subscriptionState);
 
-  function choosePlan(plan) {
-    if (Number(plan.price) > 0) {
-      if (!anyGatewayAvailable) { toast.error("No payment gateway is currently configured. Please contact the platform team."); return; }
-      setSelectedPlan(plan);
-    } else {
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function choosePlan(plan) {
+    if (!(Number(plan.price) > 0)) {
       toast.error("Switching to a free/trial plan requires the platform team — contact support to change to this plan.");
+      return;
     }
+    if (!billDeskConfigured) {
+      toast.error("Payment isn't configured yet. Please contact the platform team.");
+      return;
+    }
+    setCheckingOut(plan.id);
+    try {
+      const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
+      window.location.href = data.checkoutUrl;
+    } catch (err) { toast.error(err.message); setCheckingOut(null); }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+      <ModalFocusTrap>
+      <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} role="dialog" aria-modal="true" aria-label="Choose a Plan" className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
-          <p className="text-foreground font-semibold">{selectedPlan ? "Checkout" : "Choose a Plan"}</p>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <div>
+            <p className="text-foreground font-semibold">Choose a Plan</p>
+            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by BillDesk</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
-        <AnimatePresence mode="wait">
-          {selectedPlan ? (
-            <motion.div key="gateway" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
-              <GatewayStep plan={selectedPlan} gateways={gateways} onBack={() => setSelectedPlan(null)} onClose={onClose} />
-            </motion.div>
-          ) : (
-            <motion.div key="plans" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {plans.map((plan) => {
-                const isSamePlan = plan.id === currentPlanId;
-                const isCurrent = isSamePlan && !needsPayment;
-                const isPaid = Number(plan.price) > 0;
-                return (
-                  <div key={plan.id} className={`rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30"}`}>
-                    <p className="text-foreground font-medium">{plan.name}</p>
-                    {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
-                    <p className="text-foreground text-lg font-semibold mt-2">
-                      {isPaid ? `${plan.currency} ${Number(plan.price).toLocaleString()}` : "Free"}
-                      {isPaid && <span className="text-muted-foreground text-xs font-normal"> / {plan.billing_cycle}</span>}
-                    </p>
-                    <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
-                      {plan.max_users && <li>{plan.max_users} employees</li>}
-                      {plan.max_leads && <li>{plan.max_leads.toLocaleString()} leads</li>}
-                      {plan.max_storage_mb && <li>{Math.round(plan.max_storage_mb / 1024)}GB storage</li>}
-                    </ul>
-                    <button
-                      onClick={() => choosePlan(plan)}
-                      disabled={isCurrent}
-                      className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
-                    >
-                      {isCurrent && <CheckCircle2 className="h-3.5 w-3.5" />}
-                      {isCurrent ? "Current Plan" : isSamePlan && needsPayment ? "Complete Payment" : isPaid ? "Subscribe" : "Contact Support"}
-                    </button>
-                  </div>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {!billDeskConfigured && (
+          <div className="mx-6 mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            Payment isn't configured on this platform yet — paid plans can't be checked out until the platform team connects BillDesk.
+          </div>
+        )}
+
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {plans.map((plan) => {
+            const isSamePlan = plan.id === currentPlanId;
+            const isCurrent = isSamePlan && !needsPayment;
+            const isPaid = Number(plan.price) > 0;
+            return (
+              <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className={`relative rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30 hover:border-indigo-500/20"}`}>
+                {isCurrent && <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
+                <p className="text-foreground font-medium mt-1">{plan.name}</p>
+                {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
+                <p className="text-foreground text-lg font-semibold mt-2">
+                  {isPaid ? `${plan.currency} ${Number(plan.price).toLocaleString()}` : "Free"}
+                  {isPaid && <span className="text-muted-foreground text-xs font-normal"> / {plan.billing_cycle}</span>}
+                </p>
+                {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
+                <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
+                  {plan.max_users ? <li>{plan.max_users} employees</li> : <li>Unlimited employees</li>}
+                  {plan.max_leads ? <li>{plan.max_leads.toLocaleString()} leads</li> : <li>Unlimited leads</li>}
+                  {plan.max_storage_mb ? <li>{Math.round(plan.max_storage_mb / 1024)}GB storage</li> : <li>Unlimited storage</li>}
+                </ul>
+                <button
+                  onClick={() => choosePlan(plan)}
+                  disabled={isCurrent || checkingOut === plan.id || (isPaid && !billDeskConfigured)}
+                  className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
+                >
+                  {checkingOut === plan.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {isCurrent && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {isCurrent ? "Current Plan" : isSamePlan && needsPayment ? "Complete Payment" : isPaid ? "Subscribe" : "Contact Support"}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
       </motion.div>
+      </ModalFocusTrap>
     </div>
   );
 }
 
-export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume, gateways = {} }) {
+export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume, billDeskStatus = { configured: false } }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [showPicker, setShowPicker] = useState(false);
@@ -210,47 +143,70 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
-      <button onClick={() => setShowPicker(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer transition">
-        <ArrowUpRight className="h-3.5 w-3.5" /> Upgrade / Change Plan
-      </button>
-      {canResume && (
-        <button onClick={resume} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-xs font-medium cursor-pointer disabled:opacity-50 transition">
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Resume Subscription
+    <div className="mt-4 pt-4 border-t border-border">
+      <div className="flex items-center gap-1.5 mb-3 text-[11px] text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setShowPicker(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer transition">
+          <ArrowUpRight className="h-3.5 w-3.5" /> Upgrade / Change Plan
         </button>
-      )}
-      {subscription.hasSubscription && subscription.state !== "cancelled" && (
-        <button onClick={cancel} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-muted-foreground hover:text-red-400 text-xs font-medium cursor-pointer disabled:opacity-50 transition">
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Cancel Subscription
+        {canResume && (
+          <button onClick={resume} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-xs font-medium cursor-pointer disabled:opacity-50 transition">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Resume Subscription
+          </button>
+        )}
+        {subscription.hasSubscription && subscription.state !== "cancelled" && (
+          <button onClick={cancel} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-muted-foreground hover:text-red-400 text-xs font-medium cursor-pointer disabled:opacity-50 transition">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Cancel Subscription
+          </button>
+        )}
+        <button onClick={() => setShowHistory((s) => !s)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-xs font-medium cursor-pointer transition">
+          <Receipt className="h-3.5 w-3.5" /> Payment History
         </button>
-      )}
-      <button onClick={() => setShowHistory((s) => !s)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground text-xs font-medium cursor-pointer transition">
-        <Receipt className="h-3.5 w-3.5" /> Payment History
-      </button>
+      </div>
 
       <AnimatePresence>
         {showHistory && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="w-full overflow-hidden">
-            <div className="mt-3 bg-muted/30 border border-border rounded-lg divide-y divide-border">
+            <div className="mt-3 bg-muted/30 border border-border rounded-lg overflow-x-auto">
               {payments.length === 0 ? (
                 <p className="text-muted-foreground text-xs p-3">No payments recorded yet.</p>
               ) : (
-                payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between px-3 py-2 text-xs">
-                    <div className="min-w-0">
-                      <p className="text-foreground">{p.plan_name} — {p.currency} {Number(p.amount).toLocaleString()} <span className="text-muted-foreground">via {GATEWAY_LABEL[p.gateway] || p.gateway}</span></p>
-                      <p className="text-muted-foreground truncate">{formatDate(p.created_at, timezone)} · {p.gateway_transaction_id || "—"}</p>
-                    </div>
-                    <span className={`shrink-0 px-2 py-0.5 rounded-full border text-[10px] ${p.status === "completed" ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" : "text-red-400 border-red-500/30 bg-red-500/10"}`}>{p.status}</span>
-                  </div>
-                ))
+                <table className="w-full text-xs min-w-[560px]">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Plan</th>
+                      <th className="px-3 py-2 font-medium">Amount</th>
+                      <th className="px-3 py-2 font-medium">Gateway</th>
+                      <th className="px-3 py-2 font-medium">Transaction ID</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {payments.map((p) => {
+                      const meta = STATUS_META[p.status] || STATUS_META.pending;
+                      return (
+                        <tr key={p.id}>
+                          <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formatDate(p.created_at, timezone)}</td>
+                          <td className="px-3 py-2 text-foreground">{p.plan_name}</td>
+                          <td className="px-3 py-2 text-foreground whitespace-nowrap">{p.currency} {Number(p.amount).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-muted-foreground capitalize">{p.gateway}</td>
+                          <td className="px-3 py-2 text-muted-foreground truncate max-w-[140px]">{p.gateway_transaction_id || "—"}</td>
+                          <td className="px-3 py-2"><span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] ${meta.color}`}>{meta.label}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} gateways={gateways} onClose={() => setShowPicker(false)} />}
+      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} billDeskConfigured={billDeskStatus.configured} onClose={() => setShowPicker(false)} />}
     </div>
   );
 }

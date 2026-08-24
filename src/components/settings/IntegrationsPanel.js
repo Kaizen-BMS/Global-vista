@@ -6,6 +6,7 @@ import { Plus, RefreshCw, Pencil, Power, History, X, Loader2, AlertTriangle, Che
 import { apiFetch } from "@/components/shared/apiClient";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import EmptyState from "@/components/shared/EmptyState";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const MAPPABLE_FIELDS = [
   { key: "external_lead_id", label: "Lead ID (external)", required: true },
@@ -43,6 +44,12 @@ function SourceForm({ initial, leadSources, services, users, onClose, onSaved })
   }));
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function setMapping(key, value) { setForm((f) => ({ ...f, columnMapping: { ...f.columnMapping, [key]: value } })); }
 
   async function save(e) {
@@ -64,10 +71,11 @@ function SourceForm({ initial, leadSources, services, users, onClose, onSaved })
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl p-6">
+      <ModalFocusTrap>
+      <form onSubmit={save} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${isEdit ? "Edit" : "New"} Sync Source`} className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-foreground font-medium">{isEdit ? "Edit" : "New"} Sync Source</h2>
-          <button type="button" onClick={onClose} className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
         </div>
 
         <div className="space-y-3">
@@ -113,6 +121,7 @@ function SourceForm({ initial, leadSources, services, users, onClose, onSaved })
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save
         </button>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }
@@ -122,12 +131,18 @@ function HistoryDrawer({ source, timezone, onClose }) {
   useEffect(() => {
     apiFetch(`/api/core/lead-sync/sources/${source.id}/runs`).then((r) => r.json()).then((d) => setRuns(d.runs || [])).catch(() => setRuns([]));
   }, [source.id]);
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl p-6">
+      <ModalFocusTrap>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Sync History — ${source.name}`} className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-foreground font-medium">Sync History — {source.name}</h2>
-          <button onClick={onClose} className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
+          <button onClick={onClose} aria-label="Close" className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
         </div>
         {runs === null ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
@@ -155,6 +170,7 @@ function HistoryDrawer({ source, timezone, onClose }) {
           </div>
         )}
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

@@ -88,7 +88,7 @@ export function AssignToPicker({ leadId, employees, currentAssignedTo, onDone })
         <option value="">Select employee…</option>
         {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
-      <button onClick={assign} disabled={busy || !value} className="flex items-center justify-center h-7 w-7 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer disabled:opacity-50 shrink-0">
+      <button onClick={assign} disabled={busy || !value} aria-label="Confirm assignment" className="flex items-center justify-center h-7 w-7 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer disabled:opacity-50 shrink-0">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
       </button>
     </div>

@@ -26,7 +26,7 @@ export default function RoleList({ roles }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-4"><button onClick={() => setDialogRole(null)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"><Plus className="h-4 w-4" />Create Role</button></div>
+      <div className="flex justify-end mb-4"><button onClick={() => setDialogRole(null)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium cursor-pointer"><Plus className="h-4 w-4" />Create Role</button></div>
       {roles.length === 0 ? <EmptyState icon={ShieldCheck} title="No roles yet" /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {roles.map((role) => (
@@ -36,8 +36,8 @@ export default function RoleList({ roles }) {
               <div className="flex items-center gap-3 text-sm">
                 <Link href={`/workspace/roles/${role.id}/permissions`} className="text-indigo-400 hover:text-indigo-300">Permissions</Link>
                 {!role.is_system && <>
-                  <button onClick={() => setDialogRole(role)} className="text-muted-foreground hover:text-foreground flex items-center gap-1"><Pencil className="h-3.5 w-3.5" />Edit</button>
-                  <button onClick={() => handleDelete(role)} disabled={deletingId === role.id} className="text-muted-foreground hover:text-red-400 flex items-center gap-1 ml-auto"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setDialogRole(role)} className="text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"><Pencil className="h-3.5 w-3.5" />Edit</button>
+                  <button onClick={() => handleDelete(role)} disabled={deletingId === role.id} aria-label={`Delete role ${role.name}`} className="text-muted-foreground hover:text-red-400 flex items-center gap-1 ml-auto cursor-pointer disabled:opacity-60"><Trash2 className="h-3.5 w-3.5" /></button>
                 </>}
               </div>
             </div>

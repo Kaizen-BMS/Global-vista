@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useId, cloneElement } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -7,18 +7,28 @@ import { Loader2, X, CalendarClock, CalendarDays, StickyNote, Phone, Mail, Messa
 import { FOLLOWUP_TYPES, FOLLOWUP_DISPOSITIONS, MEETING_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 import { refreshSidebarBadges } from "@/components/layout/Sidebar";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
-function Field({ label, children }) { return (<div><label className="block text-xs text-muted-foreground mb-1.5">{label}</label>{children}</div>); }
+function Field({ label, children }) {
+  const id = useId();
+  return (<div><label htmlFor={id} className="block text-xs text-muted-foreground mb-1.5">{label}</label>{cloneElement(children, { id })}</div>);
+}
 
 function ModalShell({ title, onClose, children, onSubmit, saving, submitLabel = "Save" }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <form onSubmit={onSubmit} className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[85vh] overflow-y-auto">
+      <ModalFocusTrap>
+      <form onSubmit={onSubmit} role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">{title}</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
         <div className="space-y-4">{children}</div>
         <div className="flex justify-end gap-2 mt-5">
@@ -28,6 +38,7 @@ function ModalShell({ title, onClose, children, onSubmit, saving, submitLabel = 
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

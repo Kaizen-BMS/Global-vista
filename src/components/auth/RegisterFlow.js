@@ -3,11 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
+import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
-import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
-
-const GATEWAY_LABEL = { paypal: "PayPal", razorpay: "Razorpay" };
 
 const STEPS = ["Company", "Admin", "Plan", "Confirm"];
 const inputClass = "w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition";
@@ -49,7 +46,7 @@ export default function RegisterFlow() {
   const [form, setForm] = useState({
     companyName: "", companyEmail: "", companyPhone: "", companyWebsite: "", companyCountry: "", companyState: "", companyCity: "", companyAddress: "",
     adminName: "", adminEmail: "", adminPhone: "", adminPassword: "", confirmPassword: "",
-    planId: "", gateway: "",
+    planId: "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -57,25 +54,15 @@ export default function RegisterFlow() {
     apiFetch("/api/public/plans").then((r) => r.json()).then((d) => {
       setPlans(d.plans || []);
       const first = d.plans?.[0];
-      if (first) {
-        const onlyGateway = first.hasPayPal && !first.hasRazorpay ? "paypal" : first.hasRazorpay && !first.hasPayPal ? "razorpay" : "";
-        setForm((f) => ({ ...f, planId: String(first.id), gateway: onlyGateway }));
-      }
+      if (first) setForm((f) => ({ ...f, planId: String(first.id) }));
     }).catch(() => toast.error("Couldn't load plans.")).finally(() => setLoadingPlans(false));
   }, []);
 
   const selectedPlan = plans.find((p) => String(p.id) === String(form.planId));
   const planRequiresPayment = selectedPlan && Number(selectedPlan.price) > 0 && selectedPlan.billing_cycle !== "trial";
-  const bothGatewaysAvailable = !!(selectedPlan?.hasPayPal && selectedPlan?.hasRazorpay);
-  // When only one gateway is connected to this plan, that's simply the one
-  // used — no choice to make. When neither is, the server rejects at submit
-  // with a clear message rather than the client guessing.
-  const effectiveGateway = bothGatewaysAvailable ? form.gateway : selectedPlan?.hasPayPal ? "paypal" : selectedPlan?.hasRazorpay ? "razorpay" : "";
 
   function selectPlan(id) {
-    const plan = plans.find((p) => String(p.id) === String(id));
-    const onlyGateway = plan?.hasPayPal && !plan?.hasRazorpay ? "paypal" : plan?.hasRazorpay && !plan?.hasPayPal ? "razorpay" : "";
-    setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway }));
+    setForm((f) => ({ ...f, planId: String(id) }));
   }
 
   function validateStep(i) {
@@ -88,8 +75,6 @@ export default function RegisterFlow() {
     }
     if (i === 2) {
       if (!form.planId) { toast.error("Select a plan."); return false; }
-      if (planRequiresPayment && bothGatewaysAvailable && !form.gateway) { toast.error("Choose a payment method."); return false; }
-      if (planRequiresPayment && !selectedPlan.hasPayPal && !selectedPlan.hasRazorpay) { toast.error("This plan isn't connected to a payment method yet — please contact us."); return false; }
     }
     return true;
   }
@@ -97,67 +82,23 @@ export default function RegisterFlow() {
   function next() { if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { setStep((s) => Math.max(s - 1, 0)); }
 
-  async function payWithRazorpayThenFinish(data) {
-    try {
-      await loadRazorpayScript();
-      const rzp = new window.Razorpay({
-        key: data.razorpayKeyId,
-        subscription_id: data.razorpaySubscriptionId,
-        name: "KaizenBMS Platform",
-        description: `${data.planName} subscription`,
-        theme: { color: "#4f46e5" },
-        handler: async (response) => {
-          // Same rule as everywhere else in this app: Razorpay Checkout
-          // reporting success is NOT proof of payment — the server
-          // re-derives the HMAC signature and re-fetches the subscription
-          // from Razorpay before ever marking it active.
-          try {
-            const verifyRes = await apiFetch("/api/public/register/razorpay-verify", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpaySubscriptionId: response.razorpay_subscription_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              }),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
-            setResult(data);
-          } catch (err) { toast.error(err.message); }
-          finally { setSubmitting(false); }
-        },
-        modal: { ondismiss: () => setSubmitting(false) },
-      });
-      rzp.on("payment.failed", () => { toast.error("Payment could not be completed. Please try again."); setSubmitting(false); });
-      rzp.open();
-    } catch (err) { toast.error(err.message); setSubmitting(false); }
-  }
-
   async function submit() {
     setSubmitting(true);
     try {
-      const res = await apiFetch("/api/public/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, gateway: effectiveGateway }) });
+      const res = await apiFetch("/api/public/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed.");
 
-      if (data.requiresPayment && data.gateway === "paypal") {
+      if (data.requiresPayment) {
         // Company + admin account already exist at this point (see
         // registerCompany) with subscriptionStatus="pending" — no modules
-        // are enabled yet. Redirecting to PayPal now (component unmounts
+        // are enabled yet. Redirecting to BillDesk now (component unmounts
         // on navigation, so `submitting` intentionally stays true rather
         // than flickering the button back to enabled just before the
         // browser leaves); nothing here treats this redirect itself as
-        // proof of payment — /register/confirm re-verifies with PayPal
+        // proof of payment — /register/confirm re-verifies with BillDesk
         // server-side once the browser returns.
-        window.location.href = data.approveUrl;
-        return;
-      }
-      if (data.requiresPayment && data.gateway === "razorpay") {
-        // Razorpay Checkout is an in-page modal, not a redirect — the
-        // company/admin already exist (pending) the same as the PayPal
-        // path; this just opens the modal right here instead of navigating
-        // away, and shows the success screen once verified.
-        await payWithRazorpayThenFinish(data);
+        window.location.href = data.checkoutUrl;
         return;
       }
 
@@ -264,23 +205,8 @@ export default function RegisterFlow() {
                 </div>
               )}
 
-              {planRequiresPayment && bothGatewaysAvailable && (
-                <div className="pt-1">
-                  <p className="text-white/50 text-xs mb-1.5">Payment method</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["razorpay", "paypal"].map((gw) => (
-                      <button
-                        key={gw} type="button" onClick={() => set("gateway", gw)}
-                        className={`px-3 py-2 rounded-lg border text-sm cursor-pointer transition ${form.gateway === gw ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"}`}
-                      >
-                        {GATEWAY_LABEL[gw]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {planRequiresPayment && !selectedPlan?.hasPayPal && !selectedPlan?.hasRazorpay && (
-                <p className="text-amber-300 text-xs bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">This plan isn&apos;t connected to a payment method yet — please contact us to get started.</p>
+              {planRequiresPayment && (
+                <p className="flex items-center gap-1.5 text-white/40 text-xs pt-1"><ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk</p>
               )}
             </>
           )}
@@ -298,7 +224,7 @@ export default function RegisterFlow() {
               </div>
               {planRequiresPayment ? (
                 <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">
-                  This plan requires payment. Submitting creates your account, then {effectiveGateway === "razorpay" ? "opens Razorpay Checkout" : "sends you to PayPal"} to complete a secure {selectedPlan?.currency} {Number(selectedPlan?.price).toLocaleString()} / {selectedPlan?.billing_cycle} subscription. Your plan activates automatically once {GATEWAY_LABEL[effectiveGateway] || "the gateway"} confirms.
+                  This plan requires payment. Submitting creates your account, then sends you to BillDesk to complete a secure {selectedPlan?.currency} {Number(selectedPlan?.price).toLocaleString()} / {selectedPlan?.billing_cycle} subscription. Your plan activates automatically once BillDesk confirms.
                 </p>
               ) : (
                 <p className="text-white/30 text-xs">No payment required — your trial starts immediately after you submit.</p>
@@ -318,7 +244,7 @@ export default function RegisterFlow() {
           </button>
         ) : (
           <button type="button" onClick={submit} disabled={submitting} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />} {planRequiresPayment ? (effectiveGateway === "razorpay" ? "Pay with Razorpay" : "Continue to PayPal") : "Create Company"}
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />} {planRequiresPayment ? "Continue to BillDesk" : "Create Company"}
           </button>
         )}
       </div>

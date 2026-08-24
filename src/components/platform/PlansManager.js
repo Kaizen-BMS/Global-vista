@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X, Check, CreditCard, Trash2 } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check, Trash2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const emptyForm = { name: "", description: "", billingCycle: "monthly", price: "", currency: "INR", trialDays: "", maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active" };
 
@@ -16,6 +17,12 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
   const [moduleIds, setModuleIds] = useState(new Set(initial ? (planModulesByPlan[initial.id] || []) : []));
   const [saving, setSaving] = useState(false);
   const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm";
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   function toggleModule(id) {
     setModuleIds((prev) => {
@@ -39,18 +46,17 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
       if (!modRes.ok) throw new Error((await modRes.json()).error || "Plan saved, but modules failed to save.");
 
       toast.success(initial ? "Plan updated." : "Plan created.");
-      if (data.paypalLinkCleared) toast.warning("Price or billing cycle changed — this plan's PayPal link was cleared. Re-sync to create a new PayPal billing plan for it.");
-      if (data.razorpayLinkCleared) toast.warning("Price or billing cycle changed — this plan's Razorpay link was cleared. Re-sync to create a new Razorpay plan for it.");
       onSaved();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <form onSubmit={save} onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-card border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <ModalFocusTrap>
+      <form onSubmit={save} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${initial ? "Edit" : "New"} Plan`} className="w-full max-w-md bg-card border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-foreground font-medium">{initial ? "Edit" : "New"} Plan</h2>
-          <button type="button" onClick={onClose} className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="cursor-pointer"><X className="h-4 w-4 text-muted-foreground" /></button>
         </div>
         <div className="space-y-3">
           <input required placeholder="Plan name (e.g. Professional)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
@@ -89,34 +95,8 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save
         </button>
       </form>
+      </ModalFocusTrap>
     </div>
-  );
-}
-
-function GatewaySyncButton({ plan, gatewayKey, label, syncPath, onSynced }) {
-  const [busy, setBusy] = useState(false);
-  const isPaidRecurring = Number(plan.price) > 0 && ["monthly", "yearly"].includes(plan.billing_cycle);
-  if (!isPaidRecurring) return null;
-
-  if (plan[gatewayKey]) {
-    return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><CreditCard className="h-3 w-3" /> Synced to {label}</span>;
-  }
-
-  async function sync() {
-    setBusy(true);
-    try {
-      const res = await apiFetch(syncPath, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Failed to sync to ${label}.`);
-      toast.success(`Plan synced to ${label}.`);
-      onSynced();
-    } catch (err) { toast.error(err.message); } finally { setBusy(false); }
-  }
-
-  return (
-    <button onClick={sync} disabled={busy} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border bg-muted text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
-      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />} Sync to {label}
-    </button>
   );
 }
 
@@ -137,7 +117,7 @@ function DeletePlanButton({ plan, onDeleted }) {
   }
 
   return (
-    <button onClick={remove} disabled={busy} className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60 transition">
+    <button onClick={remove} disabled={busy} aria-label={`Delete plan ${plan.name}`} className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60 transition">
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
     </button>
   );
@@ -169,10 +149,6 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
               </div>
               <p className="text-muted-foreground text-xs mb-2 capitalize">{p.billing_cycle} · {p.status}</p>
               {p.description && <p className="text-muted-foreground text-xs mb-2">{p.description}</p>}
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                <GatewaySyncButton plan={p} gatewayKey="razorpay_plan_id" label="Razorpay" syncPath={`/api/platform/plans/${p.id}/razorpay-sync`} onSynced={() => router.refresh()} />
-                <GatewaySyncButton plan={p} gatewayKey="paypal_plan_id" label="PayPal" syncPath={`/api/platform/plans/${p.id}/paypal-sync`} onSynced={() => router.refresh()} />
-              </div>
               <div className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 <p>Price: {p.price ? `${p.currency} ${p.price}` : "Free"}</p>
                 {!!p.trial_days && <p>Trial: {p.trial_days} days</p>}

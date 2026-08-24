@@ -3,17 +3,15 @@ import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
-import { cancelPayPalSubscription, activatePayPalSubscription, getPayPalSubscription } from "@/lib/payments/paypalSubscriptions";
-import { cancelRazorpaySubscription, resumeRazorpaySubscription, getRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
+import { cancelBillDeskMandate } from "@/lib/payments/billdeskClient";
 import { hasSubscriptionBillingSchema } from "@/lib/db/schemaFlags";
 
 /**
- * Gateway-AGNOSTIC subscription actions — shared by both Razorpay and
- * PayPal so cancel/resume/payment-history/downgrade-protection behave
- * identically regardless of which gateway a given company's subscription
- * happens to be on. Gateway-specific checkout-creation and webhook
- * processing live in paypalBilling.js / razorpayBilling.js, which both
- * import from here (never the other direction — avoids a circular import).
+ * Gateway-AGNOSTIC subscription actions — cancel/resume/payment-history/
+ * downgrade-protection behave the same regardless of gateway. Gateway-
+ * specific checkout-creation and webhook processing live in
+ * billdeskBilling.js, which imports from here (never the other direction —
+ * avoids a circular import).
  */
 
 export function assertBillingSchemaReady() {
@@ -82,35 +80,33 @@ export async function cancelOwnSubscription(session) {
   const sub = await getSubscriptionForCompany(session.company_id);
   if (!sub) { const e = new Error("No subscription to cancel."); e.status = 404; throw e; }
 
-  if (sub.gateway === "paypal" && sub.gateway_subscription_id && sub.status === "active") {
-    await cancelPayPalSubscription(sub.gateway_subscription_id, `Cancelled by ${session.name}`);
-  } else if (sub.gateway === "razorpay" && sub.gateway_subscription_id && sub.status === "active") {
-    await cancelRazorpaySubscription(sub.gateway_subscription_id);
+  if (sub.gateway === "billdesk" && sub.gateway_subscription_id && sub.status === "active") {
+    // Gateway-side mandate cancellation requires BillDesk's recurring API
+    // spec (see billdeskClient.js) — not implemented yet. The subscription
+    // is still cancelled on our side below so the company isn't stuck; a
+    // future recurring charge from BillDesk's side may need manual
+    // cancellation until this is completed.
+    await cancelBillDeskMandate(sub.gateway_subscription_id).catch((err) => {
+      console.error("BillDesk mandate cancellation not completed:", err.message);
+    });
   }
   await pool.query(`UPDATE company_subscriptions SET status='cancelled', cancelled_at=NOW() WHERE id=?`, [sub.id]);
   await logActivity({ userId: session.id, module: "platform", action: "subscription_cancelled_by_company", entityType: "company_subscription", entityId: sub.id, companyId: session.company_id, description: `${session.name} cancelled the subscription` }).catch(() => {});
 }
 
 /** Resume only works for a gateway subscription the gateway itself still
- * considers SUSPENDED/PAUSED (not CANCELLED/EXPIRED — those need a brand-new checkout). */
+ * considers suspended/paused (not cancelled/expired — those need a brand-new
+ * checkout). Requires BillDesk's subscription-status API, which isn't
+ * implemented yet — see billdeskClient.js. */
 export async function resumeOwnSubscription(session) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can resume the subscription."); e.status = 403; throw e; }
   const sub = await getSubscriptionForCompany(session.company_id);
   if (!sub) { const e = new Error("No subscription to resume."); e.status = 404; throw e; }
   if (sub.gateway === "manual" || !sub.gateway_subscription_id) { const e = new Error("This subscription isn't managed through a payment gateway, so it can't be resumed here."); e.status = 400; throw e; }
 
-  if (sub.gateway === "paypal") {
-    const paypalSub = await getPayPalSubscription(sub.gateway_subscription_id);
-    if (paypalSub.status !== "SUSPENDED") { const e = new Error(`PayPal reports this subscription as "${paypalSub.status}", which can't be resumed — start a new subscription instead.`); e.status = 400; throw e; }
-    await activatePayPalSubscription(sub.gateway_subscription_id, `Resumed by ${session.name}`);
-  } else if (sub.gateway === "razorpay") {
-    const rzpSub = await getRazorpaySubscription(sub.gateway_subscription_id);
-    if (rzpSub.status !== "paused") { const e = new Error(`Razorpay reports this subscription as "${rzpSub.status}", which can't be resumed — start a new subscription instead.`); e.status = 400; throw e; }
-    await resumeRazorpaySubscription(sub.gateway_subscription_id);
-  }
-
-  await pool.query(`UPDATE company_subscriptions SET status='active' WHERE id=?`, [sub.id]);
-  await logActivity({ userId: session.id, module: "platform", action: "subscription_resumed", entityType: "company_subscription", entityId: sub.id, companyId: session.company_id, description: `${session.name} resumed the subscription` }).catch(() => {});
+  const e = new Error("Resuming a suspended BillDesk subscription isn't available yet — please start a new checkout, or contact the platform team.");
+  e.status = 501;
+  throw e;
 }
 
 // ---------------------------------------------------------------------------

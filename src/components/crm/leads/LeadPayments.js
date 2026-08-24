@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus } from "lucide-react";
@@ -8,6 +8,7 @@ import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { formatMoney } from "@/lib/helpers/formatCurrency";
 import { refreshSidebarBadges } from "@/components/layout/Sidebar";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const STATUS_STYLES = {
   Draft: "bg-muted/20 text-muted-foreground border-border/30",
@@ -34,16 +35,23 @@ function SummaryStat({ label, value, accent = "neutral" }) {
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 function Field({ label, children }) { return (<div><label className="block text-xs text-muted-foreground mb-1.5">{label}</label>{children}</div>); }
 function ModalShell({ title, onClose, children }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">{title}</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
         {children}
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

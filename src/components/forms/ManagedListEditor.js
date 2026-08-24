@@ -23,9 +23,9 @@ export default function ManagedListEditor({ title, apiBase, items }) {
       <h2 className="text-foreground font-medium mb-4">{title}</h2>
       <form onSubmit={handleAdd} className="flex gap-2 mb-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`New ${title.toLowerCase()}`} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-        <button type="submit" disabled={saving} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-60 cursor-pointer">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
+        <button type="submit" disabled={saving} aria-label={`Add ${title.toLowerCase()}`} className="btn-brand px-3 py-2 rounded-lg text-white text-sm disabled:opacity-60 cursor-pointer">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
       </form>
-      <ul className="divide-y divide-border">{items.map((i) => <li key={i.id} className="flex items-center justify-between py-2"><span className="text-foreground text-sm">{i.name}</span><button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="h-4 w-4" /></button></li>)}</ul>
+      <ul className="divide-y divide-border">{items.map((i) => <li key={i.id} className="flex items-center justify-between py-2"><span className="text-foreground text-sm">{i.name}</span><button onClick={() => handleDelete(i.id)} disabled={deletingId === i.id} aria-label={`Delete ${i.name}`} className="text-muted-foreground hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="h-4 w-4" /></button></li>)}</ul>
     </div>
   );
 }

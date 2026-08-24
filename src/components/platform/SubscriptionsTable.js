@@ -79,7 +79,7 @@ function RowActions({ row, plans, onChanged }) {
 
   return (
     <div className="relative inline-block">
-      <button ref={anchorRef} onClick={() => { setOpen((o) => !o); setMode(null); }} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition">
+      <button ref={anchorRef} onClick={() => { setOpen((o) => !o); setMode(null); }} aria-label="Subscription actions" aria-expanded={open} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition">
         <MoreVertical className="h-4 w-4" />
       </button>
       <FloatingPanel anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} width={260} className="p-3">
@@ -163,7 +163,7 @@ export default function SubscriptionsTable({ subscriptions, plans, timezone }) {
             <tr key={row.company_id} className="border-b border-border/60 hover:bg-muted/20 transition-colors">
               <td className="px-4 py-3"><Link href={`/platform/companies/${row.company_id}`} className="text-foreground hover:text-indigo-400 font-medium">{row.company_name}</Link></td>
               <td className="px-4 py-3 text-foreground/90">{row.plan_name || "—"}</td>
-              <td className="px-4 py-3 text-muted-foreground text-xs capitalize">{row.gateway === "manual" ? "—" : row.gateway || "—"}</td>
+              <td className="px-4 py-3 text-muted-foreground text-xs">{row.gateway === "manual" || !row.gateway ? "—" : row.gateway === "billdesk" ? "BillDesk" : row.gateway}</td>
               <td className="px-4 py-3"><StatusBadge state={row.state} /></td>
               <td className="px-4 py-3 text-foreground/90">
                 {/* A gateway-billed subscription stuck in "pending" has no

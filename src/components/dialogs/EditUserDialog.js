@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { X, Loader2, Star } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 function AssignedRolesEditor({ userId, allRoles, isSuperAdmin }) {
   const [roles, setRoles] = useState(null);
@@ -61,12 +62,12 @@ function AssignedRolesEditor({ userId, allRoles, isSuperAdmin }) {
       <div className="flex flex-wrap gap-1.5 mb-2">
         {roles.map((r) => (
           <span key={r.role_id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs bg-muted border border-border text-foreground">
-            <button type="button" onClick={() => makeDefault(r.role_id)} disabled={busy} title={r.is_default ? "Default role" : "Set as default"} className="cursor-pointer disabled:opacity-50">
+            <button type="button" onClick={() => makeDefault(r.role_id)} disabled={busy} title={r.is_default ? "Default role" : "Set as default"} aria-label={r.is_default ? "Default role" : `Set ${r.name} as default`} className="cursor-pointer disabled:opacity-50">
               <Star className={`h-3 w-3 ${r.is_default ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
             </button>
             {r.name}
             {roles.length > 1 && (
-              <button type="button" onClick={() => removeRole(r.role_id)} disabled={busy} className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-50">
+              <button type="button" onClick={() => removeRole(r.role_id)} disabled={busy} aria-label={`Remove ${r.name} role`} className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-50">
                 <X className="h-3 w-3" />
               </button>
             )}
@@ -91,6 +92,11 @@ export default function EditUserDialog({ user, roles, isSuperAdmin, onClose }) {
   const router = useRouter();
   const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || "", roleId: user.role_id, status: user.status });
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   async function handleSubmit(e) {
     e.preventDefault(); setSaving(true);
     try {
@@ -101,14 +107,18 @@ export default function EditUserDialog({ user, roles, isSuperAdmin, onClose }) {
   }
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-card border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4"><h2 className="text-foreground font-medium">Edit User</h2><button type="button" onClick={onClose}><X className="h-4 w-4 text-muted-foreground" /></button></div>
-        <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-        <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Edit User" className="w-full max-w-md bg-card border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4"><h2 className="text-foreground font-medium">Edit User</h2><button type="button" onClick={onClose} aria-label="Close"><X className="h-4 w-4 text-muted-foreground" /></button></div>
+        <label htmlFor="edit-user-name" className="sr-only">Name</label>
+        <input id="edit-user-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+        <label htmlFor="edit-user-email" className="sr-only">Email</label>
+        <input id="edit-user-email" required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
         {!user.is_super_admin && !isSuperAdmin && <select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>}
         {!user.is_super_admin && isSuperAdmin && <AssignedRolesEditor userId={user.id} allRoles={roles} isSuperAdmin={isSuperAdmin} />}
         <button type="submit" disabled={saving} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium disabled:opacity-60">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save</button>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

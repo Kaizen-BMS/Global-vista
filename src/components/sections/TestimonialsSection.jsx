@@ -42,7 +42,7 @@ export default function TestimonialsSection() {
             <button
               aria-label="Previous testimonial"
               onClick={prev}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-offwhite transition-colors hover:border-gold/40 hover:text-gold"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-offwhite transition-colors hover:border-gold/40 hover:text-gold cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -52,7 +52,7 @@ export default function TestimonialsSection() {
                   key={t.id}
                   aria-label={`Go to testimonial ${i + 1}`}
                   onClick={() => setIndex(i)}
-                  className={`h-1.5 rounded-full transition-all ${
+                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
                     i === index ? "w-6 bg-gold" : "w-1.5 bg-white/20"
                   }`}
                 />
@@ -61,7 +61,7 @@ export default function TestimonialsSection() {
             <button
               aria-label="Next testimonial"
               onClick={next}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-offwhite transition-colors hover:border-gold/40 hover:text-gold"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-offwhite transition-colors hover:border-gold/40 hover:text-gold cursor-pointer"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

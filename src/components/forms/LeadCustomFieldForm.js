@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, X, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 export const FIELD_TYPE_OPTIONS = [
   { value: "text", label: "Short Text" },
@@ -60,6 +61,12 @@ export default function LeadCustomFieldForm({ initial, sections, defaultSection,
   const [newSectionName, setNewSectionName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function setField(key, value) { setForm((f) => ({ ...f, [key]: value })); }
   const needsOptions = OPTION_TYPES.has(form.fieldType);
 
@@ -87,10 +94,11 @@ export default function LeadCustomFieldForm({ initial, sections, defaultSection,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label={isEdit ? "Edit Field" : "New Field"} className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <p className="text-foreground font-semibold">{isEdit ? "Edit Field" : "New Field"}</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="p-6 space-y-4">
@@ -117,7 +125,7 @@ export default function LeadCustomFieldForm({ initial, sections, defaultSection,
                 {form.options.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <input className={inputClass} value={opt} onChange={(e) => updateOption(i, e.target.value)} placeholder={`Option ${i + 1}`} />
-                    <button type="button" onClick={() => removeOption(i)} className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => removeOption(i)} aria-label={`Remove option ${i + 1}`} className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 ))}
                 <button type="button" onClick={addOption} className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer"><Plus className="h-3.5 w-3.5" /> Add option</button>
@@ -161,6 +169,7 @@ export default function LeadCustomFieldForm({ initial, sections, defaultSection,
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

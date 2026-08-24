@@ -16,7 +16,7 @@ export default function RegisterConfirmPage() {
 
 function ConfirmShell({ children }) {
   return (
-    <div className="min-h-screen bg-[#05060f] text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#05060f] text-white flex items-center justify-center px-4 overflow-hidden">
       <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-indigo-600/20 blur-[120px] pointer-events-none" />
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-8 text-center shadow-2xl shadow-black/40">
         <p className="text-indigo-400 text-xs font-semibold uppercase tracking-widest mb-4">{GLOBAL_VISTA_BRANDING.name}</p>
@@ -33,11 +33,11 @@ function RegisterConfirmInner() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const subscriptionId = searchParams.get("subscription_id");
-    if (!subscriptionId) { setState("error"); setError("No subscription reference was returned by PayPal."); return; }
+    const orderId = searchParams.get("order_id");
+    if (!orderId) { setState("error"); setError("No transaction reference was returned by BillDesk."); return; }
     (async () => {
       try {
-        const res = await fetch(`/api/public/register/confirm?subscription_id=${encodeURIComponent(subscriptionId)}`);
+        const res = await fetch(`/api/public/register/billdesk-confirm?order_id=${encodeURIComponent(orderId)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not confirm your subscription.");
         setDetail(data);
@@ -51,7 +51,7 @@ function RegisterConfirmInner() {
       {state === "loading" && (
         <>
           <Loader2 className="h-10 w-10 text-indigo-400 mx-auto mb-4 animate-spin" />
-          <p className="text-white font-medium">Confirming your subscription with PayPal…</p>
+          <p className="text-white font-medium">Confirming your subscription with BillDesk…</p>
         </>
       )}
       {state === "success" && (
@@ -70,7 +70,7 @@ function RegisterConfirmInner() {
         <>
           <Loader2 className="h-10 w-10 text-amber-400 mx-auto mb-4" />
           <p className="text-white text-lg font-semibold">Still processing</p>
-          <p className="text-white/50 text-sm mt-1">PayPal reports this as "{detail?.status}". It'll finish activating shortly — you can log in and check anytime.</p>
+          <p className="text-white/50 text-sm mt-1">BillDesk reports this as "{detail?.status}". It'll finish activating shortly — you can log in and check anytime.</p>
           <Link href="/login" className="inline-flex items-center gap-1.5 mt-6 px-5 py-2.5 rounded-lg border border-white/15 hover:border-white/30 text-white text-sm font-medium transition">Log In</Link>
         </>
       )}

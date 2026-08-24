@@ -1,15 +1,23 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 export default function DeleteCompanyDialog({ companyId, companyName }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === "Escape" && !deleting) setOpen(false); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, deleting]);
 
   async function handleDelete() {
     setDeleting(true);
@@ -37,17 +45,19 @@ export default function DeleteCompanyDialog({ companyId, companyName }) {
 
       {open && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-card border border-red-500/30 rounded-2xl p-6">
+          <ModalFocusTrap>
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Delete Company" className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-card border border-red-500/30 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-foreground font-medium flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-400" /> Delete Company</h2>
-              <button onClick={() => setOpen(false)} disabled={deleting} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+              <button onClick={() => setOpen(false)} disabled={deleting} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-50"><X className="h-4 w-4" /></button>
             </div>
             <p className="text-foreground text-sm font-medium mb-1">{companyName}</p>
             <p className="text-red-400 text-xs mb-4">This action permanently deletes this company's data and cannot be undone.</p>
-            <label className="block text-muted-foreground text-xs mb-1.5">
+            <label htmlFor="confirm-company-name" className="block text-muted-foreground text-xs mb-1.5">
               Type <span className="text-foreground font-medium">{companyName}</span> to confirm deletion.
             </label>
             <input
+              id="confirm-company-name"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm mb-4"
@@ -65,6 +75,7 @@ export default function DeleteCompanyDialog({ companyId, companyName }) {
               </button>
             </div>
           </div>
+          </ModalFocusTrap>
         </div>
       )}
     </>

@@ -23,9 +23,9 @@ export default function AcademicSessionsEditor({ sessions }) {
         <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" required />
         <input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" required />
         <label className="flex items-center gap-2 text-sm text-foreground sm:col-span-3 cursor-pointer"><input type="checkbox" checked={form.isCurrent} onChange={(e) => setForm({ ...form, isCurrent: e.target.checked })} className="cursor-pointer" />Current session</label>
-        <button type="submit" disabled={saving} className="btn-brand flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-60 cursor-pointer">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
+        <button type="submit" disabled={saving} aria-label="Add session" className="btn-brand flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-white text-sm disabled:opacity-60 cursor-pointer">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</button>
       </form>
-      <div className="divide-y divide-border">{sessions.map((s) => <div key={s.id} className="flex items-center justify-between py-2"><div><span className="text-foreground text-sm">{s.name}</span>{!!s.is_current && <CheckCircle2 className="inline h-3.5 w-3.5 text-green-400 ml-2" />}</div><button onClick={() => handleDelete(s.id)} className="cursor-pointer"><Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-400 transition-colors" /></button></div>)}</div>
+      <div className="divide-y divide-border">{sessions.map((s) => <div key={s.id} className="flex items-center justify-between py-2"><div><span className="text-foreground text-sm">{s.name}</span>{!!s.is_current && <CheckCircle2 className="inline h-3.5 w-3.5 text-green-400 ml-2" />}</div><button onClick={() => handleDelete(s.id)} aria-label={`Delete ${s.name}`} className="cursor-pointer"><Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-400 transition-colors" /></button></div>)}</div>
     </div>
   );
 }

@@ -10,7 +10,7 @@ export default function FAQCard({ question, answer, isOpen, onClick }) {
       <button
         onClick={onClick}
         aria-expanded={isOpen}
-        className="flex w-full items-center justify-between gap-4 p-6 text-left"
+        className="flex w-full items-center justify-between gap-4 p-6 text-left cursor-pointer"
       >
         <span className="font-display text-lg text-offwhite">{question}</span>
         <motion.span

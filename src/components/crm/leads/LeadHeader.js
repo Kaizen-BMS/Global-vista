@@ -38,7 +38,7 @@ function MoreActionsMenu({ lead, leadId, canEdit, canManageAssignment, canManage
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center justify-center h-8 w-8 rounded-lg bg-card border border-border text-foreground hover:bg-muted cursor-pointer transition">
+      <button onClick={() => setOpen((o) => !o)} aria-label="More actions" aria-expanded={open} className="flex items-center justify-center h-8 w-8 rounded-lg bg-card border border-border text-foreground hover:bg-muted cursor-pointer transition">
         <MoreHorizontal className="h-4 w-4" />
       </button>
       {open && (

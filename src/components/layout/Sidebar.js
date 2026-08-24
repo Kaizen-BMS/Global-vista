@@ -9,6 +9,7 @@ import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import { useMobileNav } from "@/components/layout/MobileNavContext";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import SidebarTooltip from "@/components/layout/SidebarTooltip";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 /** A pulsing ring behind a solid core — CSS-only, no re-render cost — reads
  * as "something just happened here" without being loud enough to make the
@@ -77,8 +78,7 @@ const DOT_HREFS = {
   "/workspace/followups": "followups",
   "/workspace/notifications": "totalUnread",
   "/workspace/messages": "messages",
-  "/workspace/complaints": "complaints",
-  "/workspace/ideas": "ideas",
+  "/workspace/support": "support",
 };
 
 // ONE endpoint drives every sidebar dot — /api/core/notifications/badges
@@ -86,7 +86,7 @@ const DOT_HREFS = {
 // already-scoped queries this needs, so the client makes exactly one
 // request per poll instead of one per nav item.
 function useSidebarBadges(scope) {
-  const [badges, setBadges] = useState({ totalUnread: 0, leads: 0, followups: 0, messages: 0, payments: 0, complaints: 0, ideas: 0 });
+  const [badges, setBadges] = useState({ totalUnread: 0, leads: 0, followups: 0, messages: 0, payments: 0, complaints: 0, ideas: 0, support: 0 });
   useEffect(() => {
     if (scope !== "workspace") return;
     let cancelled = false;
@@ -201,6 +201,13 @@ export default function Sidebar({ session, navItems, company, showPoweredBy = tr
   const { open, setOpen } = useMobileNav();
   const [collapsed, setCollapsed, hydrated] = useLocalStorageState(SIDEBAR_COLLAPSED_KEY, false);
 
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === "Escape") setOpen(false); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, setOpen]);
+
   // Tablets get less horizontal room than desktop, so default to the
   // icon-only rail there — but only if the user hasn't already chosen a
   // state explicitly (their choice always wins over this default).
@@ -239,10 +246,12 @@ export default function Sidebar({ session, navItems, company, showPoweredBy = tr
       {open && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setOpen(false)} />
-          <aside className="relative w-72 max-w-[80vw] h-full bg-sidebar border-r border-sidebar-border flex flex-col animate-in slide-in-from-left duration-200">
-            <button onClick={() => setOpen(false)} className="absolute top-4 right-4 text-sidebar-foreground/50 hover:text-sidebar-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
+          <ModalFocusTrap>
+          <aside role="dialog" aria-modal="true" aria-label="Navigation" className="relative w-72 max-w-[80vw] h-full bg-sidebar border-r border-sidebar-border flex flex-col animate-in slide-in-from-left duration-200">
+            <button onClick={() => setOpen(false)} aria-label="Close navigation" className="absolute top-4 right-4 text-sidebar-foreground/50 hover:text-sidebar-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
             <SidebarContent session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} onNavigate={() => setOpen(false)} collapsed={false} onToggleCollapse={() => {}} showToggle={false} scope={scope} />
           </aside>
+          </ModalFocusTrap>
         </div>
       )}
     </>

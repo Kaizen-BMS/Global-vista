@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import { FOLLOWUP_DISPOSITIONS } from "@/lib/modules/crm/constants/leadStages";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 export default function FollowupCompleteModal({ followupType, onClose, onSubmit }) {
   const [outcome, setOutcome] = useState("");
@@ -9,6 +10,12 @@ export default function FollowupCompleteModal({ followupType, onClose, onSubmit 
   const [durationMinutes, setDurationMinutes] = useState("");
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -28,10 +35,11 @@ export default function FollowupCompleteModal({ followupType, onClose, onSubmit 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label={`Complete ${followupType || "follow-up"}`} className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">Complete {followupType ? `— ${followupType}` : "Follow-up"}</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <label className="block text-xs text-muted-foreground mb-1.5">Outcome / notes</label>
@@ -70,6 +78,7 @@ export default function FollowupCompleteModal({ followupType, onClose, onSubmit 
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

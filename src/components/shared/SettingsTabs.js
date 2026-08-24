@@ -12,6 +12,7 @@ const TABS = [
   { href: "/workspace/settings/integrations", label: "Integrations" },
   { href: "/workspace/settings/payments", label: "Payments" },
   { href: "/workspace/settings/subscription", label: "Subscription" },
+  { href: "/workspace/support", label: "Support & Feedback" },
 ];
 export default function SettingsTabs() {
   const pathname = usePathname();

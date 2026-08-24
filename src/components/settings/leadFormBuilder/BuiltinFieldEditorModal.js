@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, X, Lock } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 function Field({ label, hint, children }) { return (<div><label className="block text-sm text-foreground mb-1">{label}</label>{children}{hint && <p className="text-muted-foreground text-xs mt-1">{hint}</p>}</div>); }
@@ -31,6 +32,12 @@ export default function BuiltinFieldEditorModal({ field, sections, onClose, onSa
   const [saving, setSaving] = useState(false);
   const locked = field.coreRequired;
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function setField(key, value) { setForm((f) => ({ ...f, [key]: value })); }
 
   async function handleSubmit(e) {
@@ -51,13 +58,14 @@ export default function BuiltinFieldEditorModal({ field, sections, onClose, onSa
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label={`Edit ${field.label}`} className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
             <p className="text-foreground font-semibold">Edit "{field.label}"</p>
             <p className="text-muted-foreground text-xs mt-0.5">Built-in field · database column <code className="text-[11px]">{field.column}</code></p>
           </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="p-6 space-y-4">
@@ -98,6 +106,7 @@ export default function BuiltinFieldEditorModal({ field, sections, onClose, onSa
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

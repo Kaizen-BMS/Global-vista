@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const FILE_TYPE_OPTIONS = ["pdf", "doc", "docx", "xls", "xlsx", "zip", "jpg", "jpeg", "png", "webp", "svg"];
 
@@ -40,6 +41,12 @@ export default function DocumentTypeForm({ initial, onClose, onSaved }) {
   }));
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function setField(key, value) { setForm((f) => ({ ...f, [key]: value })); }
   function toggleFileType(ext) {
     setForm((f) => ({ ...f, allowedFileTypes: f.allowedFileTypes.includes(ext) ? f.allowedFileTypes.filter((t) => t !== ext) : [...f.allowedFileTypes, ext] }));
@@ -63,10 +70,11 @@ export default function DocumentTypeForm({ initial, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label={isEdit ? "Edit Document Type" : "New Document Type"} className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <p className="text-foreground font-semibold">{isEdit ? "Edit Document Type" : "New Document Type"}</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="p-6 space-y-4">
@@ -123,6 +131,7 @@ export default function DocumentTypeForm({ initial, onClose, onSaved }) {
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

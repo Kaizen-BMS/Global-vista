@@ -7,10 +7,10 @@ import { Loader2, CheckCircle2, XCircle, ArrowRight } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
 /**
- * The PayPal return_url lands here. This page NEVER treats its own load as
- * proof of payment — it calls the server, which re-fetches the subscription
- * from PayPal itself before writing anything. This is purely a "here's what
- * the server confirmed" display; the webhook is the durable source of
+ * BillDesk's return URL lands here. This page NEVER treats its own load as
+ * proof of payment — it calls the server, which re-verifies the transaction
+ * with BillDesk itself before writing anything. This is purely a "here's
+ * what the server confirmed" display; the webhook is the durable source of
  * truth if the user closes the tab before this ever loads.
  */
 export default function SubscriptionConfirmPage() {
@@ -28,12 +28,12 @@ function SubscriptionConfirmInner() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const subscriptionId = searchParams.get("subscription_id");
-    if (!subscriptionId) { setState("error"); setError("No subscription reference was returned by PayPal."); return; }
+    const orderId = searchParams.get("order_id");
+    if (!orderId) { setState("error"); setError("No transaction reference was returned by BillDesk."); return; }
 
     (async () => {
       try {
-        const res = await apiFetch(`/api/core/subscription/paypal/confirm?subscription_id=${encodeURIComponent(subscriptionId)}`);
+        const res = await apiFetch(`/api/core/subscription/billdesk/confirm?order_id=${encodeURIComponent(orderId)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not confirm the subscription.");
         setDetail(data);
@@ -51,7 +51,7 @@ function SubscriptionConfirmInner() {
         {state === "loading" && (
           <>
             <Loader2 className="h-10 w-10 text-indigo-400 mx-auto mb-4 animate-spin" />
-            <p className="text-foreground font-medium">Confirming your subscription with PayPal…</p>
+            <p className="text-foreground font-medium">Confirming your subscription with BillDesk…</p>
             <p className="text-muted-foreground text-sm mt-1">This only takes a moment.</p>
           </>
         )}
@@ -71,7 +71,7 @@ function SubscriptionConfirmInner() {
           <>
             <Loader2 className="h-10 w-10 text-amber-400 mx-auto mb-4" />
             <p className="text-foreground text-lg font-semibold">Still processing</p>
-            <p className="text-muted-foreground text-sm mt-1">PayPal reports this subscription as "{detail?.status}". It will activate automatically once approval finishes — this page doesn't need to stay open.</p>
+            <p className="text-muted-foreground text-sm mt-1">BillDesk reports this subscription as "{detail?.status}". It will activate automatically once confirmed — this page doesn't need to stay open.</p>
             <Link href="/workspace/settings/subscription" className="inline-flex items-center gap-1.5 mt-6 px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm font-medium transition">
               Back to Subscription
             </Link>

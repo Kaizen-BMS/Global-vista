@@ -119,11 +119,11 @@ export { syncCompanyModulesToPlan };
 // exist for this event. Not on the spec's required audit-event list
 // either (that list is about a COMPANY's subscription/plan changing,
 // which changeSubscriptionPlan below does log correctly).
-// Both functions branch on whether the 2026-08-15 migration (plans.description
-// / paypal_product_id / paypal_plan_id) has landed yet — see schemaFlags.js.
-// Until it has, these run the exact INSERT/UPDATE shape that already works
-// in production today; the description field and PayPal linkage activate
-// automatically, with no redeploy, the moment the migration is applied.
+// createPlan branches on whether the plans.description migration has
+// landed yet — see schemaFlags.js. Until it has, this runs the exact INSERT
+// shape that already works in production today; the description field
+// activates automatically, with no redeploy, the moment the migration is
+// applied.
 export async function createPlan(data) {
   const slug = data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const withDescription = await hasPlanDescriptionColumn();
@@ -179,10 +179,13 @@ export async function deletePlan(id, operatorId) {
 
 // Changing price/billing_cycle after a plan has already been synced to a
 // gateway would silently desync what the gateway bills from what the DB
-// says — both PayPal billing plans and Razorpay plans are immutable on
-// price/cycle by design, so instead of trying to update them in place,
-// clear the linkage so the operator is prompted to re-sync (creating a
-// fresh gateway plan) rather than the two silently drifting apart.
+// says — a synced gateway plan is immutable on price/cycle by design, so
+// instead of trying to update it in place, clear the linkage so the
+// operator is prompted to re-sync (creating a fresh gateway plan) rather
+// than the two silently drifting apart. paypal_plan_id/razorpay_plan_id are
+// retained on `plans` purely for historical/audit traceability of rows that
+// were synced before the PayPal/Razorpay retirement — no code still syncs
+// to either.
 export async function updatePlan(id, data) {
   const [withDescription, withPayPal, withRazorpay] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns()]);
 

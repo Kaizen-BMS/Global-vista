@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { X, Loader2, Check, ArrowRight } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import EmployeeDocumentsPanel from "@/components/users/EmployeeDocumentsPanel";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const STEPS = ["Employee Info", "Documents", "Finish"];
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -55,22 +56,29 @@ export default function CreateUserDialog({ roles, isSuperAdmin, onClose }) {
     router.refresh();
   }
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape" && step === 0) onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, step]);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={step === 0 ? onClose : undefined}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl max-h-[88vh] flex flex-col bg-card border border-border rounded-2xl overflow-hidden">
+      <ModalFocusTrap>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add Employee" className="w-full max-w-2xl max-h-[88vh] flex flex-col bg-card border border-border rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border shrink-0">
           <Stepper step={step} />
-          <button type="button" onClick={step === 0 ? onClose : finish} className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={step === 0 ? onClose : finish} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {step === 0 && (
             <form id="create-user-form" onSubmit={handleCreate} className="space-y-3">
               <p className="text-foreground font-medium mb-1">Employee Information</p>
-              <input required placeholder="Full Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
-              <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
-              <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} />
-              <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className={inputClass}>
+              <input required aria-label="Full Name" placeholder="Full Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
+              <input required type="email" aria-label="Email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
+              <input aria-label="Phone" placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} />
+              <select required aria-label="Default role" value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className={inputClass}>
                 <option value="">Select default role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               {isSuperAdmin && (
@@ -127,6 +135,7 @@ export default function CreateUserDialog({ roles, isSuperAdmin, onClose }) {
           )}
         </div>
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

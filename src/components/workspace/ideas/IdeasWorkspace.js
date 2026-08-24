@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -10,6 +10,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import { refreshSidebarBadges } from "@/components/layout/Sidebar";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const STATUS_ACCENT = {
   Submitted: "border-sky-500/30 bg-sky-500/5 text-sky-400",
@@ -55,13 +56,20 @@ function NewIdeaModal({ categories, onClose, onCreated }) {
     finally { setSaving(false); }
   }
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label="Share an Idea" className="relative w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">Share an Idea</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <label className="block text-xs text-muted-foreground mb-1.5">Title</label>
@@ -105,6 +113,7 @@ function NewIdeaModal({ categories, onClose, onCreated }) {
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

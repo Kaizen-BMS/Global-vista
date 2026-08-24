@@ -89,18 +89,23 @@ export default function DataTable({
               {visibleColumns.map((c) => {
                 const width = colWidths[c.key] || c.width || 150;
                 return (
-                  <th key={c.key} style={{ width }} className="relative px-4 py-3 select-none group/th">
-                    <div
-                      className={`flex items-center gap-1 ${c.sortable ? "cursor-pointer hover:text-foreground" : ""}`}
-                      onClick={() => c.sortable && onSort?.(c.key)}
-                    >
-                      <span className="truncate">{c.label}</span>
-                      {c.sortable && (
-                        sortKey === c.key
+                  <th key={c.key} scope="col" style={{ width }} className="relative px-4 py-3 select-none group/th" aria-sort={c.sortable && sortKey === c.key ? (sortDir === "ASC" ? "ascending" : "descending") : undefined}>
+                    {c.sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSort?.(c.key)}
+                        className="flex items-center gap-1 cursor-pointer hover:text-foreground"
+                      >
+                        <span className="truncate">{c.label}</span>
+                        {sortKey === c.key
                           ? (sortDir === "ASC" ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />)
-                          : <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-0 group-hover/th:opacity-40" />
-                      )}
-                    </div>
+                          : <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-0 group-hover/th:opacity-40" />}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <span className="truncate">{c.label}</span>
+                      </div>
+                    )}
                     <div
                       onMouseDown={(e) => startResize(e, c.key, width, c.minWidth)}
                       className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-indigo-500/40 transition-colors"
@@ -116,7 +121,9 @@ export default function DataTable({
                 key={row[rowKey]}
                 onContextMenu={(e) => handleContextMenu(e, row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`border-b border-border/60 hover:bg-muted/30 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                className={`border-b border-border/60 hover:bg-muted/30 transition-colors ${onRowClick ? "cursor-pointer focus-visible:bg-muted/30" : ""}`}
               >
                 {leadingColumn && <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>{leadingColumn.render(row)}</td>}
                 {visibleColumns.map((c) => (

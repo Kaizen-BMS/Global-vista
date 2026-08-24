@@ -1,5 +1,6 @@
 import "server-only";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { getBillDeskStatus as getBillDeskGatewayStatus } from "@/lib/payments/billdeskClient";
 
 /**
  * Configuration-resolution layer for payment methods — deliberately scoped
@@ -12,31 +13,18 @@ import { getSettingsByGroup } from "@/lib/actions/settings";
  * schema lands, without needing to change how config is resolved.
  */
 
+// "PayPal" here is a manual bookkeeping label for HOW a lead/student paid the
+// company (same category as Cash/Bank Transfer/Card/Other) — nothing to do
+// with KaizenBMS's own company-subscription payment gateway (BillDesk).
+// Always available like the other manual labels; never gated by any gateway
+// credential.
 export const PAYMENT_METHODS = ["Cash", "Bank Transfer", "UPI", "PayPal", "Card", "Other"];
 
-// PayPal's client ID/secret AND mode all live in env vars only — never in a
-// DB settings table, never sent to the browser. Mode specifically must be
-// env-controlled (not a DB toggle an operator could flip in the UI without
-// also updating the matching credentials) since PAYPAL_ENVIRONMENT is what
-// actually routes every API call in src/lib/payments/paypalClient.js —
-// a DB-only toggle here would risk this status display disagreeing with
-// where transactions actually go.
-export async function getPayPalStatus() {
-  const configured = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
-  const mode = (process.env.PAYPAL_ENVIRONMENT || "sandbox").toLowerCase() === "live" ? "live" : "sandbox";
-  return { configured, mode };
-}
-
-// Razorpay status for the COMPANY SUBSCRIPTION billing checkout (platform
-// billing a company for its CRM plan) — a different domain from
-// PAYMENT_METHODS below (a company billing its own leads/students). Key
-// secret/webhook secret never leave the server; only configured/mode is
-// exposed, and the public key_id is handed to the browser separately, only
-// at actual checkout time (see razorpayBilling.js).
-export async function getRazorpayStatus() {
-  const configured = !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
-  const mode = (process.env.RAZORPAY_KEY_ID || "").startsWith("rzp_live_") ? "live" : "test";
-  return { configured, mode };
+/** BillDesk status for the COMPANY SUBSCRIPTION billing checkout (platform
+ * billing a company for its CRM plan). Never exposes secrets — only
+ * configured/environment is returned to callers. */
+export async function getBillDeskStatus() {
+  return getBillDeskGatewayStatus();
 }
 
 // UPI has no secrets to protect — a UPI ID is meant to be shared to receive
@@ -55,15 +43,14 @@ export async function getUpiConfig(session) {
 }
 
 /** Which of the fixed PAYMENT_METHODS an employee can actually select right
- * now for this company — Cash/Bank Transfer/Card/Other always need only a
- * manual record (no provider config required); UPI/PayPal are hidden until
- * their provider is actually configured, so the payment-recording UI never
+ * now for this company — Cash/Bank Transfer/PayPal/Card/Other always need
+ * only a manual record (no provider config required); UPI is hidden until
+ * the company's own UPI ID is configured, so the payment-recording UI never
  * offers a method that would silently fail or fake success. */
 export async function getAvailablePaymentMethods(session) {
-  const [upi, paypal] = await Promise.all([getUpiConfig(session), getPayPalStatus()]);
+  const upi = await getUpiConfig(session);
   return PAYMENT_METHODS.filter((m) => {
     if (m === "UPI") return upi.configured;
-    if (m === "PayPal") return paypal.configured;
     return true;
   });
 }

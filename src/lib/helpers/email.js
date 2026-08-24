@@ -72,7 +72,7 @@ export async function sendPasswordResetEmail({ to, userId, name, resetUrl, compa
   });
   return send({ to, userId, subject: "Reset your password", html, template: "password_reset" });
 }
-export async function sendSubscriptionReceiptEmail({ to, companyId, planName, amount, currency, billingCycle, paypalTransactionId, paypalSubscriptionId }) {
+export async function sendSubscriptionReceiptEmail({ to, companyId, planName, amount, currency, billingCycle, gatewayName = "BillDesk", gatewayTransactionId, gatewaySubscriptionId }) {
   const branding = await getBranding(companyId);
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   const html = wrap({
@@ -82,8 +82,9 @@ export async function sendSubscriptionReceiptEmail({ to, companyId, planName, am
       <p style="color:#a3a3a3;font-size:13px;line-height:1.8;">
         Amount: <strong style="color:#e5e5e5;">${currency} ${Number(amount).toFixed(2)}</strong><br/>
         Billing cycle: ${billingCycle}<br/>
-        Transaction ID: ${paypalTransactionId || "—"}<br/>
-        Subscription ID: ${paypalSubscriptionId || "—"}
+        Payment method: ${gatewayName}<br/>
+        Transaction ID: ${gatewayTransactionId || "—"}<br/>
+        Subscription ID: ${gatewaySubscriptionId || "—"}
       </p>
       <a href="${appUrl}/workspace/settings/subscription" style="color:${color};">View Subscription</a>`,
     branding,
@@ -91,14 +92,14 @@ export async function sendSubscriptionReceiptEmail({ to, companyId, planName, am
   return send({ to, subject: `Payment receipt — ${planName}`, html, template: "subscription_receipt" });
 }
 
-export async function sendSubscriptionPaymentFailedEmail({ to, companyId, planName }) {
+export async function sendSubscriptionPaymentFailedEmail({ to, companyId, planName, gatewayName = "BillDesk" }) {
   const branding = await getBranding(companyId);
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   const html = wrap({
     title: "Payment problem with your subscription",
     bodyFn: (color) => `
-      <p>PayPal reported a problem processing payment for your <strong style="color:#fff;">${planName}</strong> plan.</p>
-      <p style="color:#a3a3a3;font-size:13px;">Please update your payment method with PayPal to avoid interruption.</p>
+      <p>${gatewayName} reported a problem processing payment for your <strong style="color:#fff;">${planName}</strong> plan.</p>
+      <p style="color:#a3a3a3;font-size:13px;">Please retry payment to avoid interruption.</p>
       <a href="${appUrl}/workspace/settings/subscription" style="color:${color};">Manage Subscription</a>`,
     branding,
   });

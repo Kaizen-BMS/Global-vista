@@ -24,8 +24,15 @@ export const ALL_NAV_ITEMS = [
   { href: "/workspace/settings", label: "Settings", icon: "Settings", permission: "settings.manage" },
   { href: "/workspace/documents", label: "Documents", icon: "FileText", permission: "employee_documents.manage" },
   { href: "/workspace/messages", label: "Messages", icon: "MessageSquare", permission: null },
-  { href: "/workspace/complaints", label: "Complaints", icon: "MessageSquareWarning", permission: null },
-  { href: "/workspace/ideas", label: "Ideas", icon: "Lightbulb", permission: null },
+  // Complaints and Ideas moved from separate top-level items into one
+  // "Support & Feedback" entry, visually presented as part of Settings
+  // (shows the same tab bar) but deliberately kept OFF the /workspace/settings/*
+  // URL prefix and permission:null (not settings.manage) — every employee
+  // needs this regardless of whether they can manage settings, and nesting
+  // it under /workspace/settings/ would also make Sidebar.js's ancestor-vs-
+  // sibling active-state logic stop highlighting "Settings" on every other
+  // settings page (see isActive in Sidebar.js).
+  { href: "/workspace/support", label: "Support & Feedback", icon: "MessageSquareWarning", permission: null },
   { href: "/workspace/notifications", label: "Notifications", icon: "Bell", permission: null },
   { href: "/workspace/activity-logs", label: "Activity Logs", icon: "ScrollText", permission: "activity_logs.view" },
   { href: "/workspace/profile", label: "Profile", icon: "UserCircle", permission: null },

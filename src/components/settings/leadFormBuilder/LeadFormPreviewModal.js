@@ -1,5 +1,7 @@
 "use client";
+import { useEffect } from "react";
 import { X, Eye } from "lucide-react";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm";
 
@@ -38,13 +40,20 @@ export default function LeadFormPreviewModal({ groups, onClose }) {
     .map((g) => ({ ...g, fields: g.fields.filter((f) => f.showOnLeadForm && (!f.isCustom || f.status === "active")) }))
     .filter((g) => g.fields.length > 0);
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-background border border-border rounded-2xl shadow-2xl">
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="Add Lead — Preview" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-background border border-border rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-background z-10">
           <p className="text-foreground font-semibold flex items-center gap-2"><Eye className="h-4 w-4 text-indigo-400" /> Add Lead — Preview</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
         <div className="p-6 space-y-6">
           {visibleGroups.length === 0 && <p className="text-muted-foreground text-sm text-center py-10">No fields are currently visible on Add Lead.</p>}
@@ -64,6 +73,7 @@ export default function LeadFormPreviewModal({ groups, onClose }) {
           ))}
         </div>
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }

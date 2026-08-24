@@ -50,77 +50,88 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * KaizenBMS design tokens. Light mode deliberately keeps the sidebar dark
+ * navy while the workspace itself is a light cool-gray — the "dark
+ * navigation + light workspace" pattern this palette is built around — so
+ * --sidebar-* are NOT simple light/dark inverses of --background/--card
+ * here the way a typical shadcn theme assumes. Dark mode's sidebar is a
+ * touch deeper than its own --background for the same layering reason.
+ * Every value below is a value-only change — no token was renamed, so every
+ * component already consuming bg-card/text-foreground/bg-sidebar/etc. picks
+ * this up automatically.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: #F6F8FB;
+  --foreground: #0B1930;
+  --card: #FFFFFF;
+  --card-foreground: #0B1930;
+  --popover: #FFFFFF;
+  --popover-foreground: #0B1930;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF1F6;
+  --secondary-foreground: #0B1930;
+  --muted: #EEF1F6;
+  --muted-foreground: #5C6E88;
+  --accent: #EEF1F6;
+  --accent-foreground: #0B1930;
+  --destructive: #DC2626;
+  --border: #E3E8F0;
+  --input: #E3E8F0;
+  --ring: #4F46E5;
   --chart-1: #6366f1;
   --chart-2: #22d3ee;
   --chart-3: #34d399;
   --chart-4: #facc15;
   --chart-5: #f87171;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --card-hover: oklch(0.975 0 0);
-  --sidebar-active: oklch(0.955 0.025 264);
+  --sidebar: #081526;
+  --sidebar-foreground: #E8EDF5;
+  --sidebar-primary: #4F46E5;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #10203A;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #4F46E5;
+  --card-hover: #FAFBFD;
+  --sidebar-active: rgba(79, 70, 229, 0.16);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: #0A1220;
+  --foreground: #EDF1F7;
+  --card: #101A2C;
+  --card-foreground: #EDF1F7;
+  --popover: #101A2C;
+  --popover-foreground: #EDF1F7;
+  --primary: #818CF8;
+  --primary-foreground: #0A1220;
+  --secondary: #17233A;
+  --secondary-foreground: #EDF1F7;
+  --muted: #17233A;
+  --muted-foreground: #93A1B8;
+  --accent: #17233A;
+  --accent-foreground: #EDF1F7;
+  --destructive: #F87171;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #818CF8;
   --chart-1: #818cf8;
   --chart-2: #67e8f9;
   --chart-3: #6ee7b7;
   --chart-4: #fde047;
   --chart-5: #fca5a5;
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-  --card-hover: oklch(0.245 0 0);
-  --sidebar-active: oklch(0.28 0.045 264);
+  --sidebar: #060D18;
+  --sidebar-foreground: #E8EDF5;
+  --sidebar-primary: #818CF8;
+  --sidebar-primary-foreground: #060D18;
+  --sidebar-accent: #101B2E;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #818CF8;
+  --card-hover: #14203A;
+  --sidebar-active: rgba(129, 140, 248, 0.18);
 }
 
 @layer base {
@@ -130,8 +141,23 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* No input/textarea across the app sets its own placeholder color — this
+     was previously left to each browser's own default, which doesn't
+     adapt to dark mode and isn't part of the design system. One rule here
+     makes every existing input's placeholder theme-aware automatically. */
+  ::placeholder {
+    @apply text-muted-foreground opacity-100;
+  }
   html {
     @apply font-sans;
+  }
+  /* No element in the app defines its own keyboard-focus indicator — this is
+     the one global rule needed so Tab-focus is always visible, in both
+     themes, on every interactive element, without a per-component change. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 

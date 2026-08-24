@@ -59,9 +59,9 @@ export default function CrmCalendar({ year, month, events }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <p className="text-foreground font-medium">{MONTH_NAMES[month - 1]} {year}</p>
           <div className="flex items-center gap-1">
-            <button onClick={() => navigate(-1)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition"><ChevronLeft className="h-4 w-4" /></button>
+            <button onClick={() => navigate(-1)} aria-label="Previous month" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition"><ChevronLeft className="h-4 w-4" /></button>
             <button onClick={() => router.push("/workspace/lead-management/calendar")} className="px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition">Today</button>
-            <button onClick={() => navigate(1)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition"><ChevronRight className="h-4 w-4" /></button>
+            <button onClick={() => navigate(1)} aria-label="Next month" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -106,7 +106,7 @@ export default function CrmCalendar({ year, month, events }) {
           <>
             <div className="flex items-center justify-between mb-3">
               <p className="text-foreground font-medium text-sm">{formatDate(selectedDay, "UTC", { weekday: "long" })}</p>
-              <button onClick={() => setSelectedDay(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+              <button onClick={() => setSelectedDay(null)} aria-label="Clear selected day" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-2">
               {selectedEvents.length === 0 && <p className="text-muted-foreground text-sm">Nothing scheduled.</p>}

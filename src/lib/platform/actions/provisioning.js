@@ -516,10 +516,10 @@ export async function provisionCompany(input, operatorId) {
     // chosen plan includes.
     //
     // Skipped entirely when subscriptionStatus === "pending" — that status
-    // means "awaiting PayPal payment confirmation" (see registerCompany's
-    // paid-plan path), and modules/limits must only activate once PayPal
+    // means "awaiting BillDesk payment confirmation" (see registerCompany's
+    // paid-plan path), and modules/limits must only activate once BillDesk
     // actually confirms the subscription, never merely because the
-    // registration form was submitted. confirmCompanySubscriptionFromPayPal
+    // registration form was submitted. confirmCompanySubscriptionFromBillDesk
     // grants them later via the same syncCompanyModulesToPlan this would
     // have called.
     // -------------------------------------------------------------

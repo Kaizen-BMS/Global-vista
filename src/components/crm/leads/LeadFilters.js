@@ -112,7 +112,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
               {savedFilters.map((f) => (
                 <div key={f.slug} onClick={() => applyParams(f.params)} className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-muted/60 cursor-pointer text-sm text-foreground transition group">
                   <span className="truncate">{f.name}</span>
-                  <button onClick={(e) => removeSavedFilter(e, f.slug)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button onClick={(e) => removeSavedFilter(e, f.slug)} aria-label={`Delete saved filter ${f.name}`} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
               <button onClick={saveCurrentFilter} disabled={!hasAnyFilter} className="w-full flex items-center gap-1.5 mt-1 px-2.5 py-2 rounded-lg text-sm text-indigo-400 hover:bg-indigo-500/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition">

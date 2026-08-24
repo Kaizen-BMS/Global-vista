@@ -101,7 +101,7 @@ export default function GeoAutocomplete({ type, parentId, value, onChange, place
         {loading ? (
           <Loader2 className={`absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin ${iconClass}`} />
         ) : query ? (
-          <button type="button" onClick={clear} className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer ${dark ? "text-neutral-500 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}><X className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={clear} aria-label="Clear" className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer ${dark ? "text-neutral-500 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}><X className="h-3.5 w-3.5" /></button>
         ) : null}
       </div>
       {open && results.length > 0 && (

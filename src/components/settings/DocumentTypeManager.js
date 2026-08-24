@@ -56,8 +56,8 @@ export default function DocumentTypeManager({ initialTypes }) {
                 </div>
                 <p className="text-muted-foreground text-xs mt-0.5">{t.allowed_file_types} · max {t.max_file_size_mb}MB{t.description ? ` · ${t.description}` : ""}</p>
               </div>
-              <button onClick={() => setEditing(t)} className="text-muted-foreground hover:text-foreground cursor-pointer transition shrink-0"><Pencil className="h-4 w-4" /></button>
-              <button onClick={() => remove(t)} disabled={busyId === t.id} className="text-muted-foreground hover:text-red-400 cursor-pointer transition shrink-0"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => setEditing(t)} aria-label={`Edit ${t.name}`} className="text-muted-foreground hover:text-foreground cursor-pointer transition shrink-0"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => remove(t)} disabled={busyId === t.id} aria-label={`Delete ${t.name}`} className="text-muted-foreground hover:text-red-400 cursor-pointer transition shrink-0"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, CornerDownLeft, Plus } from "lucide-react";
 import { ICON_MAP, PLATFORM_NAV_ITEMS, ALL_NAV_ITEMS } from "@/lib/constants/navItems";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const PLATFORM_CREATE_ITEMS = [
   { href: "/platform/companies", label: "New Company", icon: "Building2", group: "Create" },
@@ -76,6 +77,7 @@ export default function CommandPalette({ scope }) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
+          <ModalFocusTrap>
           <motion.div
             initial={{ opacity: 0, scale: 0.97, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: -8 }}
             transition={{ duration: 0.15 }}
@@ -124,6 +126,7 @@ export default function CommandPalette({ scope }) {
               <span className="flex items-center gap-1"><kbd className="px-1 py-0.5 rounded border border-border">Esc</kbd> Close</span>
             </div>
           </motion.div>
+          </ModalFocusTrap>
         </div>
       )}
     </AnimatePresence>

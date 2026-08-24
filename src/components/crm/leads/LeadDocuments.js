@@ -116,16 +116,16 @@ function DocumentRow({ leadId, doc, canManage, timezone, onChanged }) {
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        <button onClick={download} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-accent text-foreground cursor-pointer transition disabled:opacity-50">
+        <button onClick={download} disabled={busy} aria-label={`Download ${doc.file_name}`} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-accent text-foreground cursor-pointer transition disabled:opacity-50">
           <Download className="h-3.5 w-3.5" />
         </button>
         {canManage && (
           <>
             <input ref={replaceInputRef} type="file" className="hidden" onChange={(e) => handleReplace(e.target.files?.[0])} />
-            <button onClick={() => replaceInputRef.current?.click()} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-accent text-foreground cursor-pointer transition disabled:opacity-50">
+            <button onClick={() => replaceInputRef.current?.click()} disabled={busy} aria-label={`Replace ${doc.file_name}`} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-accent text-foreground cursor-pointer transition disabled:opacity-50">
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             </button>
-            <button onClick={remove} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-red-500/10 text-muted-foreground hover:text-red-400 cursor-pointer transition disabled:opacity-50">
+            <button onClick={remove} disabled={busy} aria-label={`Delete ${doc.file_name}`} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-red-500/10 text-muted-foreground hover:text-red-400 cursor-pointer transition disabled:opacity-50">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </>

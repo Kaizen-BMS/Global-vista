@@ -74,9 +74,9 @@ function FieldRow({ field, sectionNames, onEdit, onToggleVisible, onMove, onDele
         {sectionNames.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
 
-      <button onClick={() => onEdit(field)} className="text-muted-foreground hover:text-foreground cursor-pointer transition shrink-0"><Pencil className="h-4 w-4" /></button>
+      <button onClick={() => onEdit(field)} aria-label={`Edit ${field.label}`} className="text-muted-foreground hover:text-foreground cursor-pointer transition shrink-0"><Pencil className="h-4 w-4" /></button>
       {field.isCustom ? (
-        <button onClick={() => onDelete(field)} disabled={busy} className="text-muted-foreground hover:text-red-400 cursor-pointer transition shrink-0"><Trash2 className="h-4 w-4" /></button>
+        <button onClick={() => onDelete(field)} disabled={busy} aria-label={`Delete ${field.label}`} className="text-muted-foreground hover:text-red-400 cursor-pointer transition shrink-0"><Trash2 className="h-4 w-4" /></button>
       ) : (
         <span className="w-4 shrink-0" />
       )}

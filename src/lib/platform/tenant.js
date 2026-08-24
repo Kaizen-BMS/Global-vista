@@ -40,9 +40,9 @@ export async function getSubscriptionState(companyId) {
   // payment_failed) passes through unchanged — pending/past_due/
   // payment_failed are deliberately NOT treated as expired/cancelled here:
   // a company mid-checkout or mid-payment-retry keeps whatever access it
-  // already had until PayPal actually reports the subscription cancelled/
-  // suspended/expired, per the "don't cut access over a transient billing
-  // hiccup" requirement.
+  // already had until the payment gateway actually reports the subscription
+  // cancelled/suspended/expired, per the "don't cut access over a transient
+  // billing hiccup" requirement.
   return sub.status;
 }
 
@@ -57,7 +57,7 @@ export async function getSubscriptionState(companyId) {
  */
 export async function getSubscriptionDetails(companyId) {
   const [[sub]] = await pool.query(
-    `SELECT cs.*, p.name AS plan_name, p.price, p.currency, p.trial_days, p.max_storage_mb, p.max_users, p.max_leads
+    `SELECT cs.*, p.name AS plan_name, p.price, p.currency, p.billing_cycle, p.trial_days, p.max_storage_mb, p.max_users, p.max_leads
      FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
      WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
     [companyId]
@@ -87,12 +87,14 @@ export async function getSubscriptionDetails(companyId) {
     planName: sub.plan_name,
     price: sub.price,
     currency: sub.currency,
+    billingCycle: sub.billing_cycle,
     trialDays: sub.trial_days,
     maxStorageMb: sub.max_storage_mb,
     maxUsers: sub.max_users,
     maxLeads: sub.max_leads,
     startsAt: sub.starts_at,
     endsAt: sub.ends_at,
+    nextBillingAt: sub.next_billing_at,
     daysRemaining,
     isTrial: sub.status === "trial",
   };

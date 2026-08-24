@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText } from "lucide-react";
+import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText, ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatRelative, formatDateTime } from "@/lib/helpers/dateFormat";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const POLL_MS = 12000;
 
@@ -53,13 +54,20 @@ function NewConversationModal({ users, isSuperAdmin, onClose, onCreated }) {
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-background border border-border rounded-xl shadow-2xl p-5">
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="New Conversation" className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-background border border-border rounded-xl shadow-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">New Conversation</p>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border mb-4 w-fit">
@@ -92,6 +100,7 @@ function NewConversationModal({ users, isSuperAdmin, onClose, onCreated }) {
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} {mode === "broadcast" ? "Open Announcements" : "Start Conversation"}
         </button>
       </div>
+      </ModalFocusTrap>
     </div>
   );
 }
@@ -144,8 +153,15 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [messages]);
 
+  // Mobile only — desktop always shows both panes side by side via the
+  // md:flex overrides below. Picking a conversation switches the single
+  // visible pane from the list to the chat; "Back" reverses it. Nothing
+  // about this touches which conversation is active or how messages load.
+  const [mobilePane, setMobilePane] = useState("list");
+
   function selectConversation(id) {
     setActiveId(id);
+    setMobilePane("chat");
     router.replace(`/workspace/messages/${id}`);
   }
 
@@ -185,7 +201,7 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
 
   return (
     <div className="h-[calc(100vh-8rem)] flex bg-card border border-border rounded-xl overflow-hidden">
-      <div className="w-80 shrink-0 border-r border-border flex flex-col">
+      <div className={`w-full md:w-80 shrink-0 border-r border-border flex-col ${mobilePane === "chat" ? "hidden md:flex" : "flex"}`}>
         <div className="p-3 border-b border-border space-y-2">
           <button onClick={() => setShowNew(true)} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
             <Plus className="h-4 w-4" /> New Conversation
@@ -225,12 +241,13 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={`flex-1 flex-col min-w-0 ${mobilePane === "chat" ? "flex" : "hidden md:flex"}`}>
         {!active ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Select a conversation, or start a new one.</div>
         ) : (
           <>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <button onClick={() => setMobilePane("list")} className="md:hidden -ml-1 text-muted-foreground hover:text-foreground cursor-pointer p-1"><ArrowLeft className="h-4 w-4" /></button>
               {active.type === "broadcast" && <Megaphone className="h-4 w-4 text-amber-400" />}
               <p className="text-foreground font-medium">{conversationLabel(active)}</p>
               {active.type === "broadcast" && <span className="text-muted-foreground text-xs">· {active.participant_count} recipients</span>}
@@ -267,9 +284,9 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
             {canPost ? (
               <form onSubmit={send} className="p-3 border-t border-border flex items-center gap-2">
                 <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2"><Paperclip className="h-4 w-4" /></button>
-                <input value={text} onChange={(e) => setText(e.target.value)} placeholder={file ? file.name : "Type a message…"} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-                <button type="submit" disabled={sending} className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg btn-brand text-white disabled:opacity-60 cursor-pointer">
+                <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Attach file" className="shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2"><Paperclip className="h-4 w-4" /></button>
+                <input value={text} onChange={(e) => setText(e.target.value)} aria-label="Message" placeholder={file ? file.name : "Type a message…"} className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+                <button type="submit" disabled={sending} aria-label="Send message" className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg btn-brand text-white disabled:opacity-60 cursor-pointer">
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
               </form>

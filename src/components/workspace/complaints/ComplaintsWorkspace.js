@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Plus, X, Loader2, MessageSquareWarning, Clock, AlertTriangle, CheckCircle2, Timer, Search } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
+import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 import EmptyState from "@/components/shared/EmptyState";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
@@ -78,7 +79,7 @@ function LeadPicker({ value, onChange }) {
       {value ? (
         <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted border border-border text-sm">
           <span className="text-foreground truncate">{value.name}</span>
-          <button type="button" onClick={() => onChange(null)} className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><X className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={() => onChange(null)} aria-label="Clear related lead" className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><X className="h-3.5 w-3.5" /></button>
         </div>
       ) : (
         <div className="relative">
@@ -149,13 +150,20 @@ function NewComplaintModal({ categories, onClose, onCreated }) {
     finally { setSaving(false); }
   }
 
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
+      <ModalFocusTrap>
+      <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label="Raise a Complaint" className="relative w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl p-5 animate-in zoom-in-95 fade-in duration-150 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <p className="text-foreground font-medium">Raise a Complaint</p>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         <label className="block text-xs text-muted-foreground mb-1.5">Subject</label>
@@ -197,6 +205,7 @@ function NewComplaintModal({ categories, onClose, onCreated }) {
           </button>
         </div>
       </form>
+      </ModalFocusTrap>
     </div>
   );
 }

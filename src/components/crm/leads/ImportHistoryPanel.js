@@ -29,31 +29,33 @@ export default function ImportHistoryPanel() {
           ) : history.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-8">No imports yet.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-muted-foreground border-b border-border"><th className="px-4 py-3">Date</th><th className="px-4 py-3">File</th><th className="px-4 py-3">By</th><th className="px-4 py-3">Imported</th><th className="px-4 py-3">Updated</th><th className="px-4 py-3">Skipped</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Duration</th><th className="px-4 py-3"></th></tr></thead>
-              <tbody>
-                {history.map((h) => (
-                  <tr key={h.id} className="border-b border-border/60">
-                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(h.created_at, timezone)}</td>
-                    <td className="px-4 py-3 text-foreground truncate max-w-[160px]">{h.file_name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{h.imported_by_name || "—"}</td>
-                    <td className="px-4 py-3 text-emerald-400">{h.imported_count}</td>
-                    <td className="px-4 py-3 text-indigo-400">{h.updated_count}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{h.skipped_count}</td>
-                    <td className="px-4 py-3 text-red-400">{h.failed_count}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{h.duration_ms ? `${(h.duration_ms / 1000).toFixed(1)}s` : "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {h.failed_count > 0 && (
-                          <a href={`/api/leads/import/history/${h.id}/failed-rows?format=xlsx`} title="Download failed rows" className="text-muted-foreground hover:text-foreground cursor-pointer"><Download className="h-3.5 w-3.5" /></a>
-                        )}
-                        <a href={`/api/leads/import/history/${h.id}/log`} title="Download log" className="text-muted-foreground hover:text-foreground cursor-pointer"><FileText className="h-3.5 w-3.5" /></a>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[720px]">
+                <thead><tr className="text-left text-muted-foreground border-b border-border"><th className="px-4 py-3">Date</th><th className="px-4 py-3">File</th><th className="px-4 py-3">By</th><th className="px-4 py-3">Imported</th><th className="px-4 py-3">Updated</th><th className="px-4 py-3">Skipped</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Duration</th><th className="px-4 py-3"></th></tr></thead>
+                <tbody>
+                  {history.map((h) => (
+                    <tr key={h.id} className="border-b border-border/60">
+                      <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(h.created_at, timezone)}</td>
+                      <td className="px-4 py-3 text-foreground truncate max-w-[160px]">{h.file_name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{h.imported_by_name || "—"}</td>
+                      <td className="px-4 py-3 text-emerald-400">{h.imported_count}</td>
+                      <td className="px-4 py-3 text-indigo-400">{h.updated_count}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{h.skipped_count}</td>
+                      <td className="px-4 py-3 text-red-400">{h.failed_count}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{h.duration_ms ? `${(h.duration_ms / 1000).toFixed(1)}s` : "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {h.failed_count > 0 && (
+                            <a href={`/api/leads/import/history/${h.id}/failed-rows?format=xlsx`} title="Download failed rows" aria-label="Download failed rows" className="text-muted-foreground hover:text-foreground cursor-pointer"><Download className="h-3.5 w-3.5" /></a>
+                          )}
+                          <a href={`/api/leads/import/history/${h.id}/log`} title="Download log" aria-label="Download import log" className="text-muted-foreground hover:text-foreground cursor-pointer"><FileText className="h-3.5 w-3.5" /></a>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
