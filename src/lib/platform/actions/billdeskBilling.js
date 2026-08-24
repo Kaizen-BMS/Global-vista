@@ -6,7 +6,8 @@ import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
 import { createBillDeskCheckout, verifyBillDeskTransaction } from "@/lib/payments/billdeskClient";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
-import { hasSubscriptionBillingSchema } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCouponsSchema } from "@/lib/db/schemaFlags";
+import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
@@ -39,44 +40,61 @@ import {
  * record, not proof of payment; only confirmCompanySubscriptionFromBillDesk
  * (fed by verified BillDesk data) ever flips it to 'active'.
  */
-export async function createBillDeskCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, returnUrl, actorId = null }) {
+export async function createBillDeskCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, returnUrl, couponCode = null, actorId = null }) {
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no payment needed. Use the plan-change flow instead."); e.status = 400; throw e; }
 
+  // A coupon is optional — an invalid/expired/exhausted code fails checkout
+  // outright (so the buyer knows their code didn't work) rather than
+  // silently charging full price.
+  let couponId = null;
+  let discountAmount = 0;
+  let chargeAmount = Number(plan.price);
+  const couponsAvailable = await hasCouponsSchema();
+  if (couponCode && couponsAvailable) {
+    const validated = await validateCouponForPlan(couponCode, plan);
+    couponId = validated.coupon.id;
+    discountAmount = validated.discountAmount;
+    chargeAmount = validated.finalAmount;
+  } else if (couponCode && !couponsAvailable) {
+    const e = new Error("Coupons aren't available yet."); e.status = 404; throw e;
+  }
+
   const existing = await getSubscriptionForCompany(companyId);
 
-  // The server calculates the payable amount from the plan row — a client
-  // can never influence what gets charged. orderReference ties the eventual
-  // BillDesk transaction back to this specific checkout attempt.
+  // The server calculates the payable amount from the plan row (minus any
+  // validated coupon discount) — a client can never influence what gets
+  // charged. orderReference ties the eventual BillDesk transaction back to
+  // this specific checkout attempt.
   const orderReference = `sub-${companyId}-${Date.now()}`;
   const { checkoutUrl, gatewayOrderId } = await createBillDeskCheckout({
-    companyId, planId, amount: plan.price, currency: plan.currency,
+    companyId, planId, amount: chargeAmount, currency: plan.currency,
     customerEmail: subscriberEmail, customerName: subscriberName, returnUrl, orderReference,
   });
 
   if (existing) {
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?, gateway='billdesk', gateway_subscription_id=?, status='pending' WHERE id=?`,
-      [planId, gatewayOrderId, existing.id]
+      `UPDATE company_subscriptions SET plan_id=?, gateway='billdesk', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
+      couponsAvailable ? [planId, gatewayOrderId, couponId, couponId ? discountAmount : null, existing.id] : [planId, gatewayOrderId, existing.id]
     );
   } else {
     await pool.query(
-      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at) VALUES (?,?,?,?,?,CURDATE())`,
-      [companyId, planId, "billdesk", gatewayOrderId, "pending"]
+      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""})`,
+      couponsAvailable ? [companyId, planId, "billdesk", gatewayOrderId, "pending", couponId, couponId ? discountAmount : null] : [companyId, planId, "billdesk", gatewayOrderId, "pending"]
     );
   }
 
-  await logActivity({ userId: actorId, module: "platform", action: "billdesk_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started BillDesk checkout for plan "${plan.name}"` }).catch(() => {});
+  await logActivity({ userId: actorId, module: "platform", action: "billdesk_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started BillDesk checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}` }).catch(() => {});
   return { checkoutUrl, gatewayOrderId };
 }
 
 /** Existing-company entry point — never accepts a companyId from the
  * client, always session.company_id, and requires Company Super Admin. */
-export async function startCompanyBillDeskCheckout(session, planId, { returnUrl }) {
+export async function startCompanyBillDeskCheckout(session, planId, { returnUrl, couponCode = null }) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
   return createBillDeskCheckoutForCompany({
-    companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, returnUrl, actorId: session.id,
+    companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, returnUrl, couponCode, actorId: session.id,
   });
 }
 
@@ -172,6 +190,10 @@ async function handlePaymentCompleted(gatewayOrderId, amount, currency) {
     amount: amount || "0.00", currency: currency || "INR",
     gatewayTransactionId: gatewayOrderId, gatewaySubscriptionId: gatewayOrderId, status: "completed",
   });
+
+  if (row.coupon_id) {
+    await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});
+  }
 
   // A completed payment is also strong evidence the subscription is active
   // — sync it in case a separate "activated" event was missed/delayed.

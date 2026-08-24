@@ -5,29 +5,18 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, ArrowUpRight, Sheet } from "lucide-react";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import PlatformHomeNavbar from "@/components/platformHome/PlatformHomeNavbar";
-
-/**
- * Editorial/cinematic palette — deliberately separate from the workspace
- * app's own semantic-token system (that one is tuned for a dense CRM UI;
- * this page wants a restrained, warm-neutral editorial look). Toggled by
- * the exact same `.dark` class every other theme-aware surface in this app
- * uses (see ThemeProvider) — no second theme system, just different values
- * expressed as Tailwind `dark:` variants throughout.
- */
-const PAGE_BG = "bg-[#FAFAF7] dark:bg-[#07080B]";
-const TEXT_PRIMARY = "text-[#0B0E14] dark:text-[#F4F3EF]";
-const TEXT_SECONDARY = "text-[#5B6270] dark:text-[#8B90A0]";
-const TEXT_FAINT = "text-[#9297A3] dark:text-[#5B6270]";
-const BORDER = "border-[#E4E3DE] dark:border-white/10";
-const BORDER_SOFT = "border-[#ECEBE6] dark:border-white/[0.06]";
-const ACCENT = "text-indigo-600 dark:text-indigo-400";
+import { PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_FAINT, BORDER, BORDER_SOFT, ACCENT } from "@/components/platformHome/editorialTheme";
 
 /** Full-bleed hero background video (public/videos/Background vidio.mp4).
  * Autoplays muted/looped/inline (the only way browsers allow autoplay at
- * all) with the real hero screenshot as the `poster` frame so there's never
- * a blank flash while it loads. Users who've asked the OS for reduced
- * motion get that same poster as a static image instead — no video element
- * is even mounted for them, never just a paused one.
+ * all). Deliberately no `poster` attribute — a poster image is what the
+ * browser shows until the video has buffered its first frame, so on a
+ * slower connection it briefly reads as "the wrong image" before swapping
+ * to the video. The wrapper's own solid `bg-[#07080B]` fills that gap
+ * instead, so the load window is just a plain dark background. Users
+ * who've asked the OS for reduced motion get part1.png as a static image
+ * instead — no video element is even mounted for them, never just a paused
+ * one.
  *
  * Deliberately NOT using a negative z-index to sit "behind" its siblings —
  * framer-motion's transform/opacity on the sibling headline creates its own
@@ -48,7 +37,6 @@ function HeroVideoBackground() {
       ) : (
         <video
           autoPlay muted loop playsInline preload="auto"
-          poster="/images/part1.png"
           className="absolute inset-0 w-full h-full object-cover"
           aria-hidden="true"
         >
@@ -98,8 +86,8 @@ function RevealSection({ id, children, className = "" }) {
 
 function EditorialButton({ href, children, primary, external }) {
   const cls = primary
-    ? `inline-flex items-center gap-2 px-6 py-3 text-sm font-medium border ${TEXT_PRIMARY} bg-transparent border-current hover:bg-[#0B0E14] hover:text-white dark:hover:bg-[#F4F3EF] dark:hover:text-[#07080B] transition-colors cursor-pointer`
-    : `inline-flex items-center gap-2 px-6 py-3 text-sm font-medium border ${BORDER} ${TEXT_SECONDARY} hover:${TEXT_PRIMARY} hover:border-[#0B0E14] dark:hover:border-white/30 transition-colors cursor-pointer`;
+    ? `inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-medium border ${TEXT_PRIMARY} bg-transparent border-current hover:bg-[#0B0E14] hover:text-white dark:hover:bg-[#F4F3EF] dark:hover:text-[#07080B] transition-colors cursor-pointer`
+    : `inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-medium border ${BORDER} ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] hover:border-[#0B0E14] dark:hover:border-white/30 transition-colors cursor-pointer`;
   return external ? (
     <a href={href} className={cls}>{children}</a>
   ) : (
@@ -107,10 +95,37 @@ function EditorialButton({ href, children, primary, external }) {
   );
 }
 
-export default function PlatformHome({ plans }) {
+function formatPostDate(d) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** Rendered as the fixed navbar's `topBar` — same solid dark strip
+ * regardless of scroll state or theme, so it stays legible whether it's
+ * sitting over the video hero or the page background, and fully occludes
+ * whatever's behind it (no hero video/poster bleed-through). Faster loop
+ * than the site's own marquee band, via the dedicated .animate-marquee-fast
+ * class — deliberately not touching the shared .animate-marquee speed. */
+function OffersMarquee({ offers }) {
+  return (
+    <div className="border-b border-white/10 bg-[#0B0E14] overflow-hidden">
+      <div className="flex w-max animate-marquee-fast py-1.5">
+        {[...offers, ...offers].map((offer, i) => (
+          <div key={`${offer.id}-${i}`} className="mx-6 flex shrink-0 items-center gap-3 whitespace-nowrap">
+            <span className="text-[11px] uppercase tracking-[0.15em] text-white/80">{offer.text}</span>
+            <span className="h-1 w-1 rounded-full bg-indigo-400 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function PlatformHome({ plans, posts, offers }) {
+  const hasOffers = offers.length > 0;
   return (
     <div className={`${PAGE_BG} ${TEXT_PRIMARY} min-h-screen overflow-x-hidden antialiased`}>
-      <PlatformHomeNavbar />
+      <PlatformHomeNavbar topBar={hasOffers ? <OffersMarquee offers={offers} /> : null} />
 
       {/* ============================================================
           HERO — editorial, asymmetric, video background. Text is fixed
@@ -118,7 +133,7 @@ export default function PlatformHome({ plans }) {
           needs one consistent, always-legible scrim rather than trying to
           contrast against both light and dark palettes.
           ============================================================ */}
-      <header className="relative min-h-[92vh] flex items-center pt-32 pb-20 px-6 sm:px-10 lg:px-16 text-white overflow-hidden">
+      <header className={`relative min-h-[92vh] flex items-center ${hasOffers ? "pt-40 sm:pt-44" : "pt-32"} pb-20 px-6 sm:px-10 lg:px-16 text-white overflow-hidden`}>
         <HeroVideoBackground />
         <div className="relative z-10 max-w-[1400px] mx-auto w-full">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6">
@@ -144,10 +159,10 @@ export default function PlatformHome({ plans }) {
               </motion.p>
               <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
                 className="mt-8 flex flex-wrap items-center gap-3">
-                <Link href="/register" className="group inline-flex items-center gap-2 px-6 py-3.5 text-sm font-medium bg-white text-[#07080B] hover:bg-indigo-400 hover:text-white transition-colors cursor-pointer shadow-[0_8px_30px_rgba(0,0,0,0.25)]">
+                <Link href="/register" className="group inline-flex items-center gap-2 px-6 py-3.5 rounded-md text-sm font-medium bg-white text-[#07080B] hover:bg-indigo-400 hover:text-white transition-colors cursor-pointer shadow-[0_8px_30px_rgba(0,0,0,0.25)]">
                   Start Free <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </Link>
-                <a href="#platform" className="inline-flex items-center gap-2 px-6 py-3.5 text-sm font-medium border border-white/30 text-white backdrop-blur-sm bg-white/5 hover:bg-white/10 hover:border-white/50 transition-colors cursor-pointer">
+                <a href="#platform" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-md text-sm font-medium border border-white/30 text-white backdrop-blur-sm bg-white/5 hover:bg-white/10 hover:border-white/50 transition-colors cursor-pointer">
                   Explore Platform
                 </a>
               </motion.div>
@@ -251,20 +266,20 @@ export default function PlatformHome({ plans }) {
               key={row.n}
               initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }}
               transition={{ delay: (i % 4) * 0.05, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className={`grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-8 py-7 border-b ${BORDER}`}
+              className={`group grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-10 py-10 sm:py-12 px-4 sm:px-6 -mx-4 sm:-mx-6 border-b ${BORDER} transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]`}
             >
-              <div className="sm:col-span-3">
-                <div className="flex items-baseline gap-2.5">
-                  <span className={`text-xs font-semibold tabular-nums ${ACCENT}`}>{row.n}</span>
-                  <span className={`text-[11px] font-medium uppercase tracking-[0.15em] ${TEXT_FAINT}`}>{row.label}</span>
+              <div className="sm:col-span-4 flex items-start gap-4">
+                <span className={`text-3xl sm:text-4xl font-semibold tabular-nums leading-none shrink-0 ${ACCENT} opacity-30 group-hover:opacity-100 transition-opacity`}>{row.n}</span>
+                <div>
+                  <p className={`text-[11px] font-medium uppercase tracking-[0.15em] ${TEXT_FAINT}`}>{row.label}</p>
+                  <p className="mt-1.5 text-lg sm:text-xl font-medium tracking-tight leading-snug">{row.title}</p>
                 </div>
-                <p className="mt-2 text-base font-medium tracking-tight leading-snug">{row.title}</p>
               </div>
-              <div className="sm:col-span-9">
-                <p className={`text-sm leading-relaxed max-w-2xl ${TEXT_SECONDARY}`}>{row.desc}</p>
-                <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1.5">
+              <div className="sm:col-span-8">
+                <p className={`text-sm sm:text-[15px] leading-relaxed max-w-2xl ${TEXT_SECONDARY}`}>{row.desc}</p>
+                <div className="mt-4 flex flex-wrap gap-x-2 gap-y-2">
                   {row.tags.map((t) => (
-                    <span key={t} className={`text-[11px] px-2 py-1 border ${BORDER_SOFT} ${TEXT_SECONDARY}`}>{t}</span>
+                    <span key={t} className={`text-xs px-3 py-1.5 rounded-full border ${BORDER_SOFT} ${TEXT_SECONDARY} bg-black/[0.015] dark:bg-white/[0.02]`}>{t}</span>
                   ))}
                 </div>
               </div>
@@ -329,6 +344,39 @@ export default function PlatformHome({ plans }) {
       </RevealSection>
 
       {/* ============================================================
+          BLOG — Platform-Operator-managed, shown only when at least one
+          published post exists.
+          ============================================================ */}
+      {posts.length > 0 && (
+        <RevealSection className={`border-t ${BORDER_SOFT} py-14! sm:py-16!`}>
+          <div className="flex items-end justify-between mb-8 gap-4">
+            <MicroLabel>From the blog</MicroLabel>
+            <Link href="/blog" className={`inline-flex items-center gap-1.5 text-xs ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer shrink-0`}>
+              View all posts <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
+            {posts.map((p, i) => (
+              <motion.div key={p.id} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.5 }}>
+                <Link href={`/blog/${p.slug}`} className="group block cursor-pointer">
+                  {p.cover_image_url ? (
+                    <div className={`relative aspect-[3/2] overflow-hidden border ${BORDER}`}>
+                      <Image src={p.cover_image_url} alt={p.title} fill sizes="(max-width: 640px) 100vw, 33vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                    </div>
+                  ) : (
+                    <div className={`aspect-[3/2] border ${BORDER}`} />
+                  )}
+                  <p className={`mt-3 text-xs ${TEXT_FAINT}`}>{formatPostDate(p.published_at)}</p>
+                  <p className="mt-1.5 text-base font-medium tracking-tight leading-snug group-hover:underline underline-offset-4">{p.title}</p>
+                  {p.excerpt && <p className={`mt-1.5 text-sm leading-relaxed ${TEXT_SECONDARY}`}>{p.excerpt}</p>}
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </RevealSection>
+      )}
+
+      {/* ============================================================
           FINAL CTA — dramatic, minimal.
           ============================================================ */}
       <RevealSection className={`border-t ${BORDER_SOFT} text-center`}>
@@ -358,15 +406,15 @@ export default function PlatformHome({ plans }) {
                   { href: "#platform", label: "Platform" },
                   { href: "#pricing", label: "Pricing" },
                 ].map((l) => (
-                  <a key={l.href} href={l.href} className={`text-sm ${TEXT_SECONDARY} hover:${TEXT_PRIMARY} transition-colors cursor-pointer w-fit`}>{l.label}</a>
+                  <a key={l.href} href={l.href} className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>{l.label}</a>
                 ))}
               </div>
             </div>
             <div className="lg:col-span-3">
               <MicroLabel className="mb-4">Account</MicroLabel>
               <div className="flex flex-col gap-2.5">
-                <Link href="/register" className={`text-sm ${TEXT_SECONDARY} hover:${TEXT_PRIMARY} transition-colors cursor-pointer w-fit`}>Start Free</Link>
-                <Link href="/login" className={`text-sm ${TEXT_SECONDARY} hover:${TEXT_PRIMARY} transition-colors cursor-pointer w-fit`}>Sign In</Link>
+                <Link href="/register" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>Start Free</Link>
+                <Link href="/login" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>Sign In</Link>
               </div>
             </div>
           </div>

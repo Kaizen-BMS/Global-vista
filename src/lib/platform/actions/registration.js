@@ -2,8 +2,9 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { provisionCompany } from "@/lib/platform/actions/provisioning";
 import { createBillDeskCheckoutForCompany } from "@/lib/platform/actions/billdeskBilling";
+import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
-import { hasPlanDescriptionColumn } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasCouponsSchema } from "@/lib/db/schemaFlags";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
  * only, no internal-only fields. `description` only selected once the
@@ -55,6 +56,14 @@ export async function registerCompany(input) {
     throw e;
   }
 
+  // Fail fast on a bad coupon code BEFORE the company/admin account is
+  // created — createBillDeskCheckoutForCompany re-validates it again later,
+  // but catching a typo here avoids leaving a "pending" company behind for
+  // something the user can just fix and resubmit.
+  if (requiresPayment && input.couponCode && (await hasCouponsSchema())) {
+    await validateCouponForPlan(input.couponCode, plan);
+  }
+
   // Paid plan: the company + admin account are created NOW (so the admin
   // can log in immediately) but with subscriptionStatus="pending" — this
   // deliberately does NOT grant any modules (see provisionCompany's guard
@@ -87,6 +96,7 @@ export async function registerCompany(input) {
       subscriberEmail: adminEmail.trim().toLowerCase(),
       subscriberName: adminName.trim(),
       returnUrl: `${appUrl}/register/confirm`,
+      couponCode: input.couponCode || null,
     });
     return { companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "billdesk", checkoutUrl };
   }

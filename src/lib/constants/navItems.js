@@ -1,11 +1,14 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag };
 
 export const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
   { href: "/platform/companies", label: "Companies", icon: "Building2" },
   { href: "/platform/subscriptions", label: "Subscriptions", icon: "CreditCard" },
+  { href: "/platform/coupons", label: "Coupons", icon: "Tag" },
   { href: "/platform/modules", label: "Modules", icon: "Package" },
+  { href: "/platform/blog", label: "Blog", icon: "Newspaper" },
+  { href: "/platform/offers", label: "Offers", icon: "Megaphone" },
   { href: "/platform/activity-logs", label: "Activity Logs", icon: "ScrollText" },
   { href: "/platform/system-health", label: "System Health", icon: "Activity" },
   { href: "/platform/settings", label: "Settings", icon: "Settings" },

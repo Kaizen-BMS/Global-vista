@@ -17,8 +17,8 @@ import { FocusScope } from "radix-ui/internal";
  */
 export default function ModalFocusTrap({ children }) {
   return (
-    <FocusScope asChild trapped loop>
+    <FocusScope.Root asChild trapped loop>
       {children}
-    </FocusScope>
+    </FocusScope.Root>
   );
 }

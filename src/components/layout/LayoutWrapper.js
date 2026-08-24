@@ -19,7 +19,8 @@ export default function LayoutWrapper({ children }) {
   // /register (AuthFlow-style full-viewport shell) owns its entire page
   // too. /platform-home (the KaizenBMS Platform SaaS landing page,
   // deliberately distinct from Global Vista Educators' identity) is already
-  // covered by the "/platform" prefix check above.
+  // covered by the "/platform" prefix check above. /blog is the KaizenBMS
+  // Platform's own public blog (uses PlatformHomeNavbar) — same reasoning.
   const isApplication =
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/platform") ||
@@ -28,7 +29,8 @@ export default function LayoutWrapper({ children }) {
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/crm") ||
-    pathname.startsWith("/forms");
+    pathname.startsWith("/forms") ||
+    pathname.startsWith("/blog");
 
   if (isApplication) {
     return <>{children}</>;

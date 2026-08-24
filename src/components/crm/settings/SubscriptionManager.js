@@ -22,6 +22,7 @@ const STATUS_META = {
 
 function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConfigured, onClose }) {
   const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout
+  const [couponCode, setCouponCode] = useState("");
 
   // "Current plan" only locks the Subscribe button when it's actually
   // active — a plan stuck in pending/payment_failed/past_due means checkout
@@ -46,7 +47,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
     }
     setCheckingOut(plan.id);
     try {
-      const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id }) });
+      const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
       window.location.href = data.checkoutUrl;
@@ -72,6 +73,11 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, billDeskConf
             Payment isn't configured on this platform yet — paid plans can't be checked out until the platform team connects BillDesk.
           </div>
         )}
+
+        <div className="px-6 pt-4">
+          <label className="block text-muted-foreground text-xs mb-1.5">Coupon Code (optional)</label>
+          <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full sm:w-64 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+        </div>
 
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {plans.map((plan) => {

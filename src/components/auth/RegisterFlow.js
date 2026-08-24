@@ -46,7 +46,7 @@ export default function RegisterFlow() {
   const [form, setForm] = useState({
     companyName: "", companyEmail: "", companyPhone: "", companyWebsite: "", companyCountry: "", companyState: "", companyCity: "", companyAddress: "",
     adminName: "", adminEmail: "", adminPhone: "", adminPassword: "", confirmPassword: "",
-    planId: "",
+    planId: "", couponCode: "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -206,7 +206,12 @@ export default function RegisterFlow() {
               )}
 
               {planRequiresPayment && (
-                <p className="flex items-center gap-1.5 text-white/40 text-xs pt-1"><ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk</p>
+                <>
+                  <Field label="Coupon Code (optional)">
+                    <input value={form.couponCode} onChange={(e) => set("couponCode", e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className={inputClass} />
+                  </Field>
+                  <p className="flex items-center gap-1.5 text-white/40 text-xs pt-1"><ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk</p>
+                </>
               )}
             </>
           )}
@@ -221,6 +226,9 @@ export default function RegisterFlow() {
                 {selectedPlan?.trial_days ? (
                   <div className="flex justify-between"><span className="text-white/40">Trial</span><span className="text-white">{selectedPlan.trial_days} days, starting today</span></div>
                 ) : null}
+                {planRequiresPayment && form.couponCode.trim() && (
+                  <div className="flex justify-between"><span className="text-white/40">Coupon</span><span className="text-white">{form.couponCode.trim()}</span></div>
+                )}
               </div>
               {planRequiresPayment ? (
                 <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">

@@ -8,7 +8,7 @@ import { withCsrf } from "@/lib/helpers/withCsrf";
 export const POST = withCsrf(withErrorHandling(async (request) => {
   const session = await getSession();
   if (!isSuperAdmin(session)) return forbidden();
-  const { planId } = await request.json();
+  const { planId, couponCode } = await request.json();
   if (!planId) return badRequest("planId is required.");
 
   // Usage-limit guard runs even on the checkout path — no point sending a
@@ -19,6 +19,7 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   const result = await startCompanyBillDeskCheckout(session, planId, {
     returnUrl: `${appUrl}/workspace/settings/subscription/confirm`,
+    couponCode: couponCode || null,
   });
   return ok(result);
 }));

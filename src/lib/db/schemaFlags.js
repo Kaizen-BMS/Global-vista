@@ -57,6 +57,10 @@ export async function hasLeadMeetingsSchema() { return tableExists("lead_meeting
 export async function hasComplaintsSchema() { return tableExists("complaints"); }
 export async function hasIdeasSchema() { return tableExists("ideas"); }
 
+export async function hasBlogSchema() { return tableExists("blog_posts"); }
+export async function hasOffersSchema() { return tableExists("platform_offers"); }
+export async function hasCouponsSchema() { return tableExists("coupons"); }
+
 export async function hasLeadFieldSectionsSchema() { return tableExists("lead_field_sections"); }
 export async function hasLeadFieldLayoutSchema() { return tableExists("lead_field_layout"); }
 

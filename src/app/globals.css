@@ -181,6 +181,26 @@
   will-change: transform;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
+}
+
+/* Dedicated faster variant for the KaizenBMS Platform offers strip — kept
+   separate from .animate-marquee so the existing Global Vista Educators
+   marquee band's speed is untouched. */
+.animate-marquee-fast {
+  animation: marquee 18s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-fast {
+    animation: none;
+  }
+}
+
 /*
  * Workspace/Platform tenant-branding hooks. --brand-primary/--brand-secondary
  * are set inline on the workspace shell root (see workspace/layout.js) from
