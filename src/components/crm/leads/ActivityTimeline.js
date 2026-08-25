@@ -7,7 +7,7 @@ import {
   Clock, Plus, Pencil, ArrowRightLeft, Tag, UserPlus, UserCheck, UserMinus, StickyNote,
   CalendarClock, CalendarDays, CheckCircle2, XCircle, ListChecks, RotateCcw, GitMerge, Trash2,
   Users, FileUp, FileX, SlidersHorizontal, Wallet, CircleDollarSign, Undo2, Receipt, FormInput,
-  ChevronDown, Search, Loader2,
+  ChevronDown, ChevronRight, Search, Loader2,
 } from "lucide-react";
 import { TIMELINE_ACTION_META, TIMELINE_FILTERS } from "@/lib/modules/crm/constants/timelineActions";
 import { DISPOSITION_COLORS } from "@/lib/modules/crm/constants/leadStages";
@@ -150,13 +150,59 @@ function MeetingDetail({ item, leadId, canManage, timezone, onChanged }) {
   );
 }
 
-function NoteDetail({ item }) {
+function NoteDetail({ item, leadId, canManageNotes, timezone, onChanged }) {
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(item?.content || "");
+  const [saving, setSaving] = useState(false);
+
   if (!item) return null;
+
+  async function save() {
+    if (!content.trim()) { toast.error("Note content is required."); return; }
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/leads/${leadId}/notes`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteId: item.id, content: content.trim(), visibility: item.visibility, isPinned: !!item.is_pinned }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update note.");
+      toast.success("Note updated.");
+      setEditing(false);
+      onChanged();
+    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+  }
+
   return (
     <div>
       <Row label="Type" value={item.type} />
       <Row label="Visibility" value={item.visibility} />
-      <p className="text-foreground text-sm whitespace-pre-wrap mt-2">{item.content}</p>
+      {editing ? (
+        <div className="mt-2">
+          <textarea
+            value={content} onChange={(e) => setContent(e.target.value)} rows={4} autoFocus
+            className="w-full px-3 py-2 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <div className="flex items-center gap-3 mt-2">
+            <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer disabled:opacity-50">
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />} Save
+            </button>
+            <button onClick={() => { setEditing(false); setContent(item.content); }} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-foreground text-sm whitespace-pre-wrap mt-2">{item.content}</p>
+          {item.updated_at && (
+            <p className="text-muted-foreground text-[11px] mt-2 italic">Edited by {item.editor_name || "someone"} on {formatDateTime(item.updated_at, timezone)}</p>
+          )}
+          {canManageNotes && (
+            <button onClick={() => setEditing(true)} className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer mt-2">
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -193,7 +239,7 @@ function EventCard({ event, index, leadId, timezone, canManageFollowups, canMana
     const item = lookup[meta.detailSource]?.get(String(event.meta[meta.idKey]));
     if (meta.detailSource === "followups") detail = <FollowupDetail item={item} leadId={leadId} canManage={canManageFollowups} timezone={timezone} onChanged={onChanged} />;
     else if (meta.detailSource === "meetings") detail = <MeetingDetail item={item} leadId={leadId} canManage={canManageFollowups} timezone={timezone} onChanged={onChanged} />;
-    else if (meta.detailSource === "notes") detail = <NoteDetail item={item} />;
+    else if (meta.detailSource === "notes") detail = <NoteDetail item={item} leadId={leadId} canManageNotes={canManageNotes} timezone={timezone} onChanged={onChanged} />;
     else if (meta.detailSource === "documents") detail = <DocumentDetail item={item} timezone={timezone} />;
     else if (meta.detailSource === "payments") detail = <PaymentDetail item={item} meta={event.meta} />;
   }
@@ -239,6 +285,15 @@ export default function ActivityTimeline({ leadId, events, followups = [], meeti
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+
+  function toggleGroup(label) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  }
 
   const lookup = useMemo(() => ({
     followups: new Map(followups.map((f) => [String(f.id), f])),
@@ -305,23 +360,36 @@ export default function ActivityTimeline({ leadId, events, followups = [], meeti
         <p className="text-muted-foreground text-sm py-8 text-center">No activity {filter !== "all" ? "of this type " : ""}yet.</p>
       ) : (
         <div className="space-y-6">
-          {groups.map((group) => (
-            <div key={group.label}>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{group.label}</p>
-              <div className="relative pl-6">
-                <div className="absolute left-2 top-0 bottom-0 w-px bg-muted" />
-                <div className="space-y-5">
-                  {group.events.map((event, i) => (
-                    <EventCard
-                      key={event.id} event={event} index={i} leadId={leadId} timezone={timezone}
-                      canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
-                      lookup={lookup} onChanged={onChanged} expanded={expanded} onToggle={onToggle}
-                    />
-                  ))}
-                </div>
+          {groups.map((group) => {
+            const isGroupOpen = !collapsedGroups.has(group.label);
+            return (
+              <div key={group.label}>
+                <button onClick={() => toggleGroup(group.label)} className="flex items-center gap-1.5 mb-3 cursor-pointer group/header">
+                  {isGroupOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground group-hover/header:text-foreground">{group.label}</p>
+                  <span className="text-[10px] text-muted-foreground">({group.events.length})</span>
+                </button>
+                <AnimatePresence initial={false}>
+                  {isGroupOpen && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                      <div className="relative pl-6">
+                        <div className="absolute left-2 top-0 bottom-0 w-px bg-muted" />
+                        <div className="space-y-5 pb-1">
+                          {group.events.map((event, i) => (
+                            <EventCard
+                              key={event.id} event={event} index={i} leadId={leadId} timezone={timezone}
+                              canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
+                              lookup={lookup} onChanged={onChanged} expanded={expanded} onToggle={onToggle}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

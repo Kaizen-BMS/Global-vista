@@ -21,6 +21,7 @@ export const TIMELINE_ACTION_META = {
   bulk_assign: { label: "Lead Assigned", icon: "Users", color: "bg-blue-500" },
 
   note_add: { label: "Note Added", icon: "StickyNote", color: "bg-yellow-500", detailSource: "notes", idKey: "noteId" },
+  note_edit: { label: "Note Edited", icon: "Pencil", color: "bg-yellow-500", detailSource: "notes", idKey: "noteId" },
 
   followup_scheduled: { label: "Follow-up Scheduled", icon: "CalendarClock", color: "bg-purple-500", detailSource: "followups", idKey: "followupId" },
   followup_rescheduled: { label: "Follow-up Rescheduled", icon: "CalendarClock", color: "bg-purple-500", detailSource: "followups", idKey: "followupId" },
@@ -61,7 +62,7 @@ export const TIMELINE_FILTERS = [
   { key: "all", label: "All" },
   { key: "followups", label: "Follow-ups", actions: ["followup_scheduled", "followup_rescheduled", "followup_completed", "followup_cancelled"] },
   { key: "meetings", label: "Meetings", actions: ["meeting_scheduled", "meeting_rescheduled", "meeting_completed", "meeting_cancelled"] },
-  { key: "notes", label: "Notes", actions: ["note_add"] },
+  { key: "notes", label: "Notes", actions: ["note_add", "note_edit"] },
   { key: "documents", label: "Documents", actions: ["document_upload", "document_replace", "document_delete"] },
   { key: "payments", label: "Payments", actions: ["payment_plan_created", "payment_installment_created", "payment_installment_updated", "payment_installment_removed", "payment_recorded", "payment_plan_cancelled", "payment_plan_refunded", "payment_receipt_generated"] },
   { key: "assignments", label: "Assignments", actions: ["assign", "claim", "release", "bulk_assign"] },

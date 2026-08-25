@@ -52,6 +52,7 @@ export async function hasSubscriptionBillingSchema() {
 }
 
 export async function hasLeadNoteTypeColumn() { return columnExists("lead_notes", "type"); }
+export async function hasLeadNoteEditColumns() { return columnExists("lead_notes", "updated_at"); }
 export async function hasLeadMeetingsSchema() { return tableExists("lead_meetings"); }
 
 export async function hasComplaintsSchema() { return tableExists("complaints"); }
