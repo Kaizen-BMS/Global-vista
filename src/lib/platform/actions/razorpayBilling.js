@@ -160,7 +160,7 @@ export async function verifyAndConfirmRazorpaySubscription({ session, razorpaySu
   const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
   if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
 
-  return confirmRazorpaySubscription(razorpaySubscriptionId);
+  return confirmRazorpaySubscription(razorpaySubscriptionId, { paymentId: razorpayPaymentId });
 }
 
 /**
@@ -177,13 +177,26 @@ export async function verifyAndConfirmRazorpaySubscriptionPublic({ razorpaySubsc
   if (!(await hasSubscriptionBillingSchema())) assertBillingSchemaReady();
   const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
   if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
-  return confirmRazorpaySubscription(razorpaySubscriptionId);
+  return confirmRazorpaySubscription(razorpaySubscriptionId, { paymentId: razorpayPaymentId });
 }
 
-/** Gateway-of-truth confirmation, shared by the checkout-callback path
+/**
+ * Gateway-of-truth confirmation, shared by the checkout-callback path
  * (after signature verification) and the webhook handler. Always re-fetches
- * from Razorpay before writing anything — safe to call twice. */
-export async function confirmRazorpaySubscription(razorpaySubscriptionId) {
+ * from Razorpay before writing anything — safe to call twice.
+ *
+ * `paymentId` is only passed by the checkout-callback path, which has a
+ * signature-verified Razorpay payment id in hand at the exact moment a
+ * subscription first goes active. Without this, revenue depended entirely
+ * on the `payment.captured` webhook ever arriving — if the webhook isn't
+ * registered yet (or a delivery is missed), the subscription still
+ * activates correctly but no row is ever written to subscription_payments,
+ * so Collected Revenue silently stays at zero even though real money moved.
+ * Recording it here closes that gap; the later webhook (if it does arrive)
+ * is a safe no-op via recordSubscriptionPayment's idempotent
+ * (gateway, gateway_transaction_id) key — same real payment id either way.
+ */
+export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paymentId = null } = {}) {
   if (!(await hasSubscriptionBillingSchema())) assertBillingSchemaReady();
   const rzpSub = await getRazorpaySubscription(razorpaySubscriptionId);
   const mappedStatus = RAZORPAY_STATUS_MAP[rzpSub.status] || "pending";
@@ -194,9 +207,19 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId) {
   const wasAlreadyActive = row.status === "active";
   const nextBillingAt = rzpSub.charge_at ? new Date(rzpSub.charge_at * 1000).toISOString().slice(0, 10) : null;
 
+  // A recurring subscription has no fixed "ends_at" the way a trial/manual
+  // one does — it renews automatically at next_billing_at. But the
+  // Platform Console's "Expiry" column and the 30/7/3/1-day expiry-warning
+  // cron (runSubscriptionWarningsCheck) both key off ends_at, and neither
+  // knew that: ends_at stayed NULL forever for every gateway-recurring
+  // subscription, so it always showed "No expiry" and the warning email/
+  // notification never fired. Keeping ends_at in sync with next_billing_at
+  // means both now work correctly — "ends_at" reads as "current paid
+  // period ends" (and then rolls forward automatically on the next
+  // successful charge), not "this subscription is one-time and terminal."
   await pool.query(
-    `UPDATE company_subscriptions SET status=?, gateway_customer_id=?, next_billing_at=? WHERE id=?`,
-    [mappedStatus, rzpSub.customer_id || null, nextBillingAt, row.id]
+    `UPDATE company_subscriptions SET status=?, gateway_customer_id=?, next_billing_at=?, ends_at=? WHERE id=?`,
+    [mappedStatus, rzpSub.customer_id || null, nextBillingAt, nextBillingAt, row.id]
   );
 
   if (mappedStatus === "active") {
@@ -207,7 +230,18 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId) {
       conn.release();
     }
     if (!wasAlreadyActive) {
-      const [[plan]] = await pool.query(`SELECT name FROM plans WHERE id=?`, [row.plan_id]);
+      const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [row.plan_id]);
+      if (paymentId && plan?.price) {
+        const chargedAmount = Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0));
+        await recordSubscriptionPayment({
+          companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
+          amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
+          gatewayTransactionId: paymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
+        }).catch(() => {});
+        if (row.coupon_id) {
+          await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});
+        }
+      }
       const [admins] = await pool.query(`SELECT id FROM users WHERE company_id=? AND is_super_admin=1 AND is_deleted=0`, [row.company_id]);
       for (const admin of admins) {
         await createNotification(row.company_id, admin.id, {

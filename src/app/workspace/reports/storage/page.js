@@ -3,6 +3,7 @@ import { can } from "@/lib/helpers/permissions";
 import { getStorageUsage, getLargestFiles, getStorageByEmployee, getStorageByLead, formatBytes } from "@/lib/actions/storage";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import { HardDrive } from "lucide-react";
 
@@ -18,6 +19,9 @@ function Panel({ title, children, empty, emptyLabel }) {
 export default async function StorageReportPage() {
   const session = await getSession();
   if (!(await can(session, "employee_documents.manage"))) return <ForbiddenState />;
+  if (!(await isModuleEnabledForCompany(session.company_id, "reports"))) {
+    return <ForbiddenState message="Reports isn't included in your company's current plan. Contact the platform team to enable it." />;
+  }
 
   const [usage, largestFiles, byEmployee, byLead, systemSettings] = await Promise.all([
     getStorageUsage(session), getLargestFiles(session, 15), getStorageByEmployee(session, 10), getStorageByLead(session, 10),

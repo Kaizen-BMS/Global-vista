@@ -2,12 +2,14 @@ import Link from "next/link";
 import {
   Contact2, CalendarClock, TrendingUp, Sparkles, Users, Building2, Network,
   BadgeCheck, ShieldCheck, KeyRound, FileText, ListTodo, PartyPopper, Bell, LogIn, Lock,
+  CreditCard, Receipt, CalendarCheck,
 } from "lucide-react";
 
 const ICONS = {
   contact: Contact2, calendar: CalendarClock, trending: TrendingUp, sparkles: Sparkles,
   users: Users, building: Building2, network: Network, badge: BadgeCheck, shield: ShieldCheck,
   key: KeyRound, file: FileText, list: ListTodo, party: PartyPopper, bell: Bell, login: LogIn, lock: Lock,
+  card: CreditCard, receipt: Receipt, calendarCheck: CalendarCheck,
 };
 
 const ACCENTS = {
@@ -46,6 +48,20 @@ export function CrmKpiGrid({ crm }) {
     { label: "Conversion Rate", value: `${crm.conversionRate}%`, icon: "trending", accent: "green", href: "/workspace/lead-management" },
   ];
   return <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
+}
+
+/** Platform subscription billing — what THIS company has actually paid the
+ * platform, distinct from the "Payments" section above (which is money
+ * this company collects FROM its own leads/customers). Only rendered when
+ * at least one real payment exists — a brand-new/trial/manual company sees
+ * nothing here rather than a wall of zeros. */
+export function SubscriptionKpiGrid({ planName, totalPaid, currency, lastPaymentAmount, lastPaymentDate, gateway }) {
+  const cards = [
+    { label: "Current Plan", value: planName || "—", icon: "calendarCheck", accent: "indigo", href: "/workspace/settings/subscription" },
+    { label: "Total Paid", value: `${currency} ${Number(totalPaid).toLocaleString()}`, icon: "card", accent: "green", href: "/workspace/settings/subscription" },
+    { label: "Last Payment", value: lastPaymentAmount != null ? `${currency} ${Number(lastPaymentAmount).toLocaleString()}` : "—", icon: "receipt", accent: "blue", hint: lastPaymentDate ? `${lastPaymentDate}${gateway ? ` · ${gateway}` : ""}` : null, href: "/workspace/settings/subscription" },
+  ];
+  return <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
 }
 
 export function OrgKpiGrid({ activeUsers, roles, lockedAccounts, org, anniversaryCount, unreadNotifications, recentLoginCount }) {

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { canAny } from "@/lib/helpers/permissions";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
+import ForbiddenState from "@/components/shared/ForbiddenState";
 import { Contact2, Users, ListTodo, FileText, ScrollText, LayoutDashboard, HardDrive } from "lucide-react";
 
 const REPORTS = [
@@ -19,6 +21,9 @@ const ANALYTICS = [
 
 export default async function ReportsHubPage() {
   const session = await getSession();
+  if (!(await isModuleEnabledForCompany(session.company_id, "reports"))) {
+    return <ForbiddenState message="Reports isn't included in your company's current plan. Contact the platform team to enable it." />;
+  }
   const visible = [];
   for (const r of REPORTS) {
     if (!r.permission || (await canAny(session, [r.permission, "employee_documents.manage", "leads.documents.manage"]))) visible.push(r);

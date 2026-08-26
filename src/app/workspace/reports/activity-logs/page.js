@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
@@ -14,6 +15,9 @@ const COLUMNS = [
 export default async function ActivityLogsReportPage() {
   const session = await getSession();
   if (!(await can(session, "activity_logs.view"))) return <ForbiddenState />;
+  if (!(await isModuleEnabledForCompany(session.company_id, "reports"))) {
+    return <ForbiddenState message="Reports isn't included in your company's current plan. Contact the platform team to enable it." />;
+  }
   const [logs, systemSettings] = await Promise.all([getActivityLogs({ companyId: session.company_id, limit: 500 }), getSettingsByGroup(session, "system")]);
   const timezone = systemSettings.timezone || "UTC";
 

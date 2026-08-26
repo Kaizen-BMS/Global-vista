@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus } from "lucide-react";
+import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus, QrCode, Send, Copy } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
@@ -191,6 +191,73 @@ function RecordPaymentModal({ leadId, planId, installments, remaining, currency,
   );
 }
 
+/**
+ * Generates a real, live UPI payment QR/link for this exact amount (via
+ * /api/core/payments/upi-qr — the company's own UPI ID, no gateway) and
+ * lets the employee send it to the lead. "Send via WhatsApp" opens the
+ * same wa.me pre-filled-message flow LeadWhatsAppPanel already uses —
+ * there's no connected WhatsApp Business API in this app, so this can't
+ * silently send on its own; the employee still presses Send inside
+ * WhatsApp, same as every other logged WhatsApp message here.
+ */
+function CollectPaymentModal({ leadId, lead, defaultAmount, currency, onClose }) {
+  const [amount, setAmount] = useState(defaultAmount > 0 ? String(defaultAmount) : "");
+  const [link, setLink] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const number = (lead?.whatsapp || lead?.phone || "").replace(/\D/g, "");
+
+  async function generate() {
+    if (!(Number(amount) > 0)) { toast.error("Enter a valid amount."); return; }
+    setLoading(true);
+    setLink(null);
+    try {
+      const res = await apiFetch(`/api/core/payments/upi-qr?format=json&amount=${encodeURIComponent(amount)}&note=${encodeURIComponent(`Lead #${leadId}`)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't generate a payment QR — check your UPI ID in Settings > Payments.");
+      setLink(data.link);
+    } catch (err) { toast.error(err.message); } finally { setLoading(false); }
+  }
+
+  const qrSrc = amount > 0 ? `/api/core/payments/upi-qr?amount=${encodeURIComponent(amount)}&note=${encodeURIComponent(`Lead #${leadId}`)}` : null;
+  const waMessage = link ? `Hi${lead?.name ? ` ${lead.name}` : ""}, please complete your payment of ${currency} ${amount} using this link: ${link}` : "";
+
+  return (
+    <ModalShell title="Collect Payment via UPI" onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="Amount *">
+          <div className="flex gap-2">
+            <input type="number" min="0" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); setLink(null); }} className={inputClass} />
+            <button onClick={generate} disabled={loading} className="btn-brand flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer disabled:opacity-60 shrink-0">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} Generate
+            </button>
+          </div>
+        </Field>
+
+        {qrSrc && link && (
+          <div className="flex flex-col items-center gap-3 pt-2 border-t border-border">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrSrc} alt="UPI payment QR" className="h-44 w-44 rounded-lg border border-border bg-white" />
+            <div className="w-full flex items-center gap-2">
+              <input readOnly value={link} className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground text-xs truncate" />
+              <button onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copied."); }} aria-label="Copy payment link" className="p-1.5 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer transition"><Copy className="h-3.5 w-3.5" /></button>
+            </div>
+            {number ? (
+              <a
+                href={`https://wa.me/${number}?text=${encodeURIComponent(waMessage)}`} target="_blank" rel="noreferrer"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium cursor-pointer transition"
+              >
+                <Send className="h-4 w-4" /> Send via WhatsApp
+              </a>
+            ) : (
+              <p className="text-muted-foreground text-xs">No WhatsApp number on file for this lead — copy the link above instead.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
 function ConfirmModal({ title, body, confirmLabel, onClose, onConfirm }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -210,7 +277,7 @@ function ConfirmModal({ title, body, confirmLabel, onClose, onConfirm }) {
   );
 }
 
-export default function LeadPayments({ leadId, plans, activePlan, services, availableMethods, canManage }) {
+export default function LeadPayments({ leadId, lead, plans, activePlan, services, availableMethods, canManage }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [modal, setModal] = useState(null);
@@ -229,11 +296,17 @@ export default function LeadPayments({ leadId, plans, activePlan, services, avai
         <p className="text-foreground font-medium mb-1">No payment plan yet</p>
         <p className="text-muted-foreground text-sm mb-4">Create one to start tracking fees, installments and payments for this lead.</p>
         {canManage && (
-          <button onClick={() => setModal("createPlan")} className="btn-brand inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">
-            <Plus className="h-4 w-4" /> Create Payment Plan
-          </button>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <button onClick={() => setModal("createPlan")} className="btn-brand inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">
+              <Plus className="h-4 w-4" /> Create Payment Plan
+            </button>
+            <button onClick={() => setModal("collect")} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted border border-border text-foreground text-sm font-medium cursor-pointer">
+              <QrCode className="h-4 w-4" /> Collect via UPI
+            </button>
+          </div>
         )}
         {modal === "createPlan" && <CreatePlanModal leadId={leadId} services={services} onClose={() => setModal(null)} onDone={close} call={call} />}
+        {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} defaultAmount={0} currency="INR" onClose={() => setModal(null)} />}
       </div>
     );
   }
@@ -250,6 +323,7 @@ export default function LeadPayments({ leadId, plans, activePlan, services, avai
           {canManage && !isTerminal && (
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setModal("record")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-brand text-white text-xs font-medium cursor-pointer disabled:opacity-50"><CreditCard className="h-3.5 w-3.5" /> Record Payment</button>
+              <button onClick={() => setModal("collect")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-50"><QrCode className="h-3.5 w-3.5" /> Collect via UPI</button>
               <button onClick={() => setModal("installment")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-50"><CalendarPlus className="h-3.5 w-3.5" /> Add Installment</button>
               <button onClick={() => setModal("cancel")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-red-400 text-xs cursor-pointer"><XCircle className="h-3.5 w-3.5" /> Cancel Plan</button>
               {plan.status === "Paid" && <button onClick={() => setModal("refund")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-violet-400 text-xs cursor-pointer"><RotateCcw className="h-3.5 w-3.5" /> Mark Refunded</button>}
@@ -358,6 +432,7 @@ export default function LeadPayments({ leadId, plans, activePlan, services, avai
       {modal === "record" && (
         <RecordPaymentModal leadId={leadId} planId={plan.id} installments={installments} remaining={remaining} currency={currency} availableMethods={availableMethods} onClose={() => setModal(null)} onDone={close} call={call} />
       )}
+      {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} defaultAmount={remaining} currency={currency} onClose={() => setModal(null)} />}
       {modal === "cancel" && (
         <ConfirmModal
           title="Cancel this payment plan?" confirmLabel="Cancel Plan"

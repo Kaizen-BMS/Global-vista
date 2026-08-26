@@ -113,7 +113,7 @@ export default async function LeadDetailsPage({ params }) {
             <div id="payments" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
               <p className="text-foreground font-medium mb-3">Payments</p>
               <LeadPayments
-                leadId={id} plans={paymentPlans} activePlan={activePlanDetail} services={services}
+                leadId={id} lead={lead} plans={paymentPlans} activePlan={activePlanDetail} services={services}
                 availableMethods={availableMethods} canManage={canEdit}
               />
             </div>

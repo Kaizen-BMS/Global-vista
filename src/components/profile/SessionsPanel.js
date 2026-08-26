@@ -1,21 +1,53 @@
 "use client";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Monitor, Loader2, LogOut } from "lucide-react";
+import { Monitor, Loader2, LogOut, MapPin, Clock } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { SkeletonRows } from "@/components/shared/Skeleton";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
+import { formatDateTime } from "@/lib/helpers/dateFormat";
+import { parseUserAgent } from "@/lib/helpers/parseUserAgent";
 
 export default function SessionsPanel() {
+  const timezone = useTimezone();
   const [sessions, setSessions] = useState(null); const [busyId, setBusyId] = useState(null); const [loggingOut, setLoggingOut] = useState(false);
   async function load() { const r = await fetch("/api/core/auth/sessions"); setSessions((await r.json()).sessions || []); }
   useEffect(() => { load(); }, []);
-  async function terminate(id) { setBusyId(id); try { await apiFetch("/api/core/auth/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "terminate", sessionId: id }) }); toast.success("Terminated."); load(); } finally { setBusyId(null); } }
+  async function terminate(id) { setBusyId(id); try { await apiFetch("/api/core/auth/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "terminate", sessionId: id }) }); toast.success("Terminated — that device will be signed out within moments."); load(); } finally { setBusyId(null); } }
   async function logoutAll() { setLoggingOut(true); try { await apiFetch("/api/core/auth/logout-all", { method: "POST" }); toast.success("Logged out everywhere else."); load(); } finally { setLoggingOut(false); } }
   if (!sessions) return <SkeletonRows rows={3} />;
   return (
     <div>
-      <div className="flex items-center justify-between mb-4"><p className="text-foreground font-medium">Active Sessions</p><button onClick={logoutAll} disabled={loggingOut} className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">{loggingOut && <Loader2 className="h-3.5 w-3.5 animate-spin" />}<LogOut className="h-3.5 w-3.5" />Logout all other devices</button></div>
-      <div className="space-y-2">{sessions.map((s) => <div key={s.id} className="flex items-center justify-between bg-card border border-border rounded-lg p-3 transition hover:border-border"><div className="flex items-center gap-3"><Monitor className="h-4 w-4 text-muted-foreground" /><div><p className="text-foreground text-sm">{s.is_current ? "This device" : s.user_agent}{s.is_current && <span className="ml-2 text-[10px] text-green-400">CURRENT</span>}</p></div></div>{!s.is_current && <button onClick={() => terminate(s.id)} disabled={busyId === s.id} className="text-xs text-muted-foreground hover:text-red-400 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Terminate</button>}</div>)}</div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-foreground font-medium">Active Sessions</p>
+          <p className="text-muted-foreground text-xs mt-0.5">Terminating a session signs that device out within ~20 seconds, not instantly — it's enforced the next time that device checks in.</p>
+        </div>
+        <button onClick={logoutAll} disabled={loggingOut} className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0">{loggingOut && <Loader2 className="h-3.5 w-3.5 animate-spin" />}<LogOut className="h-3.5 w-3.5" />Logout all other devices</button>
+      </div>
+      <div className="space-y-2">
+        {sessions.map((s) => {
+          const { summary } = parseUserAgent(s.user_agent);
+          return (
+            <div key={s.id} className="flex items-center justify-between bg-card border border-border rounded-lg p-3 transition hover:border-border">
+              <div className="flex items-center gap-3 min-w-0">
+                <Monitor className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-foreground text-sm truncate">
+                    {summary}
+                    {s.is_current && <span className="ml-2 text-[10px] text-green-400">CURRENT</span>}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground text-[11px] mt-0.5">
+                    {s.ip_address && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {s.ip_address}</span>}
+                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Last active {formatDateTime(s.last_seen_at || s.created_at, timezone)}</span>
+                  </div>
+                </div>
+              </div>
+              {!s.is_current && <button onClick={() => terminate(s.id)} disabled={busyId === s.id} className="text-xs text-muted-foreground hover:text-red-400 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ml-2">{busyId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Terminate"}</button>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

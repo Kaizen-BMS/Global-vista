@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { canAny } from "@/lib/helpers/permissions";
 import { listAllDocuments } from "@/lib/actions/documentsReport";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import ReportToolbar from "@/components/shared/ReportToolbar";
 import ReportTable from "@/components/shared/ReportTable";
@@ -15,6 +16,9 @@ const COLUMNS = [
 export default async function DocumentsReportPage() {
   const session = await getSession();
   if (!(await canAny(session, ["employee_documents.manage", "leads.documents.manage"]))) return <ForbiddenState />;
+  if (!(await isModuleEnabledForCompany(session.company_id, "reports"))) {
+    return <ForbiddenState message="Reports isn't included in your company's current plan. Contact the platform team to enable it." />;
+  }
   const [docs, systemSettings] = await Promise.all([listAllDocuments(session), getSettingsByGroup(session, "system")]);
   const timezone = systemSettings.timezone || "UTC";
 

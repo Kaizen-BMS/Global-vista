@@ -20,7 +20,7 @@ export default function ModuleToggleList({ companyId, modules }) {
             <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={!!mod.enabled} disabled={busyId === mod.id} onChange={() => toggle(mod)} className="sr-only peer" /><div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-indigo-600"></div><div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-4 transition-transform"></div></label>
           </div>
           <p className="text-muted-foreground text-xs">{mod.category}</p>
-          {mod.slug !== "crm" && mod.enabled && <p className="text-yellow-400 text-[10px] mt-2">Catalog entry — business logic not yet built.</p>}
+          {!["crm", "payments"].includes(mod.slug) && mod.enabled && <p className="text-yellow-400 text-[10px] mt-2">Catalog entry — business logic not yet built.</p>}
         </div>
       ); })}
     </div>

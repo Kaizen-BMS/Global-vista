@@ -120,9 +120,15 @@ export async function confirmCompanySubscriptionFromBillDesk(gatewayOrderId) {
 
   const wasAlreadyActive = row.status === "active";
 
+  // Same reasoning as razorpayBilling.js's confirmRazorpaySubscription:
+  // ends_at drives both the Platform Console's "Expiry" column and the
+  // 30/7/3/1-day expiry-warning cron, but a recurring gateway subscription
+  // has no fixed end — keeping it synced with next_billing_at (rather than
+  // leaving it NULL forever) is what makes both actually work for a
+  // recurring BillDesk subscription too, once this boundary is implemented.
   await pool.query(
-    `UPDATE company_subscriptions SET status=?, gateway_customer_id=?, next_billing_at=? WHERE id=?`,
-    [mappedStatus, transaction.customerId || null, transaction.nextBillingAt || null, row.id]
+    `UPDATE company_subscriptions SET status=?, gateway_customer_id=?, next_billing_at=?, ends_at=? WHERE id=?`,
+    [mappedStatus, transaction.customerId || null, transaction.nextBillingAt || null, transaction.nextBillingAt || null, row.id]
   );
 
   if (mappedStatus === "active") {
@@ -133,7 +139,24 @@ export async function confirmCompanySubscriptionFromBillDesk(gatewayOrderId) {
       conn.release();
     }
     if (!wasAlreadyActive) {
-      const [[plan]] = await pool.query(`SELECT name FROM plans WHERE id=?`, [row.plan_id]);
+      const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [row.plan_id]);
+      // Same gap this closes for Razorpay: without a payment recorded right
+      // here, Collected Revenue depends entirely on the BillDesk webhook
+      // ever arriving. `transaction.transactionId` is part of the expected
+      // shape verifyBillDeskTransaction() must return once implemented (see
+      // billdeskClient.js) — not guessed at, just consistently named with
+      // the customerId/nextBillingAt fields already read above.
+      if (transaction.transactionId && plan?.price) {
+        const chargedAmount = Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0));
+        await recordSubscriptionPayment({
+          companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "billdesk",
+          amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
+          gatewayTransactionId: transaction.transactionId, gatewaySubscriptionId: gatewayOrderId, status: "completed",
+        }).catch(() => {});
+        if (row.coupon_id) {
+          await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});
+        }
+      }
       const [admins] = await pool.query(`SELECT id FROM users WHERE company_id=? AND is_super_admin=1 AND is_deleted=0`, [row.company_id]);
       for (const admin of admins) {
         await createNotification(row.company_id, admin.id, {

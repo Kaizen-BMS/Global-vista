@@ -18,7 +18,7 @@ export const ALL_NAV_ITEMS = [
   { href: "/workspace/lead-management", label: "Leads", icon: "Contact2", permission: "leads.view" },
   { href: "/workspace/lead-forms", label: "Query Forms", icon: "ClipboardList", permission: "leads.view" },
   { href: "/workspace/followups", label: "Follow-ups", icon: "CalendarClock", permission: "leads.view" },
-  { href: "/workspace/reports", label: "Reports", icon: "BarChart3", permission: null },
+  { href: "/workspace/reports", label: "Reports", icon: "BarChart3", permission: null, module: "reports" },
   { href: "/workspace/users", label: "Employees", icon: "Users", permission: "users.view" },
   { href: "/workspace/roles", label: "Roles", icon: "ShieldCheck", permission: "roles.manage" },
   // "Organization" intentionally has no separate sidebar entry — it already

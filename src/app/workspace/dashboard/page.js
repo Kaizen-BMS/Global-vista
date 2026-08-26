@@ -5,6 +5,7 @@ import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getUserNotifications } from "@/lib/actions/notifications";
 import { resolveRange } from "@/lib/helpers/dateRange";
+import { formatDate } from "@/lib/helpers/dateFormat";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import {
   getLeadDashboardStats, getLeadsBySource, getLeadsByService, getLeadsByStage,
@@ -20,11 +21,12 @@ import {
 import { getStorageUsage } from "@/lib/actions/storage";
 import { getEmployeePaymentDashboard, getSuperAdminPaymentDashboard } from "@/lib/modules/crm/actions/payments";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
-import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
+import { isModuleEnabledForCompany, getSubscriptionDetails } from "@/lib/platform/tenant";
+import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
 import RangeFilter from "@/components/shared/RangeFilter";
-import { CrmKpiGrid, OrgKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
+import { CrmKpiGrid, OrgKpiGrid, SubscriptionKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
 import { EmployeePaymentKpiGrid, SuperAdminPaymentKpiGrid, RecentPaymentsTable, CollectionsBreakdown } from "@/components/workspace/dashboard/PaymentWidgets";
 import { WorkspaceCrmChartsSection, WorkspaceOrgChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
 import {
@@ -63,7 +65,7 @@ export default async function DashboardPage({ searchParams }) {
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
     recentActivity, unreadNotifications, branding,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
-    employeePayments, superAdminPayments,
+    employeePayments, superAdminPayments, subscriptionDetails, subscriptionPayments,
   ] = await Promise.all([
     getDashboardStats(session),
     getLeadDashboardStats(session),
@@ -90,7 +92,17 @@ export default async function DashboardPage({ searchParams }) {
     getStorageUsage(session),
     paymentsEnabled ? getEmployeePaymentDashboard(session) : null,
     paymentsEnabled && isAdmin ? getSuperAdminPaymentDashboard(session) : null,
+    isAdmin ? getSubscriptionDetails(session.company_id) : null,
+    isAdmin ? listSubscriptionPayments(session) : [],
   ]);
+
+  // Platform subscription billing — what THIS company has paid the
+  // platform, not to be confused with the "Payments" section above (money
+  // this company collects from its own leads). Only shown once a real
+  // completed payment exists.
+  const completedPayments = subscriptionPayments.filter((p) => p.status === "completed");
+  const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const lastPayment = completedPayments[0] || null; // already ORDER BY created_at DESC
 
   return (
     <div className="space-y-8">
@@ -117,6 +129,20 @@ export default async function DashboardPage({ searchParams }) {
           <TeamPerformanceTable team={teamPerformance} />
         </div>
       </section>
+
+      {isAdmin && completedPayments.length > 0 && (
+        <section className="space-y-4">
+          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Subscription & Billing</p>
+          <SubscriptionKpiGrid
+            planName={subscriptionDetails?.planName}
+            totalPaid={totalPaid}
+            currency={lastPayment?.currency || subscriptionDetails?.currency || "INR"}
+            lastPaymentAmount={lastPayment?.amount}
+            lastPaymentDate={lastPayment ? formatDate(lastPayment.created_at, timezone) : null}
+            gateway={lastPayment?.gateway}
+          />
+        </section>
+      )}
 
       {paymentsEnabled && employeePayments && (
         <section className="space-y-4">
