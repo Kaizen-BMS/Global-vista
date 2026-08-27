@@ -1,4 +1,4 @@
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Manrope } from "next/font/google";
 import Script from "next/script";
 import { Toaster } from "sonner";
 
@@ -6,17 +6,17 @@ import "./globals.css";
 
 import LayoutWrapper from "@/components/layout/LayoutWrapper";
 import { ThemeProvider } from "@/components/shared/ThemeProvider";
-const inter = Inter({
+// One typeface, sitewide (marketing pages, CRM workspace, Platform Console)
+// — headings use the 700/800 weights, body copy uses 400/500, per the
+// existing component-level font-weight utility classes already in use
+// throughout the app. Exposed as --font-manrope here; globals.css aliases
+// the marketing site's existing --font-inter/--font-instrument variables
+// and the CRM's --font-sans variable to it, so no component file needed to
+// change which font-family class it applies.
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-inter",
-  weight: ["300", "400", "500", "600", "700"],
-});
-
-const instrument = Instrument_Serif({
-  subsets: ["latin"],
-  variable: "--font-instrument",
-  weight: ["400"],
-  style: ["normal", "italic"],
+  variable: "--font-manrope",
+  weight: ["400", "500", "700", "800"],
 });
 
 export const metadata = {
@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${instrument.variable}`}
+      className={manrope.variable}
       suppressHydrationWarning
     >
     <head>

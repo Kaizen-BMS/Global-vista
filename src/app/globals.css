@@ -62,6 +62,14 @@
  * this up automatically.
  */
 :root {
+  /* Sitewide typeface — see layout.js for the actual Manrope font-face
+     load. Aliasing these existing variable names means every component
+     already using font-body/font-display (marketing site) or the
+     inherited font-sans (CRM workspace, Platform Console) picks up
+     Manrope automatically, with no per-component class changes. */
+  --font-inter: var(--font-manrope);
+  --font-instrument: var(--font-manrope);
+  --font-sans: var(--font-manrope);
   --background: #F6F8FB;
   --foreground: #0B1930;
   --card: #FFFFFF;
@@ -150,6 +158,16 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Default weights when a component doesn't already set its own — an
+     explicit font-medium/font-semibold/etc. class on any element still
+     wins over this (normal CSS specificity), so this only fills in the
+     gaps rather than overriding anything already deliberate. */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+  }
+  body {
+    font-weight: 400;
   }
   /* No element in the app defines its own keyboard-focus indicator — this is
      the one global rule needed so Tab-focus is always visible, in both
