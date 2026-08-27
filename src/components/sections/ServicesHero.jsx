@@ -119,7 +119,7 @@ export default function ServicesHero() {
             {...fadeUp(0.12)}
             className="mt-5 font-display text-4xl text-offwhite sm:text-5xl lg:text-6xl"
           >
-            Gateway to Global Careers, World-Class Universities, and Scientific Exploration.
+            Gateway to Global Careers.
           </motion.h1>
 
           <motion.p
