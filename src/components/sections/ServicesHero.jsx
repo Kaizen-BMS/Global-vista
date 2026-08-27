@@ -119,16 +119,14 @@ export default function ServicesHero() {
             {...fadeUp(0.12)}
             className="mt-5 font-display text-4xl text-offwhite sm:text-5xl lg:text-6xl"
           >
-            Support Built Around How You Learn
+            Gateway to Global Careers, World-Class Universities, and Scientific Exploration.
           </motion.h1>
 
           <motion.p
             {...fadeUp(0.24)}
             className="mx-auto mt-6 max-w-2xl text-base text-muted sm:text-lg"
           >
-            From academic excellence to mentorship and career guidance,
-            every service is designed to empower students and support parents
-            throughout the learning journey.
+            Unlock world-class opportunities tailored to your potential. Whether discovering career pathways, exploring top global universities, or experiencing ground breaking science at CERN, we guide every step of your global journey.
           </motion.p>
         </div>
 
