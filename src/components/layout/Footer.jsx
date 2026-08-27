@@ -17,10 +17,10 @@ const quickLinks = [
 ];
 
 const services = [
-  "STEM Academic Support",
-  "Exam Preparation",
-  "Mentorship & Career Guidance",
-  "Flexible Learning",
+  "Career Counselling & Study Guidance",
+  "International Summer School Visits (UK)",
+  "CERN Educational Visits",
+  // "Flexible Learning",
 ];
 
 export default function Footer() {
@@ -75,8 +75,8 @@ export default function Footer() {
   </div>
 </Link>
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">
-                Connecting  students with UK educators for mentorship,
-                exam preparation and global academic opportunity.
+                Connecting  students with UK educators for career counselling, mentorship,
+                and global academic opportunities.
               </p>
               <p className="mt-4 text-xs uppercase tracking-[0.25em] text-gold">
                 Explore • Educate • Empower

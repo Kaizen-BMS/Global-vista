@@ -59,25 +59,37 @@ export default function ServicesHero() {
   const [activeVideoId, setActiveVideoId] = useState(null);
   const cards = [
     {
-      title: "Career Counselling & Study Abroad Guidance",
-      description:
-        "Comprehensive career counselling for students, parents and educators, combined with expert guidance for studying abroad. We help students identify the right career path, choose suitable universities, explore international education opportunities, and receive support with admissions, applications, scholarships and academic planning, particularly for the United Kingdom and other leading destinations.",
+      title: "Career Counselling & Study  Guidance",
+      descriptionPoints: [
+        "Tailored career counselling for students, parents, and educators.",
+        "Personalized guidance to identify career paths and select suitable universities.",
+        "Comprehensive support for exploring national & international education opportunities.",
+        // "Explore national and international education opportunities",
+        "Hands-on assistance with university applications, admission processes, and scholarship acquisition.",
+      ],
       icon: "🎓",
       button: "Watch Introduction Video",
       videoUrl: "https://youtu.be/xStCrdI58-c",
     },
     {
       title: "International Summer School Visits (UK)",
-      description:
-        "Experience world-class education through our International Summer School programmes in the United Kingdom. Students gain hands-on learning, cultural exposure, university visits, leadership development, and interaction with global educators while exploring renowned academic institutions across the UK.",
+      descriptionPoints: [
+        "World-class International Summer School programmes in the United Kingdom",
+        "Hands-on learning experiences",
+        "Cultural exposure and university visits",
+        // "Leadership development",
+        "Interaction with global educators at renowned UK institutions",
+      ],
       icon: "✈️",
       button: "Watch Introduction Video",
       videoUrl: "https://youtu.be/R4NSvXmZbUA",
     },
     {
       title: "CERN Educational Visits",
-      description:
-        "Explore opportunities in science, engineering, technology and research through educational visits to CERN and its global innovation ecosystem.",
+      descriptionPoints: [
+        "Educational visits to CERN and its global innovation ecosystem",
+        "Exploring the Opportunities in science, engineering, technology and research",
+      ],
       icon: "⚛️",
       button: "Watch Introduction Video",
       videoUrl: "https://youtu.be/i7pjmRpMxYw",
@@ -142,9 +154,14 @@ export default function ServicesHero() {
                 </h3>
 
                 {/* Description */}
-                <p className="mt-6 flex-1 text-[15px] leading-7 text-muted">
-                  {card.description}
-                </p>
+                <ul className="mt-6 flex-1 space-y-2.5 text-[15px] leading-6 text-muted">
+                  {card.descriptionPoints.map((point) => (
+                    <li key={point} className="flex items-start gap-2.5">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold/70" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
 
                 {/* CERN link */}
                 {card.linkText && (
