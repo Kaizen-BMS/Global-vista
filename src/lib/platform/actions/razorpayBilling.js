@@ -277,8 +277,25 @@ export async function startCompanyRazorpayCheckout(session, planId, { couponCode
  * `when` is "now" (switch and re-bill immediately, no proration — the new
  * plan's price applies from today) or "cycle_end" (keep the current plan
  * and its limits running until the paid-through date, then switch
- * automatically — no charge happens now). Either way this never creates a
- * duplicate gateway subscription, so there's nothing left to orphan.
+ * automatically — no charge happens now).
+ *
+ * This is the MAIN (per-user monthly) subscription only — every plan can
+ * ALSO have its own, independent annual maintenance fee (see
+ * ensureMaintenanceRazorpayPlanId), and a plan switch has to reconcile that
+ * separate stream too, not just the main one:
+ *   - both old and new plan have a maintenance fee → update that
+ *     subscription's plan in place too, same "now"/"cycle_end" timing.
+ *   - old plan had one, new plan doesn't → cancel it.
+ *   - old plan had NONE, new plan needs one → a brand-new recurring
+ *     mandate needs fresh authorization from the customer, which can only
+ *     happen through a live Checkout overlay — there is no way to
+ *     silently start charging a new recurring fee later without the
+ *     customer completing that Checkout right now. So this case is only
+ *     supported for when="now" (the caller opens a second Checkout
+ *     overlay using the returned maintenanceRazorpaySubscriptionId, same
+ *     as a fresh signup); when="cycle_end" is rejected with a clear error
+ *     rather than silently deferring an authorization this app can't
+ *     actually collect on its own at a future date.
  */
 export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now") {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
@@ -294,18 +311,63 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
   if (!newPlan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(newPlan.price) > 0)) { const e = new Error("This plan is free — cancel the current subscription instead of switching to it."); e.status = 400; throw e; }
 
+  const tieredReady = await hasTieredPlansSchema();
+  const hadMaintenance = tieredReady && !!existing.maintenance_gateway_subscription_id;
+  const willHaveMaintenance = tieredReady && Number(newPlan.maintenance_annual_fee) > 0;
+
+  if (!hadMaintenance && willHaveMaintenance && when === "cycle_end") {
+    const e = new Error(`"${newPlan.name}" has an annual maintenance fee this company isn't currently paying — switching to it needs a new payment authorization, which only works with "Switch Now", not "At Renewal".`);
+    e.status = 400; throw e;
+  }
+
   const razorpayPlanId = await ensureRazorpayPlanId(newPlan);
   await updateRazorpaySubscription(existing.gateway_subscription_id, { razorpayPlanId, scheduleChangeAt: when });
 
+  // Reconcile the maintenance stream in lockstep with the main one — see
+  // the doc comment above for why each branch behaves differently.
+  let maintenanceRazorpaySubscriptionId = null;
+  let requiresMaintenanceCheckout = false;
+  if (hadMaintenance && willHaveMaintenance) {
+    const newMaintenancePlanId = await ensureMaintenanceRazorpayPlanId(newPlan);
+    if (newMaintenancePlanId) await updateRazorpaySubscription(existing.maintenance_gateway_subscription_id, { razorpayPlanId: newMaintenancePlanId, scheduleChangeAt: when });
+  } else if (hadMaintenance && !willHaveMaintenance) {
+    await cancelRazorpaySubscription(existing.maintenance_gateway_subscription_id, when === "cycle_end").catch((err) => {
+      console.error("Old maintenance subscription cancellation not completed:", err.message);
+    });
+  } else if (!hadMaintenance && willHaveMaintenance) {
+    // when === "now" only — enforced above.
+    const newMaintenancePlanId = await ensureMaintenanceRazorpayPlanId(newPlan);
+    if (newMaintenancePlanId) {
+      const result = await createRazorpaySubscription({
+        razorpayPlanId: newMaintenancePlanId, billingCycle: "yearly", quantity: 1,
+        customerEmail: session.email, customerName: session.name, customId: `company:${session.company_id}:maintenance`,
+      });
+      maintenanceRazorpaySubscriptionId = result.razorpaySubscriptionId;
+      requiresMaintenanceCheckout = true;
+    }
+  }
+
   const pendingColumnReady = await hasPendingPlanIdColumn();
+  const maintenanceColSet = when === "now" && tieredReady
+    ? `, maintenance_gateway_subscription_id=${hadMaintenance && !willHaveMaintenance ? "NULL" : "?"}`
+    : "";
+  const maintenanceColParam = when === "now" && tieredReady && !(hadMaintenance && !willHaveMaintenance)
+    ? [maintenanceRazorpaySubscriptionId || existing.maintenance_gateway_subscription_id]
+    : [];
+
   if (when === "now") {
-    await pool.query(`UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""} WHERE id=?`, [newPlanId, existing.id]);
+    await pool.query(
+      `UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""}${maintenanceColSet} WHERE id=?`,
+      [newPlanId, ...maintenanceColParam, existing.id]
+    );
     const conn = await pool.getConnection();
     try { await syncCompanyModulesToPlan(conn, session.company_id, newPlanId, session.id); } finally { conn.release(); }
   } else if (pendingColumnReady) {
-    // Local plan_id is deliberately left untouched here — the company keeps
-    // its current plan's limits/features until Razorpay actually applies
-    // the change at cycle end, which arrives back through the normal
+    // Local plan_id (and, for the had->had maintenance case, the
+    // maintenance subscription id — it doesn't change, only its plan
+    // does) are deliberately left untouched here — the company keeps its
+    // current plan's limits/features until Razorpay actually applies the
+    // change at cycle end, which arrives back through the normal
     // subscription.charged/updated webhook (see the reconciliation in
     // confirmRazorpaySubscription below).
     await pool.query(`UPDATE company_subscriptions SET pending_plan_id=? WHERE id=?`, [newPlanId, existing.id]);
@@ -313,7 +375,10 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
 
   await logActivity({ userId: session.id, module: "platform", action: "razorpay_plan_change_scheduled", entityType: "company_subscription", entityId: existing.id, companyId: session.company_id, description: `${session.name} ${when === "now" ? "switched" : "scheduled a switch"} to plan "${newPlan.name}"${when === "cycle_end" ? ` (effective ${existing.ends_at})` : ""}` }).catch(() => {});
 
-  return { planName: newPlan.name, when, effectiveAt: when === "cycle_end" ? existing.ends_at : null };
+  return {
+    planName: newPlan.name, when, effectiveAt: when === "cycle_end" ? existing.ends_at : null,
+    requiresMaintenanceCheckout, maintenanceRazorpaySubscriptionId, razorpayKeyId: requiresMaintenanceCheckout ? process.env.RAZORPAY_KEY_ID : null,
+  };
 }
 
 /**

@@ -186,7 +186,17 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't change plan.");
-      toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
+
+      // The new plan's maintenance fee is a stream this company wasn't
+      // already paying — Razorpay has no way to start a new recurring
+      // charge without the customer authorizing it through a live Checkout
+      // overlay, so one opens now, same as a brand-new subscribe.
+      if (data.requiresMaintenanceCheckout) {
+        toast.success(`Switched to "${plan.name}" — now authorize its annual maintenance fee.`);
+        await payMaintenanceThenFinish({ ...data, planName: plan.name });
+      } else {
+        toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
+      }
       onClose();
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setCheckingOut(null); }
