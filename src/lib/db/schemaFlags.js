@@ -36,6 +36,8 @@ export async function hasPlanDescriptionColumn() { return columnExists("plans", 
 export async function hasPlanPayPalColumns() { return columnExists("plans", "paypal_plan_id"); }
 export async function hasPlanRazorpayColumns() { return columnExists("plans", "razorpay_plan_id"); }
 export async function hasCompanySubscriptionsGatewayColumns() { return columnExists("company_subscriptions", "gateway"); }
+export async function hasCancelAtPeriodEndColumn() { return columnExists("company_subscriptions", "cancel_at_period_end"); }
+export async function hasPendingPlanIdColumn() { return columnExists("company_subscriptions", "pending_plan_id"); }
 export async function hasSubscriptionPaymentsTable() { return tableExists("subscription_payments"); }
 export async function hasPaymentWebhookEventsTable() { return tableExists("payment_webhook_events"); }
 

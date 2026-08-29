@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus, QrCode, Send, Copy, Pencil, Trash2 } from "lucide-react";
+import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus, QrCode, Send, Copy, Pencil, Trash2, CheckCircle2, Clock } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
@@ -198,32 +198,33 @@ function RecordPaymentModal({ leadId, planId, installments, remaining, currency,
 }
 
 /**
- * Generates a real, live UPI payment QR/link for this exact amount (via
- * /api/core/payments/upi-qr — the company's own UPI ID, no gateway) and
- * lets the employee send it to the lead. "Send via WhatsApp" opens the
- * same wa.me pre-filled-message flow LeadWhatsAppPanel already uses —
- * there's no connected WhatsApp Business API in this app, so this can't
- * silently send on its own; the employee still presses Send inside
- * WhatsApp, same as every other logged WhatsApp message here.
- */
-/**
  * Sends a lead a secure, single-purpose payment link — never the company's
  * raw UPI ID or an editable upi://pay link. Under the hood this mints a
  * payment_requests row (see /api/leads/[id]/payment-requests) and shares
  * only its public confirmation page (/pay/[token]), which shows a fixed,
  * non-editable amount and its own QR — nobody who receives or forwards the
  * link can change what it asks for.
+ *
+ * Honest limitation: this is a raw UPI QR, not a payment gateway — the
+ * money moves directly bank-to-bank over UPI, so unlike Razorpay/BillDesk
+ * there's no webhook telling this app "it's paid". "Mark as Received"
+ * below is the deliberate, free alternative: the employee confirms it
+ * themselves after checking their own bank/UPI app, right in this same
+ * window, instead of having to separately open "Record Payment".
  */
-function CollectPaymentModal({ leadId, lead, defaultAmount, currency, onClose }) {
+function CollectPaymentModal({ leadId, lead, planId, defaultAmount, currency, onClose, onRecorded, call }) {
   const [amount, setAmount] = useState(defaultAmount > 0 ? String(defaultAmount) : "");
   const [request, setRequest] = useState(null); // { token, publicUrl }
   const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recorded, setRecorded] = useState(false);
   const number = (lead?.whatsapp || lead?.phone || "").replace(/\D/g, "");
 
   async function generate() {
     if (!(Number(amount) > 0)) { toast.error("Enter a valid amount."); return; }
     setLoading(true);
     setRequest(null);
+    setRecorded(false);
     try {
       const res = await apiFetch(`/api/leads/${leadId}/payment-requests`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -235,25 +236,41 @@ function CollectPaymentModal({ leadId, lead, defaultAmount, currency, onClose })
     } catch (err) { toast.error(err.message); } finally { setLoading(false); }
   }
 
+  async function markReceived() {
+    if (!planId) { toast.error("Create a payment plan for this lead first, so this payment has somewhere to be recorded."); return; }
+    setRecording(true);
+    try {
+      await call(`/api/leads/${leadId}/payments/${planId}`, {
+        action: "recordPayment", amount, method: "UPI", installmentId: null,
+        paymentDate: new Date().toISOString().slice(0, 10), notes: "Collected via UPI QR link",
+      });
+      setRecorded(true);
+      toast.success("Payment recorded.");
+      onRecorded?.();
+    } catch (err) { toast.error(err.message); } finally { setRecording(false); }
+  }
+
   const waMessage = request ? `Hi${lead?.name ? ` ${lead.name}` : ""}, please complete your payment of ${currency} ${amount} using this secure link: ${request.publicUrl}` : "";
+  const thankYouMessage = `Hi${lead?.name ? ` ${lead.name}` : ""}, we've received your payment of ${currency} ${amount}. Thank you!`;
 
   return (
     <ModalShell title="Collect Payment via UPI" onClose={onClose}>
       <div className="space-y-3">
         <Field label="Amount *">
           <div className="flex gap-2">
-            <input type="number" min="0" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); setRequest(null); }} className={inputClass} />
-            <button onClick={generate} disabled={loading} className="btn-brand flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer disabled:opacity-60 shrink-0">
+            <input disabled={recorded} type="number" min="0" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); setRequest(null); setRecorded(false); }} className={`${inputClass} disabled:opacity-60`} />
+            <button onClick={generate} disabled={loading || recorded} className="btn-brand flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer disabled:opacity-60 shrink-0">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} Generate
             </button>
           </div>
         </Field>
 
-        {request && (
+        {request && !recorded && (
           <div className="flex flex-col items-center gap-3 pt-2 border-t border-border">
+            <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-1"><Clock className="h-3 w-3" /> Waiting for confirmation</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/public/pay/${request.token}/qr`} alt="UPI payment QR" className="h-44 w-44 rounded-lg border border-border bg-white" />
-            <p className="text-muted-foreground text-[11px] text-center">This QR and link only work for this exact amount — the lead can't edit it.</p>
+            <p className="text-muted-foreground text-[11px] text-center">This QR and link only work for this exact amount — the lead can't edit it. UPI doesn't notify this app automatically, so once you see it land in your bank/UPI app, confirm it below.</p>
             <div className="w-full flex items-center gap-2">
               <input readOnly value={request.publicUrl} className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground text-xs truncate" />
               <button onClick={() => { navigator.clipboard.writeText(request.publicUrl); toast.success("Link copied."); }} aria-label="Copy payment link" className="p-1.5 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer transition"><Copy className="h-3.5 w-3.5" /></button>
@@ -268,6 +285,24 @@ function CollectPaymentModal({ leadId, lead, defaultAmount, currency, onClose })
             ) : (
               <p className="text-muted-foreground text-xs">No WhatsApp number on file for this lead — copy the link above instead.</p>
             )}
+            <button onClick={markReceived} disabled={recording} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium cursor-pointer disabled:opacity-60 transition">
+              {recording ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Mark as Received
+            </button>
+          </div>
+        )}
+
+        {recorded && (
+          <div className="flex flex-col items-center gap-3 pt-2 border-t border-border text-center">
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1.5"><CheckCircle2 className="h-4 w-4" /> Payment recorded</span>
+            <p className="text-muted-foreground text-xs">{currency} {amount} has been added to this lead's payment plan.</p>
+            {number ? (
+              <a
+                href={`https://wa.me/${number}?text=${encodeURIComponent(thankYouMessage)}`} target="_blank" rel="noreferrer"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-muted hover:bg-accent text-foreground text-sm font-medium cursor-pointer transition"
+              >
+                <Send className="h-4 w-4" /> Send confirmation to lead
+              </a>
+            ) : null}
           </div>
         )}
       </div>
@@ -337,7 +372,7 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
           </div>
         )}
         {modal === "createPlan" && <CreatePlanModal leadId={leadId} services={services} onClose={() => setModal(null)} onDone={close} call={call} />}
-        {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} defaultAmount={0} currency="INR" onClose={() => setModal(null)} />}
+        {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={null} defaultAmount={0} currency="INR" onClose={() => setModal(null)} onRecorded={close} call={call} />}
       </div>
     );
   }
@@ -481,7 +516,7 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
       {modal === "record" && (
         <RecordPaymentModal leadId={leadId} planId={plan.id} installments={installments} remaining={remaining} currency={currency} availableMethods={availableMethods} onClose={() => setModal(null)} onDone={close} call={call} />
       )}
-      {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} defaultAmount={remaining} currency={currency} onClose={() => setModal(null)} />}
+      {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={activePlan.plan.id} defaultAmount={remaining} currency={currency} onClose={() => setModal(null)} onRecorded={close} call={call} />}
       {modal === "cancel" && (
         <ConfirmModal
           title="Cancel this payment plan?" confirmLabel="Cancel Plan"

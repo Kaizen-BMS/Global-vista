@@ -135,11 +135,14 @@ export default async function DashboardPage({ searchParams }) {
         </div>
       </section>
 
-      {isAdmin && completedPayments.length > 0 && (
+      {isAdmin && subscriptionDetails?.hasSubscription && (
         <section className="space-y-4">
           <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Subscription & Billing</p>
           <SubscriptionKpiGrid
             planName={subscriptionDetails?.planName}
+            state={subscriptionDetails?.state}
+            daysRemaining={subscriptionDetails?.daysRemaining}
+            cancelAtPeriodEnd={subscriptionDetails?.cancelAtPeriodEnd}
             totalPaid={totalPaid}
             currency={lastPayment?.currency || subscriptionDetails?.currency || "INR"}
             lastPaymentAmount={lastPayment?.amount}

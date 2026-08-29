@@ -40,7 +40,19 @@ async function notifyPlatformOperators(payload) {
  * same pattern as the lead-sync and follow-up-reminder crons.
  */
 export async function runSubscriptionWarningsCheck() {
-  const results = { subscriptionWarnings: 0, storageWarnings: 0 };
+  const results = { subscriptionWarnings: 0, storageWarnings: 0, cancellationsFinalized: 0 };
+
+  // Access was already cut off the moment ends_at passed (tenant.js checks
+  // that live, independent of `status`) — this just tidies the stored
+  // status for subscriptions that chose "cancel at period end" so admin
+  // views/reports read "Cancelled" instead of forever showing "Active"
+  // after they've actually lapsed.
+  const [finalizeResult] = await pool.query(`
+    UPDATE company_subscriptions
+    SET status = 'cancelled'
+    WHERE cancel_at_period_end = 1 AND status != 'cancelled' AND ends_at IS NOT NULL AND ends_at < CURDATE()
+  `).catch(() => [{ affectedRows: 0 }]); // pre-migration DB — column doesn't exist yet
+  results.cancellationsFinalized = finalizeResult.affectedRows || 0;
 
   const [subs] = await pool.query(`
     SELECT cs.id, cs.company_id, cs.ends_at, cs.status, c.name AS company_name, p.name AS plan_name

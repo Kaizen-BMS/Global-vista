@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable } from "@/lib/db/schemaFlags";
+import { cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 
 /** One row per company — its most recent subscription, joined with plan,
  * storage usage, user count, and lead count for the Platform Console table.
@@ -302,6 +303,16 @@ export async function changeSubscriptionPlan(companyId, newPlanId, operatorId) {
 export async function cancelSubscription(companyId, operatorId) {
   const sub = await getSubscriptionForCompany(companyId);
   if (!sub) { const e = new Error("This company has no subscription."); e.status = 404; throw e; }
+
+  // Same real-gateway cancellation the company's own self-service cancel
+  // does (see cancelOwnSubscription) — a force-cancel from the Platform
+  // Console must actually stop future billing too, not just hide the
+  // company's access while Razorpay keeps charging their mandate.
+  if (sub.gateway === "razorpay" && sub.gateway_subscription_id && ["active", "past_due", "pending"].includes(sub.status)) {
+    await cancelRazorpaySubscription(sub.gateway_subscription_id, false).catch((err) => {
+      console.error("Razorpay subscription cancellation not completed:", err.message);
+    });
+  }
 
   const conn = await pool.getConnection();
   try {

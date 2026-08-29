@@ -82,6 +82,16 @@ export default async function SubscriptionSettingsPage() {
             {subscription.state === "pending" && <p className="text-sky-400 text-xs mt-4 pt-4 border-t border-border">A checkout was started but hasn't been confirmed yet. Use Upgrade / Change Plan below to complete payment.</p>}
             {subscription.state === "past_due" && <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">BillDesk reported a payment issue — please retry payment to avoid interruption.</p>}
             {subscription.state === "payment_failed" && <p className="text-red-400 text-xs mt-4 pt-4 border-t border-border">Your last payment failed. Please retry payment below.</p>}
+            {subscription.cancelAtPeriodEnd && (
+              <p className="text-amber-400 text-xs mt-4 pt-4 border-t border-border">
+                Cancelled — won't renew. You'll keep full access until {formatDate(subscription.endsAt, timezone)}.
+              </p>
+            )}
+            {subscription.pendingPlanName && (
+              <p className="text-indigo-400 text-xs mt-4 pt-4 border-t border-border">
+                Switching to "{subscription.pendingPlanName}" on {formatDate(subscription.endsAt, timezone)} — your current plan stays active until then.
+              </p>
+            )}
             {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} billDeskStatus={billDeskStatus} />}
           </div>
 

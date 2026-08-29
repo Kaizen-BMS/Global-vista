@@ -4,9 +4,9 @@ import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
-import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature } from "@/lib/payments/razorpaySubscriptions";
+import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
-import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
@@ -53,17 +53,22 @@ const RAZORPAY_STATUS_MAP = {
 
 /** Idempotent by design — reuses razorpay_plan_id if it already exists on
  * the plan row, never creates a duplicate Razorpay plan for a plan that's
- * already synced. */
+ * already synced. Shared by the operator-facing sync action below and the
+ * company-facing plan-change flow, which needs the target plan synced to
+ * Razorpay before it can switch a subscription onto it. */
+async function ensureRazorpayPlanId(plan) {
+  if (plan.razorpay_plan_id) return plan.razorpay_plan_id;
+  const razorpayPlanId = await createRazorpayPlan(plan);
+  await pool.query(`UPDATE plans SET razorpay_plan_id = ? WHERE id = ?`, [razorpayPlanId, plan.id]);
+  return razorpayPlanId;
+}
+
 export async function syncPlanToRazorpay(planId, operatorId) {
   if (!(await hasPlanRazorpayColumns())) assertBillingSchemaReady();
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ?`, [planId]);
   if (!plan) { const e = new Error("Plan not found."); e.status = 404; throw e; }
 
-  let razorpayPlanId = plan.razorpay_plan_id;
-  if (!razorpayPlanId) {
-    razorpayPlanId = await createRazorpayPlan(plan);
-    await pool.query(`UPDATE plans SET razorpay_plan_id = ? WHERE id = ?`, [razorpayPlanId, planId]);
-  }
+  const razorpayPlanId = await ensureRazorpayPlanId(plan);
 
   await logActivity({ userId: operatorId, module: "platform", action: "plan_synced_to_razorpay", entityType: "plan", entityId: planId, description: `Synced plan "${plan.name}" to Razorpay (plan=${razorpayPlanId})` }).catch(() => {});
   return { razorpayPlanId };
@@ -122,6 +127,19 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
   });
 
   if (existing) {
+    // Belt-and-suspenders: switching plans normally goes through
+    // changeCompanyRazorpayPlan below now (which updates the SAME
+    // authorized subscription in place, so there's never a second one to
+    // orphan). This path only still runs it for a subscription that isn't
+    // cleanly 'active' on Razorpay (pending/past_due/suspended) — but if it
+    // DOES have a real prior Razorpay subscription id, that one must still
+    // be cancelled here too, or it keeps billing forever unattended
+    // alongside the new one being created.
+    if (existing.gateway === "razorpay" && existing.gateway_subscription_id) {
+      await cancelRazorpaySubscription(existing.gateway_subscription_id, false).catch((err) => {
+        console.error("Old Razorpay subscription cancellation not completed:", err.message);
+      });
+    }
     await pool.query(
       `UPDATE company_subscriptions SET plan_id=?, gateway='razorpay', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
       couponsAvailable ? [planId, razorpaySubscriptionId, couponId, couponId ? discountAmount : null, existing.id] : [planId, razorpaySubscriptionId, existing.id]
@@ -140,6 +158,53 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
 export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null } = {}) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
   return createRazorpayCheckoutForCompany({ companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, couponCode, actorId: session.id });
+}
+
+/**
+ * The real upgrade/downgrade path for a company already on an active
+ * Razorpay subscription — updates the SAME authorized subscription's plan
+ * in place (Razorpay's schedule_change_at API) rather than creating a
+ * second subscription and trying to remember to cancel the first one.
+ * `when` is "now" (switch and re-bill immediately, no proration — the new
+ * plan's price applies from today) or "cycle_end" (keep the current plan
+ * and its limits running until the paid-through date, then switch
+ * automatically — no charge happens now). Either way this never creates a
+ * duplicate gateway subscription, so there's nothing left to orphan.
+ */
+export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now") {
+  if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
+  if (!["now", "cycle_end"].includes(when)) { const e = new Error('when must be "now" or "cycle_end".'); e.status = 400; throw e; }
+
+  const existing = await getSubscriptionForCompany(session.company_id);
+  if (!existing || existing.gateway !== "razorpay" || !existing.gateway_subscription_id || existing.status !== "active") {
+    const e = new Error("This company has no active Razorpay subscription to change — start a new checkout instead."); e.status = 400; throw e;
+  }
+  if (existing.plan_id === Number(newPlanId)) { const e = new Error("This is already the current plan."); e.status = 400; throw e; }
+
+  const [[newPlan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [newPlanId]);
+  if (!newPlan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
+  if (!(Number(newPlan.price) > 0)) { const e = new Error("This plan is free — cancel the current subscription instead of switching to it."); e.status = 400; throw e; }
+
+  const razorpayPlanId = await ensureRazorpayPlanId(newPlan);
+  await updateRazorpaySubscription(existing.gateway_subscription_id, { razorpayPlanId, scheduleChangeAt: when });
+
+  const pendingColumnReady = await hasPendingPlanIdColumn();
+  if (when === "now") {
+    await pool.query(`UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""} WHERE id=?`, [newPlanId, existing.id]);
+    const conn = await pool.getConnection();
+    try { await syncCompanyModulesToPlan(conn, session.company_id, newPlanId, session.id); } finally { conn.release(); }
+  } else if (pendingColumnReady) {
+    // Local plan_id is deliberately left untouched here — the company keeps
+    // its current plan's limits/features until Razorpay actually applies
+    // the change at cycle end, which arrives back through the normal
+    // subscription.charged/updated webhook (see the reconciliation in
+    // confirmRazorpaySubscription below).
+    await pool.query(`UPDATE company_subscriptions SET pending_plan_id=? WHERE id=?`, [newPlanId, existing.id]);
+  }
+
+  await logActivity({ userId: session.id, module: "platform", action: "razorpay_plan_change_scheduled", entityType: "company_subscription", entityId: existing.id, companyId: session.company_id, description: `${session.name} ${when === "now" ? "switched" : "scheduled a switch"} to plan "${newPlan.name}"${when === "cycle_end" ? ` (effective ${existing.ends_at})` : ""}` }).catch(() => {});
+
+  return { planName: newPlan.name, when, effectiveAt: when === "cycle_end" ? existing.ends_at : null };
 }
 
 /**
@@ -204,6 +269,20 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paym
   const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND gateway_subscription_id = ? LIMIT 1`, [razorpaySubscriptionId]);
   if (!row) { const e = new Error(`No local subscription record for Razorpay subscription ${razorpaySubscriptionId}.`); e.status = 404; throw e; }
 
+  // Reconcile a scheduled (cycle_end) plan change once Razorpay has
+  // actually applied it — the subscription's own plan_id will have flipped
+  // to the new plan's razorpay_plan_id by then. Purely a safety-net re-sync:
+  // changeCompanyRazorpayPlan's "now" path already updates plan_id itself
+  // without waiting for this; this is what catches the "cycle_end" case
+  // when the change finally lands, via whichever webhook fires next.
+  let planId = row.plan_id;
+  if (rzpSub.plan_id) {
+    const [[matchedPlan]] = await pool.query(`SELECT id, name FROM plans WHERE razorpay_plan_id = ?`, [rzpSub.plan_id]);
+    if (matchedPlan && matchedPlan.id !== row.plan_id) planId = matchedPlan.id;
+  }
+  const planChanged = planId !== row.plan_id;
+  const pendingColumnReady = await hasPendingPlanIdColumn();
+
   const wasAlreadyActive = row.status === "active";
   const nextBillingAt = rzpSub.charge_at ? new Date(rzpSub.charge_at * 1000).toISOString().slice(0, 10) : null;
 
@@ -218,23 +297,32 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paym
   // period ends" (and then rolls forward automatically on the next
   // successful charge), not "this subscription is one-time and terminal."
   await pool.query(
-    `UPDATE company_subscriptions SET status=?, gateway_customer_id=?, next_billing_at=?, ends_at=? WHERE id=?`,
-    [mappedStatus, rzpSub.customer_id || null, nextBillingAt, nextBillingAt, row.id]
+    `UPDATE company_subscriptions SET status=?, plan_id=?, gateway_customer_id=?, next_billing_at=?, ends_at=?${pendingColumnReady && planChanged ? ", pending_plan_id=NULL" : ""} WHERE id=?`,
+    [mappedStatus, planId, rzpSub.customer_id || null, nextBillingAt, nextBillingAt, row.id]
   );
+
+  if (planChanged) {
+    const [[newPlan]] = await pool.query(`SELECT name FROM plans WHERE id=?`, [planId]);
+    const [admins] = await pool.query(`SELECT id FROM users WHERE company_id=? AND is_super_admin=1 AND is_deleted=0`, [row.company_id]);
+    for (const admin of admins) {
+      await createNotification(row.company_id, admin.id, { title: "Plan changed", message: `Your scheduled plan change has taken effect — you're now on "${newPlan?.name}".`, type: "subscription_changed", link: `/workspace/settings/subscription` }).catch(() => {});
+    }
+    await logActivity({ userId: null, module: "platform", action: "razorpay_plan_change_applied", entityType: "company_subscription", entityId: row.id, companyId: row.company_id, description: `Scheduled plan change to "${newPlan?.name}" took effect` }).catch(() => {});
+  }
 
   if (mappedStatus === "active") {
     const conn = await pool.getConnection();
     try {
-      await syncCompanyModulesToPlan(conn, row.company_id, row.plan_id, null);
+      await syncCompanyModulesToPlan(conn, row.company_id, planId, null);
     } finally {
       conn.release();
     }
     if (!wasAlreadyActive) {
-      const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [row.plan_id]);
+      const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [planId]);
       if (paymentId && plan?.price) {
         const chargedAmount = Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0));
         await recordSubscriptionPayment({
-          companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
+          companyId: row.company_id, subscriptionId: row.id, planId, gateway: "razorpay",
           amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
           gatewayTransactionId: paymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
         }).catch(() => {});

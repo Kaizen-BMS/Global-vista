@@ -1,5 +1,6 @@
 import "server-only";
 import { pool } from "@/lib/db";
+import { hasPendingPlanIdColumn } from "@/lib/db/schemaFlags";
 
 export function requireCompany(session) {
   if (!session?.company_id) { const e = new Error("No company context on this session."); e.status = 401; throw e; }
@@ -56,9 +57,12 @@ export async function getSubscriptionState(companyId) {
  * client-state requirement this exists to satisfy.
  */
 export async function getSubscriptionDetails(companyId) {
+  const pendingColumnReady = await hasPendingPlanIdColumn();
   const [[sub]] = await pool.query(
     `SELECT cs.*, p.name AS plan_name, p.price, p.currency, p.billing_cycle, p.trial_days, p.max_storage_mb, p.max_users, p.max_leads
+            ${pendingColumnReady ? ", pp.name AS pending_plan_name" : ""}
      FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     ${pendingColumnReady ? "LEFT JOIN plans pp ON pp.id = cs.pending_plan_id" : ""}
      WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
     [companyId]
   );
@@ -97,6 +101,12 @@ export async function getSubscriptionDetails(companyId) {
     nextBillingAt: sub.next_billing_at,
     daysRemaining,
     isTrial: sub.status === "trial",
+    // Undefined (falsy) on a pre-migration DB, where this column doesn't
+    // exist yet — a company cancelling just gets the old immediate-cutoff
+    // behavior until the migration runs, never a crash.
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+    pendingPlanId: sub.pending_plan_id || null,
+    pendingPlanName: sub.pending_plan_name || null,
   };
 }
 

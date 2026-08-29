@@ -35,11 +35,20 @@ const STATUS_META = {
   expired: { label: "Expired", color: "text-muted-foreground border-border bg-muted/30" },
 };
 
-function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
+function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGateway, currentEndsAt, timezone, onClose }) {
   const router = useRouter();
-  const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout
+  const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout, or "planId:now"/"planId:cycle_end" while switching in place
   const [couponCode, setCouponCode] = useState("");
   const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
+
+  // A company already on an active Razorpay subscription switches plans in
+  // place (changeCompanyRazorpayPlan) instead of starting a whole new
+  // checkout — Razorpay updates the SAME authorized subscription, so there's
+  // a real choice of timing to offer. Anyone else (trial, BillDesk, no
+  // subscription yet, mid-checkout) just gets the existing fresh-checkout
+  // flow below — there's no existing gateway subscription to switch in
+  // place, so timing doesn't apply.
+  const canSwitchInPlace = subscriptionState === "active" && currentGateway === "razorpay";
 
   // "Current plan" only locks the Subscribe button when it's actually
   // active — a plan stuck in pending/payment_failed/past_due means checkout
@@ -124,6 +133,23 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
     } catch (err) { toast.error(err.message); setCheckingOut(null); }
   }
 
+  /** Updates the existing Razorpay subscription in place — no new
+   * checkout, no new authorization, so there's no Razorpay Checkout overlay
+   * to open here; the change is applied (or scheduled) purely server-side. */
+  async function changePlanInPlace(plan, when) {
+    setCheckingOut(`${plan.id}:${when}`);
+    try {
+      const res = await apiFetch("/api/core/subscription/razorpay/change-plan", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't change plan.");
+      toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
+      onClose();
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setCheckingOut(null); }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -187,6 +213,25 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
                   {plan.max_leads ? <li>{plan.max_leads.toLocaleString()} leads</li> : <li>Unlimited leads</li>}
                   {plan.max_storage_mb ? <li>{Math.round(plan.max_storage_mb / 1024)}GB storage</li> : <li>Unlimited storage</li>}
                 </ul>
+                {!isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay ? (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => changePlanInPlace(plan, "now")}
+                      disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
+                      className="btn-brand flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium disabled:opacity-50 cursor-pointer"
+                    >
+                      {checkingOut === `${plan.id}:now` && <Loader2 className="h-3 w-3 animate-spin" />} Switch Now
+                    </button>
+                    <button
+                      onClick={() => changePlanInPlace(plan, "cycle_end")}
+                      disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
+                      title={currentEndsAt ? `Effective ${formatDate(currentEndsAt, timezone)}` : undefined}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-xs font-medium disabled:opacity-50 cursor-pointer hover:border-indigo-500/30"
+                    >
+                      {checkingOut === `${plan.id}:cycle_end` && <Loader2 className="h-3 w-3 animate-spin" />} At Renewal
+                    </button>
+                  </div>
+                ) : (
                 <button
                   onClick={() => choosePlan(plan)}
                   disabled={isCurrent || checkingOut === plan.id || (isPaid && !plan.hasBillDesk && !plan.hasRazorpay)}
@@ -196,6 +241,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
                   {isCurrent && <CheckCircle2 className="h-3.5 w-3.5" />}
                   {isCurrent ? "Current Plan" : isSamePlan && needsPayment ? "Complete Payment" : isPaid ? "Subscribe" : "Contact Support"}
                 </button>
+                )}
               </motion.div>
             );
           })}
@@ -249,7 +295,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Resume Subscription
           </button>
         )}
-        {subscription.hasSubscription && subscription.state !== "cancelled" && (
+        {subscription.hasSubscription && subscription.state !== "cancelled" && !subscription.cancelAtPeriodEnd && (
           <button onClick={cancel} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-muted-foreground hover:text-red-400 text-xs font-medium cursor-pointer disabled:opacity-50 transition">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Cancel Subscription
           </button>
@@ -299,7 +345,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
         )}
       </AnimatePresence>
 
-      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} onClose={() => setShowPicker(false)} />}
+      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} currentGateway={subscription.gateway} currentEndsAt={subscription.endsAt} timezone={timezone} onClose={() => setShowPicker(false)} />}
     </div>
   );
 }

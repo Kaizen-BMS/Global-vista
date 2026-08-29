@@ -4,8 +4,9 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
 import { cancelBillDeskMandate } from "@/lib/payments/billdeskClient";
+import { cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasSubscriptionBillingSchema } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCancelAtPeriodEndColumn } from "@/lib/db/schemaFlags";
 
 /** Shared by every gateway's activation path — a company's subscription
  * just went active, so every Platform Operator gets notified regardless of
@@ -89,10 +90,27 @@ export async function getSubscriptionBillingStats() {
 // dispatches to whichever gateway the subscription is actually on.
 // ---------------------------------------------------------------------------
 
+/**
+ * Company-initiated cancel defers the actual cutoff to the end of the
+ * already-paid-for period (ends_at) whenever that's safely possible —
+ * standard SaaS behavior, and what the company already paid for. It's only
+ * safe to defer when we can be certain no further charge will land:
+ *   - Razorpay: real API support for "stop renewing, but don't cancel until
+ *     the current cycle ends" (cancel_at_cycle_end=true) — the ideal case.
+ *   - manual (no gateway, no recurring charge to worry about): trivially
+ *     safe to just flip the flag and let ends_at run out on its own.
+ * BillDesk/PayPal recurring cancellation isn't implemented well enough to
+ * trust deferring on them (see cancelBillDeskMandate's own caveat) — for
+ * those, and for any subscription with no ends_at to defer to, cancelling
+ * still means immediately, exactly as before.
+ */
 export async function cancelOwnSubscription(session) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can cancel the subscription."); e.status = 403; throw e; }
   const sub = await getSubscriptionForCompany(session.company_id);
   if (!sub) { const e = new Error("No subscription to cancel."); e.status = 404; throw e; }
+
+  const periodStillActive = sub.ends_at && new Date(sub.ends_at) > new Date();
+  const canDeferSafely = periodStillActive && (await hasCancelAtPeriodEndColumn()) && ["razorpay", "manual"].includes(sub.gateway);
 
   if (sub.gateway === "billdesk" && sub.gateway_subscription_id && sub.status === "active") {
     // Gateway-side mandate cancellation requires BillDesk's recurring API
@@ -103,9 +121,29 @@ export async function cancelOwnSubscription(session) {
     await cancelBillDeskMandate(sub.gateway_subscription_id).catch((err) => {
       console.error("BillDesk mandate cancellation not completed:", err.message);
     });
+  } else if (sub.gateway === "razorpay" && sub.gateway_subscription_id && ["active", "past_due", "pending"].includes(sub.status)) {
+    // Without this call, Razorpay's own recurring mandate keeps charging
+    // the customer every billing cycle regardless of what our local status
+    // says — cancelRazorpaySubscription existed but nothing ever called it,
+    // so every "cancel" here only ever cancelled OUR record, never the real
+    // one. cancelAtCycleEnd mirrors canDeferSafely: if we're keeping access
+    // until ends_at, Razorpay should likewise stop AFTER the current cycle,
+    // not claw back a cycle already paid for.
+    await cancelRazorpaySubscription(sub.gateway_subscription_id, canDeferSafely).catch((err) => {
+      console.error("Razorpay subscription cancellation not completed:", err.message);
+    });
   }
-  await pool.query(`UPDATE company_subscriptions SET status='cancelled', cancelled_at=NOW() WHERE id=?`, [sub.id]);
-  await logActivity({ userId: session.id, module: "platform", action: "subscription_cancelled_by_company", entityType: "company_subscription", entityId: sub.id, companyId: session.company_id, description: `${session.name} cancelled the subscription` }).catch(() => {});
+
+  if (canDeferSafely) {
+    // Status is deliberately left untouched — tenant.js only blocks access
+    // once ends_at actually passes (or status says 'cancelled'), so leaving
+    // it as-is is what keeps the company's access alive through what
+    // they've already paid for.
+    await pool.query(`UPDATE company_subscriptions SET cancel_at_period_end=1, cancelled_at=NOW() WHERE id=?`, [sub.id]);
+  } else {
+    await pool.query(`UPDATE company_subscriptions SET status='cancelled', cancelled_at=NOW() WHERE id=?`, [sub.id]);
+  }
+  await logActivity({ userId: session.id, module: "platform", action: "subscription_cancelled_by_company", entityType: "company_subscription", entityId: sub.id, companyId: session.company_id, description: `${session.name} cancelled the subscription${canDeferSafely ? ` (access continues until ${sub.ends_at})` : ""}` }).catch(() => {});
 }
 
 /** Resume only works for a gateway subscription the gateway itself still

@@ -65,6 +65,24 @@ export async function getRazorpaySubscription(razorpaySubscriptionId) {
   return razorpayFetch(`/subscriptions/${encodeURIComponent(razorpaySubscriptionId)}`);
 }
 
+/**
+ * Razorpay's own upgrade/downgrade primitive — changes the Plan an
+ * ALREADY-AUTHORIZED subscription bills against, instead of creating a
+ * second, separate subscription (which is how this app used to handle a
+ * plan switch, and which silently left the old subscription running and
+ * billing forever since nothing ever cancelled it). `scheduleChangeAt`
+ * is Razorpay's own documented parameter: "now" applies the new plan (and
+ * its price) on the next charge immediately, "cycle_end" keeps the current
+ * plan running until the paid-for period ends and only then switches —
+ * exactly the two choices a company should get when changing plans.
+ */
+export async function updateRazorpaySubscription(razorpaySubscriptionId, { razorpayPlanId, scheduleChangeAt = "now" }) {
+  return razorpayFetch(`/subscriptions/${encodeURIComponent(razorpaySubscriptionId)}`, {
+    method: "PATCH",
+    body: { plan_id: razorpayPlanId, schedule_change_at: scheduleChangeAt },
+  });
+}
+
 export async function cancelRazorpaySubscription(razorpaySubscriptionId, cancelAtCycleEnd = false) {
   return razorpayFetch(`/subscriptions/${encodeURIComponent(razorpaySubscriptionId)}/cancel`, {
     method: "POST",

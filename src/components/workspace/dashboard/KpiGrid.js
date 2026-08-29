@@ -52,12 +52,22 @@ export function CrmKpiGrid({ crm }) {
 
 /** Platform subscription billing — what THIS company has actually paid the
  * platform, distinct from the "Payments" section above (which is money
- * this company collects FROM its own leads/customers). Only rendered when
- * at least one real payment exists — a brand-new/trial/manual company sees
- * nothing here rather than a wall of zeros. */
-export function SubscriptionKpiGrid({ planName, totalPaid, currency, lastPaymentAmount, lastPaymentDate, gateway }) {
+ * this company collects FROM its own leads/customers). Rendered whenever
+ * the company has a subscription at all (trial/manual/free included) —
+ * previously gated on "at least one real payment exists", which hid the
+ * whole section, "Current Plan" and all, for any company that hadn't paid
+ * yet. Every card already links to Settings > Subscription, where the
+ * actual Upgrade/Downgrade/Cancel actions live. */
+export function SubscriptionKpiGrid({ planName, state, daysRemaining, cancelAtPeriodEnd, totalPaid, currency, lastPaymentAmount, lastPaymentDate, gateway }) {
+  const planHint = cancelAtPeriodEnd
+    ? `Cancels in ${daysRemaining ?? "?"} day${daysRemaining === 1 ? "" : "s"}`
+    : state === "trial" && daysRemaining != null
+    ? `Trial · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`
+    : daysRemaining != null && daysRemaining >= 0 && daysRemaining <= 7
+    ? `Renews in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`
+    : null;
   const cards = [
-    { label: "Current Plan", value: planName || "—", icon: "calendarCheck", accent: "indigo", href: "/workspace/settings/subscription" },
+    { label: "Current Plan", value: planName || "—", icon: "calendarCheck", accent: cancelAtPeriodEnd ? "yellow" : "indigo", hint: planHint, href: "/workspace/settings/subscription" },
     { label: "Total Paid", value: `${currency} ${Number(totalPaid).toLocaleString()}`, icon: "card", accent: "green", href: "/workspace/settings/subscription" },
     { label: "Last Payment", value: lastPaymentAmount != null ? `${currency} ${Number(lastPaymentAmount).toLocaleString()}` : "—", icon: "receipt", accent: "blue", hint: lastPaymentDate ? `${lastPaymentDate}${gateway ? ` · ${gateway}` : ""}` : null, href: "/workspace/settings/subscription" },
   ];
