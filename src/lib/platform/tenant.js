@@ -1,6 +1,6 @@
 import "server-only";
 import { pool } from "@/lib/db";
-import { hasPendingPlanIdColumn } from "@/lib/db/schemaFlags";
+import { hasPendingPlanIdColumn, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 
 export function requireCompany(session) {
   if (!session?.company_id) { const e = new Error("No company context on this session."); e.status = 401; throw e; }
@@ -118,6 +118,52 @@ export async function getSubscriptionDetails(companyId) {
  * newly registered ones — since it's evaluated fresh against the company's
  * current subscription every time, not seeded once at signup.
  */
+/** Same shape as enforceLeadLimit, for the plan's max_users limit — called
+ * before creating a new employee. A per_user-priced plan (see
+ * pricing_model on plans) has "Unlimited users" in the sense that adding
+ * one is never blocked by this check (max_users is typically NULL on those
+ * tiers) — the cost of adding a seat there is the recurring per-user
+ * charge itself (see syncSubscriptionSeatCount), not a hard cap. */
+export async function enforceUserLimit(companyId) {
+  const [[plan]] = await pool.query(
+    `SELECT p.max_users FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  if (!plan?.max_users) return; // no subscription row, or unlimited
+
+  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users WHERE company_id = ? AND is_deleted = 0`, [companyId]);
+  if (count >= plan.max_users) {
+    const e = new Error(`This plan's employee limit (${plan.max_users}) has been reached. Upgrade the plan to add more employees.`);
+    e.status = 403;
+    throw e;
+  }
+}
+
+/** Gates the lead import/export feature (plans.allow_import_export) — a
+ * company on a plan without it can still see the module normally, they
+ * just can't bulk-import or bulk-export leads. Fails OPEN pre-migration
+ * (column doesn't exist yet) and for a company with no subscription row at
+ * all, same "never invent a restriction the schema can't back up yet"
+ * convention as every other schema-gated check in this app. */
+export async function isImportExportAllowed(companyId) {
+  if (!(await hasTieredPlansSchema())) return true;
+  const [[plan]] = await pool.query(
+    `SELECT p.allow_import_export FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  return plan ? plan.allow_import_export !== 0 : true;
+}
+
+export async function assertImportExportAllowed(companyId) {
+  if (!(await isImportExportAllowed(companyId))) {
+    const e = new Error("Lead import/export isn't included in your company's current plan. Upgrade to unlock it.");
+    e.status = 403;
+    throw e;
+  }
+}
+
 export async function enforceLeadLimit(companyId) {
   const [[plan]] = await pool.query(
     `SELECT p.max_leads FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id

@@ -4,9 +4,9 @@ import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
-import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
+import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, updateRazorpaySubscriptionQuantity, cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
-import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
@@ -63,15 +63,75 @@ async function ensureRazorpayPlanId(plan) {
   return razorpayPlanId;
 }
 
+/** The maintenance fee bills as its own real, separate yearly Razorpay Plan
+ * — Razorpay has no "recurring amount + annual add-on" on a single
+ * subscription, so a per_user plan with a maintenance fee ends up with TWO
+ * parallel Razorpay subscriptions (see confirmRazorpayMaintenanceSubscription
+ * and company_subscriptions.maintenance_gateway_subscription_id). */
+async function ensureMaintenanceRazorpayPlanId(plan) {
+  if (plan.maintenance_razorpay_plan_id) return plan.maintenance_razorpay_plan_id;
+  if (!(Number(plan.maintenance_annual_fee) > 0)) return null;
+  const razorpayPlanId = await createRazorpayPlan({
+    id: plan.id, name: `${plan.name} (Maintenance)`, description: `${plan.name} annual maintenance fee`,
+    billing_cycle: "yearly", price: plan.maintenance_annual_fee, currency: plan.currency,
+  });
+  await pool.query(`UPDATE plans SET maintenance_razorpay_plan_id = ? WHERE id = ?`, [razorpayPlanId, plan.id]);
+  return razorpayPlanId;
+}
+
 export async function syncPlanToRazorpay(planId, operatorId) {
   if (!(await hasPlanRazorpayColumns())) assertBillingSchemaReady();
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ?`, [planId]);
   if (!plan) { const e = new Error("Plan not found."); e.status = 404; throw e; }
 
   const razorpayPlanId = await ensureRazorpayPlanId(plan);
+  const maintenanceRazorpayPlanId = (await hasTieredPlansSchema()) ? await ensureMaintenanceRazorpayPlanId(plan) : null;
 
-  await logActivity({ userId: operatorId, module: "platform", action: "plan_synced_to_razorpay", entityType: "plan", entityId: planId, description: `Synced plan "${plan.name}" to Razorpay (plan=${razorpayPlanId})` }).catch(() => {});
-  return { razorpayPlanId };
+  await logActivity({ userId: operatorId, module: "platform", action: "plan_synced_to_razorpay", entityType: "plan", entityId: planId, description: `Synced plan "${plan.name}" to Razorpay (plan=${razorpayPlanId}${maintenanceRazorpayPlanId ? `, maintenance=${maintenanceRazorpayPlanId}` : ""})` }).catch(() => {});
+  return { razorpayPlanId, maintenanceRazorpayPlanId };
+}
+
+// ---------------------------------------------------------------------------
+// Seat-count sync — keeps a per_user subscription's Razorpay quantity
+// matching the company's actual active headcount. Called (best-effort,
+// never throwing into the caller's own success path) from every place an
+// employee is hired, deleted, restored, or has their active/inactive
+// status flipped — see users.js.
+// ---------------------------------------------------------------------------
+
+/**
+ * Recomputes a company's active employee count and pushes it to Razorpay
+ * as the subscription's quantity, if (and only if) the company is on an
+ * active, per_user-priced, Razorpay-billed plan. A no-op for every other
+ * case (flat plans, trial, no subscription, non-Razorpay gateway) — this
+ * is meant to be called unconditionally after any headcount change, not
+ * only when the caller already knows billing is seat-based.
+ *
+ * Best-effort by design: a transient Razorpay API failure here must never
+ * fail the user create/delete/status-change action that triggered it — the
+ * quantity will simply be corrected the next time headcount changes, or on
+ * the next successful call.
+ */
+export async function syncSubscriptionSeatCount(companyId) {
+  if (!(await hasTieredPlansSchema())) return;
+  const [[sub]] = await pool.query(
+    `SELECT cs.id, cs.gateway, cs.gateway_subscription_id, cs.status, cs.seat_quantity, p.pricing_model
+     FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+     WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
+    [companyId]
+  );
+  if (!sub || sub.gateway !== "razorpay" || sub.status !== "active" || sub.pricing_model !== "per_user" || !sub.gateway_subscription_id) return;
+
+  const [[{ userCount }]] = await pool.query(`SELECT COUNT(*) AS userCount FROM users WHERE company_id = ? AND is_deleted = 0 AND status = 'active'`, [companyId]);
+  const quantity = Math.max(1, userCount);
+  if (quantity === sub.seat_quantity) return; // already correct — avoid a pointless API call on every unrelated user update
+
+  try {
+    await updateRazorpaySubscriptionQuantity(sub.gateway_subscription_id, quantity);
+    await pool.query(`UPDATE company_subscriptions SET seat_quantity = ? WHERE id = ?`, [quantity, sub.id]);
+  } catch (err) {
+    console.error(`Seat-count sync failed for company ${companyId} (subscription ${sub.gateway_subscription_id}):`, err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,14 +177,43 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
   }
 
   const existing = await getSubscriptionForCompany(companyId);
+  const tieredSchemaReady = await hasTieredPlansSchema();
+
+  // Seat-based plans bill amount × quantity — quantity is the company's
+  // current active headcount, kept in sync afterward by
+  // syncSubscriptionSeatCount whenever someone is hired/removed.
+  let seatQuantity = 1;
+  if (tieredSchemaReady && plan.pricing_model === "per_user") {
+    const [[{ userCount }]] = await pool.query(`SELECT COUNT(*) AS userCount FROM users WHERE company_id = ? AND is_deleted = 0`, [companyId]);
+    seatQuantity = Math.max(1, userCount);
+  }
 
   const { razorpaySubscriptionId } = await createRazorpaySubscription({
     razorpayPlanId: razorpayPlanIdForCheckout,
     billingCycle: plan.billing_cycle,
+    quantity: seatQuantity,
     customerEmail: subscriberEmail,
     customerName: subscriberName,
     customId: `company:${companyId}`,
   });
+
+  // The annual maintenance fee (if this plan has one) is a SEPARATE real
+  // Razorpay subscription running in parallel — see
+  // ensureMaintenanceRazorpayPlanId's comment for why Razorpay can't just
+  // bill "amount + annual add-on" on one subscription object. The browser
+  // opens a second Checkout overlay for this one right after the first
+  // succeeds (see SubscriptionManager.js).
+  let maintenanceRazorpaySubscriptionId = null;
+  if (tieredSchemaReady && Number(plan.maintenance_annual_fee) > 0) {
+    const maintenancePlanId = await ensureMaintenanceRazorpayPlanId(plan);
+    if (maintenancePlanId) {
+      const maintenanceResult = await createRazorpaySubscription({
+        razorpayPlanId: maintenancePlanId, billingCycle: "yearly", quantity: 1,
+        customerEmail: subscriberEmail, customerName: subscriberName, customId: `company:${companyId}:maintenance`,
+      });
+      maintenanceRazorpaySubscriptionId = maintenanceResult.razorpaySubscriptionId;
+    }
+  }
 
   if (existing) {
     // Belt-and-suspenders: switching plans normally goes through
@@ -140,19 +229,39 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
         console.error("Old Razorpay subscription cancellation not completed:", err.message);
       });
     }
+    if (existing.gateway === "razorpay" && existing.maintenance_gateway_subscription_id) {
+      await cancelRazorpaySubscription(existing.maintenance_gateway_subscription_id, false).catch((err) => {
+        console.error("Old Razorpay maintenance subscription cancellation not completed:", err.message);
+      });
+    }
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?, gateway='razorpay', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
-      couponsAvailable ? [planId, razorpaySubscriptionId, couponId, couponId ? discountAmount : null, existing.id] : [planId, razorpaySubscriptionId, existing.id]
+      `UPDATE company_subscriptions SET plan_id=?, gateway='razorpay', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id=?, seat_quantity=?" : ""} WHERE id=?`,
+      [
+        planId, razorpaySubscriptionId,
+        ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []),
+        ...(tieredSchemaReady ? [maintenanceRazorpaySubscriptionId, seatQuantity] : []),
+        existing.id,
+      ]
     );
   } else {
     await pool.query(
-      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""})`,
-      couponsAvailable ? [companyId, planId, "razorpay", razorpaySubscriptionId, "pending", couponId, couponId ? discountAmount : null] : [companyId, planId, "razorpay", razorpaySubscriptionId, "pending"]
+      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id, seat_quantity" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""}${tieredSchemaReady ? ",?,?" : ""})`,
+      [
+        companyId, planId, "razorpay", razorpaySubscriptionId, "pending",
+        ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []),
+        ...(tieredSchemaReady ? [maintenanceRazorpaySubscriptionId, seatQuantity] : []),
+      ]
     );
   }
 
   await logActivity({ userId: actorId, module: "platform", action: "razorpay_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started Razorpay checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}` }).catch(() => {});
-  return { razorpaySubscriptionId, razorpayKeyId: process.env.RAZORPAY_KEY_ID, planName: plan.name, amount: discountAmount ? Number(plan.price) - discountAmount : plan.price, currency: plan.currency };
+  const perUserAmount = discountAmount ? Number(plan.price) - discountAmount : plan.price;
+  return {
+    razorpaySubscriptionId, razorpayKeyId: process.env.RAZORPAY_KEY_ID, planName: plan.name,
+    amount: perUserAmount, seatQuantity, currency: plan.currency,
+    totalAmount: Math.round(perUserAmount * seatQuantity * 100) / 100,
+    maintenanceRazorpaySubscriptionId, maintenanceAmount: plan.maintenance_annual_fee || null,
+  };
 }
 
 export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null } = {}) {
@@ -243,6 +352,33 @@ export async function verifyAndConfirmRazorpaySubscriptionPublic({ razorpaySubsc
   const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
   if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
   return confirmRazorpaySubscription(razorpaySubscriptionId, { paymentId: razorpayPaymentId });
+}
+
+/**
+ * The second Checkout overlay's callback — same signature-verification
+ * trust boundary as the main subscription, then records the maintenance
+ * payment directly (rather than waiting on the payment.captured webhook,
+ * same "close the revenue gap if the webhook is missed/delayed" reasoning
+ * confirmRazorpaySubscription's own paymentId branch documents).
+ */
+export async function verifyAndConfirmRazorpayMaintenanceSubscription({ session, razorpaySubscriptionId, razorpayPaymentId, razorpaySignature }) {
+  if (!(await hasTieredPlansSchema())) { const e = new Error("Tiered plans aren't available yet."); e.status = 503; throw e; }
+  const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND maintenance_gateway_subscription_id = ? AND company_id = ? LIMIT 1`, [razorpaySubscriptionId, session.company_id]);
+  if (!row) { const e = new Error("No matching maintenance subscription found for this company."); e.status = 404; throw e; }
+
+  const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
+  if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
+
+  const result = await confirmRazorpayMaintenanceSubscription(razorpaySubscriptionId);
+  const [[plan]] = await pool.query(`SELECT name, maintenance_annual_fee, currency FROM plans WHERE id=?`, [row.plan_id]);
+  if (plan?.maintenance_annual_fee) {
+    await recordSubscriptionPayment({
+      companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
+      amount: plan.maintenance_annual_fee, currency: plan.currency || "INR",
+      gatewayTransactionId: razorpayPaymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed", billingCycle: "yearly",
+    }).catch(() => {});
+  }
+  return result;
 }
 
 /**
@@ -344,18 +480,60 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paym
   return { status: mappedStatus, companyId: row.company_id, subscriptionId: row.id };
 }
 
+/** Looks a Razorpay subscription id up against EITHER column — the primary
+ * (per-user/flat) subscription or the parallel maintenance one — since a
+ * webhook event just carries a bare subscription id with no indication of
+ * which stream it belongs to. `isMaintenance` tells callers which. */
+async function findSubscriptionRowByRazorpayId(razorpaySubscriptionId) {
+  const tieredReady = await hasTieredPlansSchema();
+  const [[row]] = await pool.query(
+    tieredReady
+      ? `SELECT *, (maintenance_gateway_subscription_id = ?) AS isMaintenance FROM company_subscriptions WHERE gateway='razorpay' AND (gateway_subscription_id = ? OR maintenance_gateway_subscription_id = ?) LIMIT 1`
+      : `SELECT *, 0 AS isMaintenance FROM company_subscriptions WHERE gateway='razorpay' AND gateway_subscription_id = ? LIMIT 1`,
+    tieredReady ? [razorpaySubscriptionId, razorpaySubscriptionId, razorpaySubscriptionId] : [razorpaySubscriptionId]
+  );
+  return row ? { ...row, isMaintenance: !!row.isMaintenance } : null;
+}
+
+/**
+ * Maintenance-subscription counterpart to confirmRazorpaySubscription —
+ * far simpler, since a maintenance renewal never changes which plan/modules
+ * a company has (that's entirely driven by the main subscription). Mostly
+ * just keeps its own status current so the Platform Console can show
+ * whether the maintenance fee is actually being collected.
+ */
+export async function confirmRazorpayMaintenanceSubscription(razorpaySubscriptionId) {
+  if (!(await hasTieredPlansSchema())) return { status: "pending" };
+  const rzpSub = await getRazorpaySubscription(razorpaySubscriptionId);
+  const mappedStatus = RAZORPAY_STATUS_MAP[rzpSub.status] || "pending";
+  const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE maintenance_gateway_subscription_id = ? LIMIT 1`, [razorpaySubscriptionId]);
+  if (!row) { const e = new Error(`No local subscription record for Razorpay maintenance subscription ${razorpaySubscriptionId}.`); e.status = 404; throw e; }
+  return { status: mappedStatus, companyId: row.company_id, subscriptionId: row.id };
+}
+
 async function handleRazorpayPaymentFailed(payload) {
   const razorpaySubscriptionId = payload.payment?.entity?.subscription_id || payload.subscription?.entity?.id;
   if (!razorpaySubscriptionId) return;
-  const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND gateway_subscription_id = ? LIMIT 1`, [razorpaySubscriptionId]);
+  const row = await findSubscriptionRowByRazorpayId(razorpaySubscriptionId);
   if (!row) return;
-  await pool.query(`UPDATE company_subscriptions SET status='past_due' WHERE id=?`, [row.id]);
 
   const [[plan]] = await pool.query(`SELECT name FROM plans WHERE id=?`, [row.plan_id]);
+  // A failed MAINTENANCE payment is an administrative fee falling behind,
+  // not the core subscription lapsing — it doesn't cut off daily software
+  // access the way the main subscription's status does (see tenant.js).
+  // Admins still need to know, so they can retry it with Razorpay directly.
+  if (!row.isMaintenance) {
+    await pool.query(`UPDATE company_subscriptions SET status='past_due' WHERE id=?`, [row.id]);
+  }
+
   const [admins] = await pool.query(`SELECT id, email FROM users WHERE company_id=? AND is_super_admin=1 AND is_deleted=0`, [row.company_id]);
   for (const admin of admins) {
     await createNotification(row.company_id, admin.id, {
-      title: "Payment failed", message: `Your "${plan?.name}" subscription payment failed. Please update your payment method with Razorpay.`, type: "payment_failed", link: `/workspace/settings/subscription`,
+      title: row.isMaintenance ? "Maintenance payment failed" : "Payment failed",
+      message: row.isMaintenance
+        ? `Your "${plan?.name}" annual maintenance payment failed. Please update your payment method with Razorpay.`
+        : `Your "${plan?.name}" subscription payment failed. Please update your payment method with Razorpay.`,
+      type: "payment_failed", link: `/workspace/settings/subscription`,
     }).catch(() => {});
     if (admin.email) await sendSubscriptionPaymentFailedEmail({ to: admin.email, companyId: row.company_id, planName: plan?.name || "your plan" }).catch(() => {});
   }
@@ -365,14 +543,32 @@ async function handleRazorpayPaymentCaptured(payload) {
   const payment = payload.payment?.entity;
   const razorpaySubscriptionId = payment?.subscription_id;
   if (!razorpaySubscriptionId) return; // a one-off payment unrelated to a subscription — nothing for this module to record
-  const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND gateway_subscription_id = ? LIMIT 1`, [razorpaySubscriptionId]);
+  const row = await findSubscriptionRowByRazorpayId(razorpaySubscriptionId);
   if (!row) return;
 
   await recordSubscriptionPayment({
     companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
     amount: (payment.amount || 0) / 100, currency: payment.currency || "INR",
     gatewayTransactionId: payment.id, gatewayOrderId: payment.order_id || null, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
+    billingCycle: row.isMaintenance ? "yearly" : undefined,
   });
+
+  // Maintenance renewals don't gate plan/module access or coupon redemption
+  // — that's all driven by the main subscription only.
+  if (row.isMaintenance) {
+    const [[plan]] = await pool.query(`SELECT name FROM plans WHERE id=?`, [row.plan_id]);
+    const [admins] = await pool.query(`SELECT email FROM users WHERE company_id=? AND is_super_admin=1 AND is_deleted=0`, [row.company_id]);
+    for (const admin of admins) {
+      if (admin.email) {
+        await sendSubscriptionReceiptEmail({
+          to: admin.email, companyId: row.company_id, planName: `${plan?.name || "Plan"} (Maintenance)`,
+          amount: (payment.amount || 0) / 100, currency: payment.currency || "INR",
+          billingCycle: "yearly", gatewayName: "Razorpay", gatewayTransactionId: payment.id, gatewaySubscriptionId: razorpaySubscriptionId,
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
 
   if (row.coupon_id) {
     await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});
@@ -415,9 +611,14 @@ export async function processRazorpayWebhookEvent({ eventId, eventType, rawPaylo
       case "subscription.cancelled":
       case "subscription.completed":
       case "subscription.paused":
-      case "subscription.resumed":
-        if (payload.subscription?.entity?.id) await confirmRazorpaySubscription(payload.subscription.entity.id);
+      case "subscription.resumed": {
+        const subId = payload.subscription?.entity?.id;
+        if (!subId) break;
+        const row = await findSubscriptionRowByRazorpayId(subId);
+        if (row?.isMaintenance) await confirmRazorpayMaintenanceSubscription(subId);
+        else await confirmRazorpaySubscription(subId);
         break;
+      }
       case "subscription.pending":
       case "subscription.halted":
         await handleRazorpayPaymentFailed(payload);

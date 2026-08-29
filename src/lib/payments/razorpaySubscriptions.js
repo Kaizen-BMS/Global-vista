@@ -45,18 +45,34 @@ export async function createRazorpayPlan(plan) {
 
 /** Creates a real Razorpay subscription. The browser opens Razorpay
  * Checkout with the returned id — Razorpay Checkout is a JS overlay, not a
- * redirect, so there's no return_url here (unlike PayPal). */
-export async function createRazorpaySubscription({ razorpayPlanId, billingCycle, customerEmail, customerName, customId }) {
+ * redirect, so there's no return_url here (unlike PayPal). `quantity` is
+ * Razorpay's own seat-count multiplier — the subscription charges
+ * plan.item.amount × quantity per cycle, which is what makes per-user
+ * pricing (see plans.pricing_model='per_user') a real recurring charge
+ * instead of something this app would have to calculate and re-invoice
+ * itself every cycle. */
+export async function createRazorpaySubscription({ razorpayPlanId, billingCycle, quantity = 1, customerEmail, customerName, customId }) {
   const data = await razorpayFetch("/subscriptions", {
     method: "POST",
     body: {
       plan_id: razorpayPlanId,
+      quantity,
       total_count: TOTAL_COUNT_BY_CYCLE[billingCycle] || 120,
       customer_notify: 1,
       notes: { crm_reference: String(customId), customer_email: customerEmail || "", customer_name: customerName || "" },
     },
   });
   return { razorpaySubscriptionId: data.id, status: data.status };
+}
+
+/** Updates just the seat count on an already-authorized subscription —
+ * called whenever a company's active employee count changes (see
+ * syncSubscriptionSeatCount). "now" so the new headcount is reflected on
+ * the very next charge; Razorpay's own proration (if any) for a quantity
+ * change mid-cycle is Razorpay's documented behavior, not something this
+ * app calculates independently. */
+export async function updateRazorpaySubscriptionQuantity(razorpaySubscriptionId, quantity) {
+  return updateRazorpaySubscription(razorpaySubscriptionId, { quantity, scheduleChangeAt: "now" });
 }
 
 /** The ONLY function allowed to be treated as proof a subscription is real
@@ -76,11 +92,11 @@ export async function getRazorpaySubscription(razorpaySubscriptionId) {
  * plan running until the paid-for period ends and only then switches —
  * exactly the two choices a company should get when changing plans.
  */
-export async function updateRazorpaySubscription(razorpaySubscriptionId, { razorpayPlanId, scheduleChangeAt = "now" }) {
-  return razorpayFetch(`/subscriptions/${encodeURIComponent(razorpaySubscriptionId)}`, {
-    method: "PATCH",
-    body: { plan_id: razorpayPlanId, schedule_change_at: scheduleChangeAt },
-  });
+export async function updateRazorpaySubscription(razorpaySubscriptionId, { razorpayPlanId, quantity, scheduleChangeAt = "now" }) {
+  const body = { schedule_change_at: scheduleChangeAt };
+  if (razorpayPlanId) body.plan_id = razorpayPlanId;
+  if (quantity != null) body.quantity = quantity;
+  return razorpayFetch(`/subscriptions/${encodeURIComponent(razorpaySubscriptionId)}`, { method: "PATCH", body });
 }
 
 export async function cancelRazorpaySubscription(razorpaySubscriptionId, cancelAtCycleEnd = false) {

@@ -5,7 +5,7 @@ import { createBillDeskCheckoutForCompany } from "@/lib/platform/actions/billdes
 import { createRazorpayCheckoutForCompany } from "@/lib/platform/actions/razorpayBilling";
 import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
-import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
  * only, no internal-only fields. `description` only selected once the
@@ -16,14 +16,18 @@ import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns } fr
  * platform-wide (not per-plan), reported separately via billDeskAvailable
  * so the registration UI knows which payment method(s) to offer. */
 export async function listPublicPlans() {
-  const [withDescription, withRazorpay] = await Promise.all([hasPlanDescriptionColumn(), hasPlanRazorpayColumns()]);
+  const [withDescription, withRazorpay, withTiers] = await Promise.all([hasPlanDescriptionColumn(), hasPlanRazorpayColumns(), hasTieredPlansSchema()]);
   const [rows] = await pool.query(
     `SELECT id, name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
      ${withRazorpay ? ", (razorpay_plan_id IS NOT NULL) AS hasRazorpay" : ", 0 AS hasRazorpay"}
+     ${withTiers ? ", pricing_model, maintenance_annual_fee, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""}
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
   const billDeskAvailable = getBillDeskStatus().configured;
-  return rows.map((r) => ({ ...r, hasRazorpay: !!r.hasRazorpay, hasBillDesk: billDeskAvailable }));
+  return rows.map((r) => ({
+    ...r, hasRazorpay: !!r.hasRazorpay, hasBillDesk: billDeskAvailable,
+    pricing_model: r.pricing_model || "flat", allow_import_export: r.allow_import_export ?? 1,
+  }));
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

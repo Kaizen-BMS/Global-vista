@@ -5,6 +5,7 @@ import { can } from "@/lib/helpers/permissions";
 import { listLeads, listDistinctTags } from "@/lib/modules/crm/actions/leads";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
+import { isImportExportAllowed } from "@/lib/platform/tenant";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadFilters from "@/components/crm/leads/LeadFilters";
 import AssignedToQuickTabs from "@/components/crm/leads/AssignedToQuickTabs";
@@ -17,7 +18,7 @@ export default async function LeadManagementPage({ searchParams }) {
   if (!(await can(session, "leads.view"))) return <ForbiddenState />;
 
   const sp = await searchParams;
-  const [result, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate] = await Promise.all([
+  const [result, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport] = await Promise.all([
     listLeads(session, {
       status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
       sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
@@ -34,6 +35,7 @@ export default async function LeadManagementPage({ searchParams }) {
     can(session, "leads.create"),
     can(session, "leads.assign"),
     can(session, "leads.update"),
+    isImportExportAllowed(session.company_id),
   ]);
 
   return (
@@ -44,9 +46,11 @@ export default async function LeadManagementPage({ searchParams }) {
           <LeadViewToggle active="list" />
           {canCreate && (
             <>
-              <Link href="/workspace/lead-management/import" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm font-medium transition cursor-pointer">
-                <Upload className="h-4 w-4" /> Import
-              </Link>
+              {canImportExport && (
+                <Link href="/workspace/lead-management/import" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm font-medium transition cursor-pointer">
+                  <Upload className="h-4 w-4" /> Import
+                </Link>
+              )}
               <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
                 <Plus className="h-4 w-4" /> Add Lead
               </Link>
@@ -56,7 +60,7 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       <AssignedToQuickTabs />
-      <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} />
+      <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} allowImportExport={canImportExport} />
       <LeadsTable
         leads={result.leads}
         canBulkAssign={canAssign}

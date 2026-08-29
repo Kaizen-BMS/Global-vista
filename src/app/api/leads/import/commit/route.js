@@ -3,10 +3,12 @@ import { can } from "@/lib/helpers/permissions";
 import { ok, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
 import { commitLeadImportChunk } from "@/lib/modules/crm/actions/leadImport";
 import { withCsrf } from "@/lib/helpers/withCsrf";
+import { assertImportExportAllowed } from "@/lib/platform/tenant";
 
 export const POST = withCsrf(withErrorHandling(async (request) => {
   const session = await getSession();
   if (!(await can(session, "leads.create"))) return forbidden();
+  await assertImportExportAllowed(session.company_id);
 
   const body = await request.json();
   if (!Array.isArray(body.rows) || !body.rows.length) return badRequest("rows is required.");

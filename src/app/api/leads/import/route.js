@@ -4,6 +4,7 @@ import { ok, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/resp
 import { parseSpreadsheet } from "@/lib/core/actions/userImport";
 import { validateLeadImportRows, autoMapColumns } from "@/lib/modules/crm/actions/leadImport";
 import { withCsrf } from "@/lib/helpers/withCsrf";
+import { assertImportExportAllowed } from "@/lib/platform/tenant";
 
 // Mirrors the existing user-import endpoint's shape (stateless, file
 // re-sent per call, action-switched) — parse and validate both need the
@@ -12,6 +13,7 @@ import { withCsrf } from "@/lib/helpers/withCsrf";
 export const POST = withCsrf(withErrorHandling(async (request) => {
   const session = await getSession();
   if (!(await can(session, "leads.create"))) return forbidden();
+  await assertImportExportAllowed(session.company_id);
 
   const formData = await request.formData();
   const action = formData.get("action");

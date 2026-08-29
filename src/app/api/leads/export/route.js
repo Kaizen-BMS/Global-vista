@@ -4,6 +4,7 @@ import { forbidden, withErrorHandling } from "@/lib/helpers/response";
 import { listLeadsForExport } from "@/lib/modules/crm/actions/leads";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { buildExportResponse } from "@/lib/helpers/export";
+import { assertImportExportAllowed } from "@/lib/platform/tenant";
 
 const COLUMNS = [
   ["lead_number", "Lead Number"], ["name", "Name"], ["email", "Email"], ["phone", "Phone"],
@@ -17,6 +18,7 @@ const COLUMNS = [
 export const GET = withErrorHandling(async (request) => {
   const session = await getSession();
   if (!(await can(session, "leads.export"))) return forbidden();
+  await assertImportExportAllowed(session.company_id);
 
   const { searchParams } = new URL(request.url);
   const format = searchParams.get("format") === "csv" ? "csv" : "xlsx";

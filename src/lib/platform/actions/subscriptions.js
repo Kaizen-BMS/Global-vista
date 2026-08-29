@@ -2,7 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 import { cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 
 /** One row per company — its most recent subscription, joined with plan,
@@ -128,13 +128,15 @@ export { syncCompanyModulesToPlan };
 export async function createPlan(data) {
   const slug = data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const withDescription = await hasPlanDescriptionColumn();
+  const withTiers = await hasTieredPlansSchema();
   const [result] = await pool.query(
-    withDescription
-      ? `INSERT INTO plans (name, slug, description, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-      : `INSERT INTO plans (name, slug, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    withDescription
-      ? [data.name, slug, data.description || null, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
-      : [data.name, slug, data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active"]
+    `INSERT INTO plans (name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status${withTiers ? ", pricing_model, maintenance_annual_fee, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""})
+     VALUES (?,?${withDescription ? ",?" : ""},?,?,?,?,?,?,?,?,?${withTiers ? ",?,?,?,?,?,?" : ""})`,
+    [
+      data.name, slug, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR",
+      data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
+      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.maintenanceAnnualFee || null, data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+    ]
   );
   return result.insertId;
 }
@@ -188,7 +190,7 @@ export async function deletePlan(id, operatorId) {
 // were synced before the PayPal/Razorpay retirement — no code still syncs
 // to either.
 export async function updatePlan(id, data) {
-  const [withDescription, withPayPal, withRazorpay] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns()]);
+  const [withDescription, withPayPal, withRazorpay, withTiers] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns(), hasTieredPlansSchema()]);
 
   let paypalLinkCleared = false;
   let razorpayLinkCleared = false;
@@ -199,13 +201,23 @@ export async function updatePlan(id, data) {
     razorpayLinkCleared = !!(withRazorpay && existing?.razorpay_plan_id && pricingChanged);
   }
 
+  // A plan already synced to Razorpay whose pricing model changes
+  // (flat<->per_user) can't keep the old Razorpay Plan either — it bakes in
+  // a fixed amount that no longer means what the new model needs it to.
+  if (withRazorpay && withTiers) {
+    const [[existing]] = await pool.query(`SELECT pricing_model FROM plans WHERE id=?`, [id]);
+    if (existing && existing.pricing_model !== (data.pricingModel === "per_user" ? "per_user" : "flat")) razorpayLinkCleared = true;
+  }
+
   const clearClauses = [paypalLinkCleared && "paypal_plan_id=NULL", razorpayLinkCleared && "razorpay_plan_id=NULL"].filter(Boolean).map((c) => `, ${c}`).join("");
 
   await pool.query(
-    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${clearClauses} WHERE id=?`,
+    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${withTiers ? ", pricing_model=?, maintenance_annual_fee=?, registration_label=?, development_cost_label=?, installation_cost_label=?, allow_import_export=?" : ""}${clearClauses} WHERE id=?`,
     [
       data.name, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
-      data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active", id,
+      data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
+      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.maintenanceAnnualFee || null, data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+      id,
     ]
   );
   return { paypalLinkCleared, razorpayLinkCleared };

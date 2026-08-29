@@ -9,7 +9,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 
 const ADVANCED_KEYS = ["assignedTo", "country", "tag", "createdFrom", "createdTo", "followupFrom", "followupTo"];
 
-export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [] }) {
+export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -122,12 +122,16 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           )}
         </div>
 
-        <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=xlsx`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to Excel">
-          <Download className="h-4 w-4" /> Excel
-        </a>
-        <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=csv`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to CSV">
-          <Download className="h-4 w-4" /> CSV
-        </a>
+        {allowImportExport && (
+          <>
+            <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=xlsx`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to Excel">
+              <Download className="h-4 w-4" /> Excel
+            </a>
+            <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=csv`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to CSV">
+              <Download className="h-4 w-4" /> CSV
+            </a>
+          </>
+        )}
       </div>
 
       {advancedOpen && (

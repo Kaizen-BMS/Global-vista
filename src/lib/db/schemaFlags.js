@@ -35,6 +35,12 @@ export async function hasLeadDocumentTypeIdColumn() { return columnExists("lead_
 export async function hasPlanDescriptionColumn() { return columnExists("plans", "description"); }
 export async function hasPlanPayPalColumns() { return columnExists("plans", "paypal_plan_id"); }
 export async function hasPlanRazorpayColumns() { return columnExists("plans", "razorpay_plan_id"); }
+/** Trial/Silver/Gold/Diamond tiered-pricing migration — pricing_model,
+ * maintenance_annual_fee, the marketing-label fields, allow_import_export,
+ * and company_subscriptions.seat_quantity/maintenance_gateway_subscription_id
+ * all land together; any one column standing in for "has the whole thing
+ * run" is fine, same convention as every other bundled migration here. */
+export async function hasTieredPlansSchema() { return columnExists("plans", "pricing_model"); }
 export async function hasCompanySubscriptionsGatewayColumns() { return columnExists("company_subscriptions", "gateway"); }
 export async function hasCancelAtPeriodEndColumn() { return columnExists("company_subscriptions", "cancel_at_period_end"); }
 export async function hasPendingPlanIdColumn() { return columnExists("company_subscriptions", "pending_plan_id"); }

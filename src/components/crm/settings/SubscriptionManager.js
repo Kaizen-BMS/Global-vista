@@ -64,6 +64,44 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /** Opens the SECOND Checkout overlay for the annual maintenance fee, once
+   * the main subscription's payment has already succeeded — Razorpay bills
+   * one recurring amount per subscription object, so a plan with both a
+   * per-user price and a maintenance fee needs two separate authorizations,
+   * not one combined charge. */
+  async function payMaintenanceThenFinish(data) {
+    await loadRazorpayScript();
+    return new Promise((resolve) => {
+      const rzp = new window.Razorpay({
+        key: data.razorpayKeyId,
+        subscription_id: data.maintenanceRazorpaySubscriptionId,
+        name: "KaizenBMS Platform",
+        description: `${data.planName} — annual maintenance`,
+        theme: { color: "#4f46e5" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await apiFetch("/api/core/subscription/razorpay/verify-maintenance", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpaySubscriptionId: response.razorpay_subscription_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Maintenance payment verification failed. Please contact support.");
+            toast.success("Subscription activated.");
+          } catch (err) {
+            toast.error(`${err.message} — your plan is active, but the maintenance fee still needs payment (contact support).`);
+          } finally { resolve(); }
+        },
+        modal: { ondismiss: () => { toast.warning("Plan activated, but the maintenance fee wasn't paid — you'll be asked again on Settings > Subscription."); resolve(); } },
+      });
+      rzp.on("payment.failed", () => { toast.error("Maintenance payment could not be completed. Please try again from Settings > Subscription."); resolve(); });
+      rzp.open();
+    });
+  }
+
   async function payWithRazorpayThenFinish(data) {
     try {
       await loadRazorpayScript();
@@ -71,7 +109,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
         key: data.razorpayKeyId,
         subscription_id: data.razorpaySubscriptionId,
         name: "KaizenBMS Platform",
-        description: `${data.planName} subscription`,
+        description: data.seatQuantity > 1 ? `${data.planName} subscription (${data.seatQuantity} users)` : `${data.planName} subscription`,
         theme: { color: "#4f46e5" },
         handler: async (response) => {
           try {
@@ -85,7 +123,11 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             });
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
-            toast.success("Subscription activated.");
+            if (data.maintenanceRazorpaySubscriptionId) {
+              await payMaintenanceThenFinish(data);
+            } else {
+              toast.success("Subscription activated.");
+            }
             onClose();
             router.refresh();
           } catch (err) { toast.error(err.message); }
@@ -205,13 +247,18 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                 {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
                 <p className="text-foreground text-lg font-semibold mt-2">
                   {isPaid ? `${plan.currency} ${Number(plan.price).toLocaleString()}` : "Free"}
-                  {isPaid && <span className="text-muted-foreground text-xs font-normal"> / {plan.billing_cycle}</span>}
+                  {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
                 </p>
+                {!!plan.maintenance_annual_fee && <p className="text-muted-foreground text-[11px] mt-0.5">+ {plan.currency} {Number(plan.maintenance_annual_fee).toLocaleString()}/yr maintenance</p>}
                 {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
                 <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
+                  <li>Registration: {plan.registration_label || "Self"}</li>
+                  <li>Development: {plan.development_cost_label || "Free"}</li>
+                  <li>Installation: {plan.installation_cost_label || "Free"}</li>
                   {plan.max_users ? <li>{plan.max_users} employees</li> : <li>Unlimited employees</li>}
                   {plan.max_leads ? <li>{plan.max_leads.toLocaleString()} leads</li> : <li>Unlimited leads</li>}
-                  {plan.max_storage_mb ? <li>{Math.round(plan.max_storage_mb / 1024)}GB storage</li> : <li>Unlimited storage</li>}
+                  {plan.max_storage_mb ? <li>{plan.max_storage_mb >= 1024 ? `${Math.round(plan.max_storage_mb / 1024)}GB` : `${plan.max_storage_mb}MB`} storage</li> : <li>Unlimited storage</li>}
+                  <li>Import/Export: {plan.allow_import_export === 0 ? "No" : "Yes"}</li>
                 </ul>
                 {!isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay ? (
                   <div className="mt-3 flex gap-2">

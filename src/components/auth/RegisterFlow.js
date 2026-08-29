@@ -250,9 +250,10 @@ export default function RegisterFlow() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="text-white text-sm font-medium">{p.name}</p>
-                          <p className="text-white text-sm">{p.price ? `${p.currency} ${p.price}/${p.billing_cycle === "yearly" ? "yr" : "mo"}` : "Free"}</p>
+                          <p className="text-white text-sm">{p.price ? `${p.currency} ${p.price}${p.pricing_model === "per_user" ? "/user/mo" : `/${p.billing_cycle === "yearly" ? "yr" : "mo"}`}` : "Free"}</p>
                         </div>
                         {p.description && <p className="text-white/50 text-xs mt-0.5">{p.description}</p>}
+                        {!!p.maintenance_annual_fee && <p className="text-white/40 text-xs mt-0.5">+ {p.currency} {p.maintenance_annual_fee}/yr maintenance</p>}
                         <p className="text-white/40 text-xs mt-0.5">
                           {p.trial_days ? `${p.trial_days}-day free trial · ` : ""}
                           {p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
