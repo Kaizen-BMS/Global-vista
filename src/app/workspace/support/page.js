@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { can, isSuperAdmin } from "@/lib/helpers/permissions";
-import { MessageSquareWarning, Lightbulb, ArrowRight } from "lucide-react";
+import { MessageSquareWarning, Lightbulb, ArrowRight, LifeBuoy } from "lucide-react";
 import SettingsTabs from "@/components/shared/SettingsTabs";
 
 export default async function SupportFeedbackPage() {
@@ -52,6 +52,23 @@ export default async function SupportFeedbackPage() {
             <p className="text-muted-foreground text-sm mt-1">{admin ? "Evaluate, plan, and track ideas submitted by your team." : "Share a suggestion — track its journey from idea to reality."}</p>
           </div>
         </Link>
+
+        {admin && (
+          <Link
+            href="/workspace/platform-support"
+            className="group flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 transition hover:-translate-y-0.5 hover:border-indigo-500/30 cursor-pointer"
+          >
+            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <LifeBuoy className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-foreground font-medium flex items-center gap-1.5">
+                Platform Support <ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </p>
+              <p className="text-muted-foreground text-sm mt-1">Contact the KaizenBMS platform team directly — billing, technical issues, or anything beyond your own team's Complaints.</p>
+            </div>
+          </Link>
+        )}
       </div>
     </div>
   );

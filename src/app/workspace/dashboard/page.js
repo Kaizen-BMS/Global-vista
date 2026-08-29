@@ -4,6 +4,7 @@ import { getDashboardStats } from "@/lib/actions/dashboard";
 import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getUserNotifications } from "@/lib/actions/notifications";
+import { getLatestAnnouncement } from "@/lib/actions/messaging";
 import { resolveRange } from "@/lib/helpers/dateRange";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { getSettingsByGroup } from "@/lib/actions/settings";
@@ -24,6 +25,7 @@ import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { isModuleEnabledForCompany, getSubscriptionDetails } from "@/lib/platform/tenant";
 import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
+import AnnouncementBanner from "@/components/workspace/dashboard/AnnouncementBanner";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
 import RangeFilter from "@/components/shared/RangeFilter";
 import { CrmKpiGrid, OrgKpiGrid, SubscriptionKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
@@ -63,7 +65,7 @@ export default async function DashboardPage({ searchParams }) {
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
     teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
-    recentActivity, unreadNotifications, branding,
+    recentActivity, unreadNotifications, branding, announcement,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
     employeePayments, superAdminPayments, subscriptionDetails, subscriptionPayments,
   ] = await Promise.all([
@@ -85,6 +87,7 @@ export default async function DashboardPage({ searchParams }) {
     getActivityLogs({ limit: 8, companyId: session.company_id }),
     getUserNotifications(session, { unreadOnly: true, limit: 100 }),
     getCompanyBranding(session),
+    getLatestAnnouncement(session),
     canManageDocuments ? getEmployeesWithMissingDocuments(session) : [],
     canManageDocuments ? getPendingApprovalDocuments(session) : [],
     canManageDocuments ? getExpiringDocuments(session) : [],
@@ -106,6 +109,8 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="space-y-8">
+      <AnnouncementBanner announcement={announcement} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">{branding.dashboardGreeting || `Welcome, ${session?.name}`}</h1>

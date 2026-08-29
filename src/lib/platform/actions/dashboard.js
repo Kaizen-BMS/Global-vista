@@ -1,15 +1,20 @@
 import "server-only";
 import { pool } from "@/lib/db";
+import { hasSubscriptionBillingSchema } from "@/lib/db/schemaFlags";
+import { getSubscriptionBillingStats } from "@/lib/platform/actions/subscriptionBilling";
 export { resolveRange } from "@/lib/helpers/dateRange";
 
 /**
  * Single entry point for the platform executive dashboard. Every number
- * here is a real query against the live schema — the only exceptions
- * are Revenue/Payments, which have no backing table yet (`plans` has no
- * price column, there is no payments/invoices table). Those are
- * surfaced as explicit "not available" placeholders rather than faked.
+ * here is a real query against the live schema. Revenue/payments come from
+ * subscription_payments (the 2026-08-16 billing migration) via
+ * getSubscriptionBillingStats() plus the two range-scoped queries below;
+ * on a pre-migration database this degrades to zeros/empty rather than
+ * throwing, same as everywhere else that table is read.
  */
 export async function getPlatformDashboard({ start, end }) {
+  const billingReady = await hasSubscriptionBillingSchema();
+
   const [
     [[companyCounts]],
     [subStatusRows],
@@ -27,6 +32,10 @@ export async function getPlatformDashboard({ start, end }) {
     [[newCompanies]],
     [[expiringLicenses]],
     [[pendingProvisioning]],
+    billingStats,
+    [periodRevenueRows],
+    [revenueTrendRows],
+    [latestPayments],
   ] = await Promise.all([
     pool.query(`SELECT COUNT(*) AS total, SUM(status='active') AS active FROM companies`),
     pool.query(`
@@ -93,9 +102,38 @@ export async function getPlatformDashboard({ start, end }) {
       WHERE cs.status='active' AND cs.ends_at IS NOT NULL AND cs.ends_at <= DATE_ADD(NOW(), INTERVAL 30 DAY)
     `),
     pool.query(`SELECT COUNT(*) AS count FROM company_provisioning_log WHERE status='failed'`),
+    getSubscriptionBillingStats(),
+    billingReady
+      ? pool.query(`SELECT currency, SUM(amount) AS total FROM subscription_payments WHERE status='completed' AND payment_date BETWEEN ? AND ? GROUP BY currency`, [start, end])
+      : Promise.resolve([[]]),
+    // Grouped by currency too, not just day — summing INR and USD rows
+    // together into one number would be meaningless. Pivoted into one row
+    // per day (with a column per currency actually seen) below.
+    billingReady
+      ? pool.query(`SELECT DATE(payment_date) AS day, currency, SUM(amount) AS amount FROM subscription_payments WHERE status='completed' AND payment_date BETWEEN ? AND ? GROUP BY day, currency ORDER BY day ASC`, [start, end])
+      : Promise.resolve([[]]),
+    billingReady
+      ? pool.query(`
+          SELECT sp.id, sp.amount, sp.currency, sp.status, sp.gateway, sp.payment_date, sp.created_at, c.name AS company_name, p.name AS plan_name
+          FROM subscription_payments sp JOIN companies c ON c.id = sp.company_id JOIN plans p ON p.id = sp.plan_id
+          ORDER BY sp.created_at DESC LIMIT 8
+        `)
+      : Promise.resolve([[]]),
   ]);
 
   const subStatus = Object.fromEntries(subStatusRows.map((r) => [r.status, r.count]));
+
+  // Pivot [{day, currency, amount}] into [{day, INR: 100, USD: 20}] so the
+  // chart can render one line per currency actually seen, instead of
+  // silently adding incompatible currencies together.
+  const revenueCurrencies = [...new Set(revenueTrendRows.map((r) => r.currency))];
+  const revenueByDay = new Map();
+  for (const r of revenueTrendRows) {
+    const day = String(r.day);
+    if (!revenueByDay.has(day)) revenueByDay.set(day, { day });
+    revenueByDay.get(day)[r.currency] = Number(r.amount);
+  }
+  const revenueTrend = [...revenueByDay.values()].sort((a, b) => a.day.localeCompare(b.day));
 
   return {
     kpis: {
@@ -112,6 +150,10 @@ export async function getPlatformDashboard({ start, end }) {
       pendingProvisioning: pendingProvisioning.count,
       activeLicenses: subStatus.active || 0,
       expiringLicenses: expiringLicenses.count,
+      totalRevenueByCurrency: billingStats.revenueByCurrency,
+      periodRevenueByCurrency: periodRevenueRows,
+      failedPayments: billingStats.failedPaymentsCount,
+      pastDueSubscriptions: billingStats.pastDueCount,
     },
     charts: {
       moduleUsage: moduleUsageRows,
@@ -120,12 +162,15 @@ export async function getPlatformDashboard({ start, end }) {
       loginActivity: loginActivityRows,
       provisioningHistory: provisioningHistoryRows,
       subscriptionStatus: subStatusRows,
+      revenueTrend,
+      revenueCurrencies,
     },
     tables: {
       recentCompanies,
       recentSubscriptions,
       recentErrors,
       recentPlatformEvents,
+      latestPayments,
     },
   };
 }

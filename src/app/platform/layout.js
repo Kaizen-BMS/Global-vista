@@ -11,6 +11,7 @@ import BrandFavicon from "@/components/shared/BrandFavicon";
 import { TimezoneProvider } from "@/components/shared/TimezoneProvider";
 import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 import SessionLivenessWatcher from "@/components/shared/SessionLivenessWatcher";
+import RealtimeUpdatesWatcher from "@/components/shared/RealtimeUpdatesWatcher";
 
 // KaizenBMS's own identity, not a tenant's — deliberately never
 // pulled from the companies table, per the branding rule that the
@@ -37,6 +38,7 @@ export default async function PlatformLayout({ children }) {
         <div className="h-screen bg-background flex overflow-hidden" style={{ "--brand-primary": PLATFORM_IDENTITY.primary_color, "--brand-secondary": GLOBAL_VISTA_BRANDING.secondaryColor }}>
           <BrandFavicon faviconUrl={GLOBAL_VISTA_BRANDING.faviconUrl} />
           <SessionLivenessWatcher />
+          <RealtimeUpdatesWatcher />
           <Sidebar session={session} navItems={PLATFORM_NAV_ITEMS} company={PLATFORM_IDENTITY} showPoweredBy={false} scope="platform" />
           <div className="flex-1 flex flex-col min-w-0">
             <PlatformTopbar session={session} />

@@ -6,6 +6,10 @@ import { uploadFile, deleteFile, getFileUrl } from "@/lib/services/StorageServic
 import { enforceStorageLimit } from "@/lib/actions/storage";
 
 const NOT_DELETED = "is_deleted = 0";
+// A 20-hour dedupe window (not 24h) so a daily cron running at a slightly
+// different time each day never skips a day entirely — same reasoning as
+// subscriptionWarnings.js's own DEDUPE_WINDOW_HOURS.
+const DOCUMENT_REMINDER_DEDUPE_HOURS = 20;
 
 async function usersWithDocumentManagePermission(companyId) {
   const [rows] = await pool.query(
@@ -52,9 +56,22 @@ export async function listEmployeeDocuments(session, userId) {
 
 export function summarizeEmployeeDocuments(rows) {
   const required = rows.filter((r) => r.type.is_required);
-  const summary = { required: required.length, uploaded: 0, pending: 0, approved: 0, rejected: 0, expired: 0, missing: 0 };
-  for (const { type, documents } of required) {
-    if (documents.length === 0) { summary.missing += 1; continue; }
+  const summary = { required: required.length, total: rows.length, uploaded: 0, pending: 0, approved: 0, rejected: 0, expired: 0, missing: 0 };
+  // Uploaded/Pending/Approved/Rejected/Expired reflect EVERY document type,
+  // not just required ones — a company can have optional document types
+  // (Passport, say) that employees still upload, and those uploads must
+  // still count.
+  //
+  // "Missing" also counts EVERY type with nothing uploaded, required or not
+  // — an employee looking at 3 type cards with only 2 filled in expects to
+  // see "1 Missing", not "0 Missing" just because that one type happens to
+  // be optional. "Required" stays its own separate number (how many types
+  // are mandatory) since that's still a legitimate, distinct thing to know.
+  for (const { type, documents } of rows) {
+    if (documents.length === 0) {
+      summary.missing += 1;
+      continue;
+    }
     const latest = documents[0];
     summary.uploaded += 1;
     if (latest.status === "Approved") summary.approved += 1;
@@ -62,7 +79,11 @@ export function summarizeEmployeeDocuments(rows) {
     else if (latest.status === "Expired") summary.expired += 1;
     else summary.pending += 1;
   }
-  summary.progressPercent = summary.required > 0 ? Math.round((summary.approved / summary.required) * 100) : 100;
+  // Progress = how much of the paperwork has actually been submitted (any
+  // status) out of every configured type — not just approved-required ones
+  // — so it can never read "100%" while a type card still shows an empty
+  // upload box.
+  summary.progressPercent = summary.total > 0 ? Math.round((summary.uploaded / summary.total) * 100) : 100;
   return summary;
 }
 
@@ -99,7 +120,7 @@ export async function uploadEmployeeDocument(session, userId, documentTypeId, { 
 
   const reviewers = await usersWithDocumentManagePermission(session.company_id);
   await notifyMany(session.company_id, reviewers, {
-    title: "Document uploaded", message: `${docType.name} was uploaded and needs review.`, type: "info", link: `/workspace/users/${userId}`,
+    title: "Document uploaded", message: `${docType.name} was uploaded and needs review.`, type: "document_uploaded", link: `/workspace/users/${userId}`,
   });
 
   return result.insertId;
@@ -156,6 +177,46 @@ export async function getMissingDocumentTypes(session, userId) {
 }
 
 // ---- Dashboard widgets ----
+
+/**
+ * Meant to run on a schedule (see /api/cron/document-reminders) — every
+ * employee, across every company, who still has a required document type
+ * with nothing uploaded against it gets reminded. The notifications table
+ * is the dedupe guard against re-notifying the same person more than once
+ * a day, same pattern as runSubscriptionWarningsCheck. createNotification
+ * itself already respects the company's "Documents" notification toggle
+ * (Settings > Organizational Setting), so a company that's muted this
+ * category simply gets no rows written — nothing extra to check here.
+ */
+export async function runDocumentReminderCheck() {
+  const [employees] = await pool.query(`
+    SELECT DISTINCT u.id, u.company_id, u.name
+    FROM users u
+    JOIN employee_document_types dt ON dt.company_id = u.company_id AND dt.is_deleted = 0 AND dt.status = 'active' AND dt.is_required = 1
+    WHERE u.is_deleted = 0 AND u.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1 FROM employee_documents d
+        WHERE d.document_type_id = dt.id AND d.user_id = u.id AND d.company_id = u.company_id AND d.is_deleted = 0
+          AND d.status IN ('Pending', 'Approved', 'Uploaded')
+      )
+  `);
+
+  let remindersSent = 0;
+  for (const emp of employees) {
+    const [[alreadyNotified]] = await pool.query(
+      `SELECT id FROM notifications WHERE user_id=? AND company_id=? AND type='document_reminder' AND created_at >= DATE_SUB(NOW(), INTERVAL ? HOUR) LIMIT 1`,
+      [emp.id, emp.company_id, DOCUMENT_REMINDER_DEDUPE_HOURS]
+    );
+    if (alreadyNotified) continue;
+
+    await createNotification(emp.company_id, emp.id, {
+      title: "Documents pending", message: "You have required documents that still need to be uploaded.",
+      type: "document_reminder", link: "/workspace/documents",
+    });
+    remindersSent += 1;
+  }
+  return { remindersSent };
+}
 
 export async function getEmployeesWithMissingDocuments(session, limit = 10) {
   const [rows] = await pool.query(

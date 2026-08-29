@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText, ArrowLeft } from "lucide-react";
+import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText, ArrowLeft, MoreVertical, Pencil, Check, LogOut, Ban, ShieldOff } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatRelative, formatDateTime } from "@/lib/helpers/dateFormat";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const POLL_MS = 12000;
+const EDIT_WINDOW_MS = 2 * 60 * 1000; // mirrors the server-side window in messaging.js — UI-only, the server re-checks on save
 
 function Avatar({ name }) {
   return (
@@ -105,6 +106,64 @@ function NewConversationModal({ users, isSuperAdmin, onClose, onCreated }) {
   );
 }
 
+function GroupInfoPanel({ conversation, currentUserId, onClose, onLeave }) {
+  const [participants, setParticipants] = useState(null);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/messaging/conversations/${conversation.id}/participants`)
+      .then((res) => res.json())
+      .then((data) => { if (!cancelled) setParticipants(data.participants || []); })
+      .catch(() => { if (!cancelled) setParticipants([]); });
+    return () => { cancelled = true; };
+  }, [conversation.id]);
+
+  async function leave() {
+    if (!confirm("Leave this group? You'll stop receiving its messages.")) return;
+    setLeaving(true);
+    try {
+      const res = await apiFetch(`/api/messaging/conversations/${conversation.id}/leave`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to leave group.");
+      onLeave();
+    } catch (err) { toast.error(err.message); setLeaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="Group info" className="relative w-full max-w-sm max-h-[80vh] overflow-y-auto bg-background border border-border rounded-xl shadow-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-foreground font-medium">{conversationLabel(conversation)}</p>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-2">{participants ? `${participants.length} members` : "Members"}</p>
+        {!participants ? (
+          <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="space-y-1 mb-4">
+            {participants.map((p) => (
+              <div key={p.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted">
+                <Avatar name={p.name} />
+                <div className="min-w-0">
+                  <p className="text-foreground text-sm truncate">{p.name}{p.id === currentUserId ? " (You)" : ""}</p>
+                  <p className="text-muted-foreground text-xs truncate">{p.email}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={leave} disabled={leaving} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium cursor-pointer disabled:opacity-60">
+          {leaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />} Leave Group
+        </button>
+      </div>
+      </ModalFocusTrap>
+    </div>
+  );
+}
+
 export default function MessagingApp({ currentUserId, isSuperAdmin, initialConversations, messageableUsers, initialConversationId }) {
   const router = useRouter();
   const timezone = useTimezone();
@@ -118,8 +177,24 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [blockStatus, setBlockStatus] = useState({ blockedByMe: false, blockedMe: false });
+  const [blockBusy, setBlockBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
+
+  // Ticks the clock so an edit button quietly disappears the moment the
+  // 2-minute window closes, instead of staying clickable until the next
+  // unrelated re-render.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -162,7 +237,68 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
   function selectConversation(id) {
     setActiveId(id);
     setMobilePane("chat");
+    setShowHeaderMenu(false);
+    setEditingId(null);
     router.replace(`/workspace/messages/${id}`);
+  }
+
+  const activeConversation = conversations.find((c) => c.id === activeId);
+
+  // Direct-conversation block status only means anything once we know who
+  // the other person is — refetched whenever the active direct conversation
+  // changes, reset to "not blocked" for groups/broadcast/no selection.
+  useEffect(() => {
+    if (activeConversation?.type === "direct" && activeConversation.other_participant_id) {
+      apiFetch(`/api/messaging/users/${activeConversation.other_participant_id}/block`)
+        .then((res) => res.json())
+        .then((data) => setBlockStatus({ blockedByMe: !!data.blockedByMe, blockedMe: !!data.blockedMe }))
+        .catch(() => setBlockStatus({ blockedByMe: false, blockedMe: false }));
+    } else {
+      setBlockStatus({ blockedByMe: false, blockedMe: false });
+    }
+  }, [activeConversation?.id, activeConversation?.type, activeConversation?.other_participant_id]);
+
+  async function toggleBlock() {
+    if (!activeConversation?.other_participant_id) return;
+    setBlockBusy(true);
+    setShowHeaderMenu(false);
+    try {
+      const method = blockStatus.blockedByMe ? "DELETE" : "POST";
+      const res = await apiFetch(`/api/messaging/users/${activeConversation.other_participant_id}/block`, { method });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed.");
+      setBlockStatus((s) => ({ ...s, blockedByMe: !s.blockedByMe }));
+      toast.success(blockStatus.blockedByMe ? "Unblocked." : "Blocked. They can no longer message you.");
+    } catch (err) { toast.error(err.message); } finally { setBlockBusy(false); }
+  }
+
+  function startEdit(m) {
+    setEditingId(m.id);
+    setEditText(m.body || "");
+  }
+  function cancelEdit() { setEditingId(null); setEditText(""); }
+
+  async function saveEdit(messageId) {
+    if (!editText.trim()) { toast.error("Message can't be empty."); return; }
+    setSavingEdit(true);
+    try {
+      const res = await apiFetch(`/api/messaging/conversations/${activeId}/messages/${messageId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: editText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save.");
+      setEditingId(null); setEditText("");
+      await loadMessages(activeId);
+    } catch (err) { toast.error(err.message); } finally { setSavingEdit(false); }
+  }
+
+  function handleLeftGroup() {
+    setShowGroupInfo(false);
+    setConversations((prev) => prev.filter((c) => c.id !== activeId));
+    setActiveId(null);
+    setMobilePane("list");
+    router.replace("/workspace/messages");
+    toast.success("You left the group.");
   }
 
   async function send(e) {
@@ -196,8 +332,9 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
     } catch { setSearchResults([]); }
   }
 
-  const active = conversations.find((c) => c.id === activeId);
-  const canPost = !active || active.type !== "broadcast" || isSuperAdmin;
+  const active = activeConversation;
+  const isBlocked = blockStatus.blockedByMe || blockStatus.blockedMe;
+  const canPost = (!active || active.type !== "broadcast" || isSuperAdmin) && !(active?.type === "direct" && isBlocked);
 
   return (
     <div className="h-[calc(100vh-8rem)] flex bg-card border border-border rounded-xl overflow-hidden">
@@ -249,9 +386,42 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <button onClick={() => setMobilePane("list")} className="md:hidden -ml-1 text-muted-foreground hover:text-foreground cursor-pointer p-1"><ArrowLeft className="h-4 w-4" /></button>
               {active.type === "broadcast" && <Megaphone className="h-4 w-4 text-amber-400" />}
-              <p className="text-foreground font-medium">{conversationLabel(active)}</p>
-              {active.type === "broadcast" && <span className="text-muted-foreground text-xs">· {active.participant_count} recipients</span>}
+              {active.type === "group" && <UsersIcon className="h-4 w-4 text-muted-foreground" />}
+              <p className="text-foreground font-medium truncate">{conversationLabel(active)}</p>
+              {active.type === "broadcast" && <span className="text-muted-foreground text-xs shrink-0">· {active.participant_count} recipients</span>}
+              {active.type === "group" && <span className="text-muted-foreground text-xs shrink-0">· {active.participant_count} members</span>}
+
+              {(active.type === "group" || (active.type === "direct" && active.other_participant_id)) && (
+                <div className="relative ml-auto shrink-0">
+                  <button onClick={() => setShowHeaderMenu((o) => !o)} aria-label="Conversation options" className="text-muted-foreground hover:text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted"><MoreVertical className="h-4 w-4" /></button>
+                  {showHeaderMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowHeaderMenu(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-background border border-border rounded-lg shadow-xl py-1">
+                        {active.type === "group" && (
+                          <button onClick={() => { setShowHeaderMenu(false); setShowGroupInfo(true); }} className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted cursor-pointer">
+                            <UsersIcon className="h-3.5 w-3.5" /> Group info
+                          </button>
+                        )}
+                        {active.type === "direct" && (
+                          <button onClick={toggleBlock} disabled={blockBusy || blockStatus.blockedMe} className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                            {blockStatus.blockedByMe ? <ShieldOff className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                            {blockStatus.blockedByMe ? "Unblock" : "Block"}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
+
+            {active.type === "direct" && isBlocked && (
+              <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-xs flex items-center justify-between gap-3">
+                <span>{blockStatus.blockedByMe ? "You blocked this contact — they can't message you." : "You can't message this contact."}</span>
+                {blockStatus.blockedByMe && <button onClick={toggleBlock} disabled={blockBusy} className="shrink-0 underline cursor-pointer">Unblock</button>}
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {loadingMessages && messages.length === 0 ? (
@@ -259,21 +429,45 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
               ) : messages.length === 0 ? (
                 <p className="text-muted-foreground text-sm text-center pt-8">No messages yet — say hello.</p>
               ) : messages.map((m) => {
+                if (m.message_type === "system") {
+                  return <p key={m.id} className="text-muted-foreground text-xs text-center py-1">{m.body}</p>;
+                }
                 const mine = m.sender_id === currentUserId;
+                const canEdit = mine && !m.file_url && now - new Date(m.created_at).getTime() < EDIT_WINDOW_MS;
+                const isEditing = editingId === m.id;
                 return (
-                  <div key={m.id} className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
+                  <div key={m.id} className={`group flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
                     <Avatar name={m.sender_name} />
                     <div className={`max-w-[70%] ${mine ? "items-end" : "items-start"} flex flex-col`}>
                       {!mine && <p className="text-muted-foreground text-[11px] mb-0.5">{m.sender_name}</p>}
-                      <div className={`rounded-2xl px-3.5 py-2 text-sm ${mine ? "bg-indigo-600 text-white" : "bg-muted text-foreground"}`}>
-                        {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
-                        {m.file_url && (
-                          <a href={m.file_url} target="_blank" rel="noreferrer" className={`flex items-center gap-1.5 mt-1.5 text-xs underline ${mine ? "text-white/80" : "text-indigo-400"}`}>
-                            <FileText className="h-3.5 w-3.5" /> {m.file_name}
-                          </a>
-                        )}
-                      </div>
-                      <p className="text-muted-foreground text-[10px] mt-0.5" title={formatDateTime(m.created_at, timezone)}>{formatRelative(m.created_at)}</p>
+                      {isEditing ? (
+                        <div className="w-full min-w-[220px] space-y-1.5">
+                          <textarea autoFocus rows={2} value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full px-3 py-2 rounded-xl bg-muted border border-indigo-500/50 text-foreground text-sm focus:outline-none" />
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button onClick={cancelEdit} className="px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
+                            <button onClick={() => saveEdit(m.id)} disabled={savingEdit} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs btn-brand text-white cursor-pointer disabled:opacity-60">
+                              {savingEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`flex items-center gap-1 ${mine ? "flex-row-reverse" : ""}`}>
+                          <div className={`rounded-2xl px-3.5 py-2 text-sm ${mine ? "bg-indigo-600 text-white" : "bg-muted text-foreground"}`}>
+                            {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                            {m.file_url && (
+                              <a href={m.file_url} target="_blank" rel="noreferrer" className={`flex items-center gap-1.5 mt-1.5 text-xs underline ${mine ? "text-white/80" : "text-indigo-400"}`}>
+                                <FileText className="h-3.5 w-3.5" /> {m.file_name}
+                              </a>
+                            )}
+                          </div>
+                          {canEdit && (
+                            <button onClick={() => startEdit(m)} aria-label="Edit message" className="opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-foreground cursor-pointer p-1 shrink-0"><Pencil className="h-3 w-3" /></button>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-muted-foreground text-[10px] mt-0.5" title={formatDateTime(m.created_at, timezone)}>
+                        {formatRelative(m.created_at)}{m.edited_at ? " · edited" : ""}
+                      </p>
                     </div>
                   </div>
                 );
@@ -290,8 +484,10 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
               </form>
-            ) : (
+            ) : active.type === "broadcast" ? (
               <div className="p-3 border-t border-border text-center text-muted-foreground text-xs">Only a Super Admin can post in this announcement channel.</div>
+            ) : (
+              <div className="p-3 border-t border-border text-center text-muted-foreground text-xs">This conversation is blocked — no new messages can be sent.</div>
             )}
           </>
         )}
@@ -304,6 +500,10 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
           onClose={() => setShowNew(false)}
           onCreated={(id) => { setShowNew(false); refreshConversations(); selectConversation(id); }}
         />
+      )}
+
+      {showGroupInfo && active?.type === "group" && (
+        <GroupInfoPanel conversation={active} currentUserId={currentUserId} onClose={() => setShowGroupInfo(false)} onLeave={handleLeftGroup} />
       )}
     </div>
   );

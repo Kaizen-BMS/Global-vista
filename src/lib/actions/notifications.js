@@ -2,6 +2,9 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
+import { can } from "@/lib/helpers/permissions";
+import { getSettingsByGroup } from "@/lib/actions/settings";
+import { isNotificationTypeEnabled } from "@/lib/helpers/notificationCategories";
 
 export async function getUserNotifications(session, { unreadOnly = false, limit = 20 } = {}) {
   const where = unreadOnly ? "AND is_read=0" : "";
@@ -26,9 +29,10 @@ const IDEA_NOTIFICATION_TYPES = ["idea_created", "idea_status_changed", "idea_re
  */
 export async function getSidebarBadgeCounts(session) {
   const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
+  const canManageDocs = await can(session, "employee_documents.manage");
   const { where: leadWhere, params: leadParams } = await getVisibleLeadFilter(session);
 
-  const [notifResult, followupResult, messageResult] = await Promise.all([
+  const [notifResult, followupResult, messageResult, ownDocsResult, pendingReviewResult] = await Promise.all([
     pool.query(
       `SELECT COUNT(*) AS total, SUM(type IN (?)) AS leadCount, SUM(type = 'payment_received') AS paymentCount,
               SUM(type IN (?)) AS complaintCount, SUM(type IN (?)) AS ideaCount
@@ -47,10 +51,30 @@ export async function getSidebarBadgeCounts(session) {
        WHERE m.company_id = ? AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
       [session.id, session.company_id, session.id]
     ),
+    // Every employee's OWN actionable documents — required types they're
+    // missing, or that a reviewer sent back — regardless of whether they
+    // can review anyone else's.
+    pool.query(
+      `SELECT COUNT(*) AS n FROM employee_document_types t
+       WHERE t.company_id=? AND t.is_deleted=0 AND t.status='active' AND t.is_required=1
+         AND NOT EXISTS (
+           SELECT 1 FROM employee_documents d
+           WHERE d.document_type_id=t.id AND d.user_id=? AND d.company_id=? AND d.is_deleted=0
+             AND d.status IN ('Pending','Approved','Uploaded')
+         )`,
+      [session.company_id, session.id, session.company_id]
+    ),
+    // Company-wide documents awaiting a reviewer's decision — only
+    // meaningful (and only queried) for someone who can actually act on it.
+    canManageDocs
+      ? pool.query(`SELECT COUNT(*) AS n FROM employee_documents WHERE company_id=? AND is_deleted=0 AND status='Pending'`, [session.company_id])
+      : Promise.resolve([[{ n: 0 }]]),
   ]);
   const notifRow = notifResult[0][0];
   const followupRow = followupResult[0][0];
   const messageRow = messageResult[0][0];
+  const ownDocsRow = ownDocsResult[0][0];
+  const pendingReviewRow = pendingReviewResult[0][0];
 
   const complaints = Number(notifRow.complaintCount || 0);
   const ideas = Number(notifRow.ideaCount || 0);
@@ -68,6 +92,10 @@ export async function getSidebarBadgeCounts(session) {
     // for that entry, while the individual counts above stay available for
     // anything that still wants to distinguish them.
     support: complaints + ideas,
+    // Your own missing/actionable required documents, plus (only if you can
+    // review others') the company-wide pending-review queue — one combined
+    // dot on the Documents nav item for either reason to look at it.
+    documents: Number(ownDocsRow.n) + Number(pendingReviewRow.n),
   };
 }
 
@@ -86,6 +114,16 @@ export async function markNotificationRead(session, id) {
  */
 export async function createNotification(companyId, userId, { title, message = null, type = "info", link = null }) {
   if (!userId) return;
+  // Company-wide on/off switches from Settings > Organizational Setting
+  // (see notificationCategories.js) — a category the company has muted
+  // never even gets written, not just hidden client-side. Reads
+  // crm_settings fresh each call rather than caching, same reasoning as
+  // every other per-company setting in this app: a Super Admin toggling
+  // this off must take effect on the very next notification, not after
+  // some cache window.
+  const settings = await getSettingsByGroup({ company_id: companyId }, "notifications");
+  if (!isNotificationTypeEnabled(type, settings)) return;
+
   await pool.query(
     `INSERT INTO notifications (company_id, user_id, title, message, type, link) VALUES (?, ?, ?, ?, ?, ?)`,
     [companyId, userId, title, message, type, link]

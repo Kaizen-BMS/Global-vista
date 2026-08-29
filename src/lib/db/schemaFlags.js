@@ -53,14 +53,24 @@ export async function hasSubscriptionBillingSchema() {
 
 export async function hasLeadNoteTypeColumn() { return columnExists("lead_notes", "type"); }
 export async function hasLeadNoteEditColumns() { return columnExists("lead_notes", "updated_at"); }
+export async function hasFollowupCompletedAtColumn() { return columnExists("lead_followups", "completed_at"); }
+export async function hasPaymentRequestsSchema() { return tableExists("payment_requests"); }
 export async function hasLeadMeetingsSchema() { return tableExists("lead_meetings"); }
 
 export async function hasComplaintsSchema() { return tableExists("complaints"); }
+export async function hasPlatformSupportSchema() { return tableExists("platform_support_tickets"); }
 export async function hasIdeasSchema() { return tableExists("ideas"); }
 
 export async function hasBlogSchema() { return tableExists("blog_posts"); }
 export async function hasOffersSchema() { return tableExists("platform_offers"); }
 export async function hasCouponsSchema() { return tableExists("coupons"); }
+
+/** Messages v2 migration — message_type + edited_at land together, so
+ * either can stand in for "has the whole migration run", but editing code
+ * checks edited_at specifically since that's the column it writes to. */
+export async function hasMessageEditingSchema() { return columnExists("messages", "edited_at"); }
+export async function hasBlockedUsersSchema() { return tableExists("blocked_users"); }
+export async function hasAnnouncementDismissalsSchema() { return tableExists("announcement_dismissals"); }
 
 export async function hasLeadFieldSectionsSchema() { return tableExists("lead_field_sections"); }
 export async function hasLeadFieldLayoutSchema() { return tableExists("lead_field_layout"); }

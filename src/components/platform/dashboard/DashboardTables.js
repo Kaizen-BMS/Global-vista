@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatDate, formatDateTime } from "@/lib/helpers/dateFormat";
+import { formatMoney } from "@/lib/helpers/formatCurrency";
 
 const STATUS_COLORS = {
   active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
@@ -10,8 +11,15 @@ const STATUS_COLORS = {
   deleted: "bg-muted/20 text-muted-foreground border-border/30",
 };
 
-function Badge({ status }) {
-  return <span className={`px-2 py-0.5 rounded-full text-[11px] border capitalize ${STATUS_COLORS[status] || "bg-muted/20 text-muted-foreground border-border/30"}`}>{status}</span>;
+const PAYMENT_STATUS_COLORS = {
+  completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  refunded: "bg-muted/20 text-muted-foreground border-border/30",
+  reversed: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  failed: "bg-red-500/10 text-red-400 border-red-500/30",
+};
+
+function Badge({ status, colors = STATUS_COLORS }) {
+  return <span className={`px-2 py-0.5 rounded-full text-[11px] border capitalize ${colors[status] || "bg-muted/20 text-muted-foreground border-border/30"}`}>{status}</span>;
 }
 
 function TableCard({ title, children, empty, emptyLabel }) {
@@ -59,8 +67,25 @@ export function RecentSubscriptionsTable({ subscriptions, timezone }) {
   );
 }
 
-export function LatestPaymentsTable() {
-  return <TableCard title="Latest Payments" empty emptyLabel="Billing is not implemented yet — no payment records exist." />;
+export function LatestPaymentsTable({ payments, timezone }) {
+  return (
+    <TableCard title="Latest Payments" empty={!payments.length} emptyLabel="No payments recorded yet.">
+      <div className="divide-y divide-border">
+        {payments.map((p) => (
+          <div key={p.id} className="flex items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-foreground text-sm truncate">{p.company_name}</p>
+              <p className="text-muted-foreground text-xs">{p.plan_name} · {p.gateway} · {formatDate(p.payment_date, timezone)}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-foreground text-sm font-medium">{formatMoney(p.amount, p.currency)}</p>
+              <Badge status={p.status} colors={PAYMENT_STATUS_COLORS} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </TableCard>
+  );
 }
 
 export function LatestErrorsTable({ errors, timezone }) {

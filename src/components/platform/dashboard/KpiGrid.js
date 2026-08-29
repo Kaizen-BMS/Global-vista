@@ -4,6 +4,15 @@ import {
   Users, UserCog, Contact2, HardDrive, Package, Sparkles,
   AlertTriangle, ShieldCheck, ShieldAlert,
 } from "lucide-react";
+import { formatMoney } from "@/lib/helpers/formatCurrency";
+
+/** Revenue can be split across currencies (Razorpay/BillDesk in INR, PayPal
+ * in USD) — shown as-is rather than force-converting into one number,
+ * since there's no live FX rate to convert with. */
+function formatRevenue(rowsByCurrency) {
+  if (!rowsByCurrency?.length) return formatMoney(0, "INR");
+  return rowsByCurrency.map((r) => formatMoney(r.total, r.currency)).join(" + ");
+}
 
 const ICONS = {
   building: Building2, check: CheckCircle2, clock: Clock, x: XCircle,
@@ -52,8 +61,8 @@ export default function KpiGrid({ kpis }) {
     { label: "Active Companies", value: kpis.activeCompanies, icon: "check", accent: "green", href: "/platform/companies" },
     { label: "Trial Companies", value: kpis.trialCompanies, icon: "clock", accent: "yellow", href: "/platform/companies" },
     { label: "Expired Companies", value: kpis.expiredCompanies, icon: "x", accent: "red", href: "/platform/companies" },
-    { label: "Revenue", value: "—", icon: "dollar", accent: "neutral", hint: "Billing not yet implemented" },
-    { label: "Monthly Revenue", value: "—", icon: "trending", accent: "neutral", hint: "Billing not yet implemented" },
+    { label: "Total Revenue", value: formatRevenue(kpis.totalRevenueByCurrency), icon: "dollar", accent: "green", hint: "all-time, completed payments" },
+    { label: "Revenue (Selected Range)", value: formatRevenue(kpis.periodRevenueByCurrency), icon: "trending", accent: "indigo", hint: "in selected range" },
     { label: "Active Users", value: kpis.activeUsers, icon: "users", accent: "blue" },
     { label: "Total Employees", value: kpis.totalEmployees, icon: "userCog", accent: "blue" },
     { label: "CRM Usage", value: `${kpis.crmUsage} companies`, icon: "contact", accent: "purple", href: "/platform/modules" },
@@ -63,6 +72,9 @@ export default function KpiGrid({ kpis }) {
     { label: "Pending Provisioning", value: kpis.pendingProvisioning, icon: "alert", accent: kpis.pendingProvisioning > 0 ? "red" : "neutral", hint: "failed provisioning steps", href: "/platform/activity-logs" },
     { label: "Active Licenses", value: kpis.activeLicenses, icon: "shield", accent: "green", href: "/platform/companies" },
     { label: "Expiring Licenses", value: kpis.expiringLicenses, icon: "shieldAlert", accent: kpis.expiringLicenses > 0 ? "yellow" : "neutral", hint: "within 30 days", href: "/platform/companies" },
+    { label: "Failed Payments", value: kpis.failedPayments, icon: "alert", accent: kpis.failedPayments > 0 ? "red" : "neutral" },
+    { label: "Past Due Subscriptions", value: kpis.pastDueSubscriptions, icon: "shieldAlert", accent: kpis.pastDueSubscriptions > 0 ? "red" : "neutral", href: "/platform/subscriptions" },
+    { label: "Open Support Tickets", value: kpis.openSupportTickets, icon: "alert", accent: kpis.openSupportTickets > 0 ? "yellow" : "neutral", href: "/platform/support" },
   ];
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

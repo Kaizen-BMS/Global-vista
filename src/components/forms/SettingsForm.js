@@ -18,6 +18,23 @@ export default function SettingsForm({ group, fields, initialValues }) {
       {fields.map((f) => (
         f.type === "image" ? (
           <ImageUploadField key={f.key} label={f.label} hint={f.hint} value={values[f.key] ?? ""} onChange={(v) => setValues((val) => ({ ...val, [f.key]: v }))} uploadUrl={f.uploadUrl} category={f.category} />
+        ) : f.type === "toggle" ? (
+          <div key={f.key} className="flex items-center justify-between gap-4 py-1">
+            <div className="min-w-0">
+              <p className="text-sm text-foreground">{f.label}</p>
+              {f.hint && <p className="text-muted-foreground text-xs mt-0.5">{f.hint}</p>}
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={(values[f.key] ?? "true") !== "false"}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.checked ? "true" : "false" }))}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-muted rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
+              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-4 transition-transform"></div>
+            </label>
+          </div>
         ) : (
           <div key={f.key}>
             <label className="block text-sm text-foreground mb-1">{f.label}</label>

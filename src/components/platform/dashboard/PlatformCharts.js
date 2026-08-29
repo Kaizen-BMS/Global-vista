@@ -48,6 +48,26 @@ export function LoginActivityChart({ data }) {
   );
 }
 
+export function RevenueTrendChart({ data, currencies }) {
+  return (
+    <ChartCard title="Revenue" subtitle="Completed payments, selected range" empty={!data.length} data={data} csvColumns={["day", ...currencies]}
+      renderChart={({ fullscreen }) => (
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+          <XAxis dataKey="day" tick={axisStyle} />
+          <YAxis tick={axisStyle} />
+          <Tooltip contentStyle={tooltipStyle} />
+          {currencies.length > 1 && <Legend wrapperStyle={legendStyle} />}
+          {currencies.map((cur, i) => (
+            <Line key={cur} type="monotone" dataKey={cur} name={cur} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={fullscreen} connectNulls />
+          ))}
+          {fullscreen && <Brush dataKey="day" height={24} stroke={COLORS[0]} travellerWidth={8} fill="var(--muted)" />}
+        </LineChart>
+      )}
+    />
+  );
+}
+
 export function ProvisioningHistoryChart({ data }) {
   return (
     <ChartCard title="Provisioning History" subtitle="Selected range" empty={!data.length} data={data} csvColumns={["day", "success", "failed"]}

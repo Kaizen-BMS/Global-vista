@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus, QrCode, Send, Copy } from "lucide-react";
+import { Plus, Receipt, XCircle, RotateCcw, Loader2, X, CreditCard, CalendarPlus, QrCode, Send, Copy, Pencil, Trash2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDate } from "@/lib/helpers/dateFormat";
@@ -113,30 +113,36 @@ function CreatePlanModal({ leadId, services, onClose, onDone, call }) {
   );
 }
 
-function InstallmentModal({ leadId, planId, remaining, currency, onClose, onDone, call }) {
-  const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState("");
+function InstallmentModal({ leadId, planId, remaining, currency, initial, onClose, onDone, call }) {
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
+  const [dueDate, setDueDate] = useState(initial ? String(initial.due_date).slice(0, 10) : "");
   const [saving, setSaving] = useState(false);
+  const isEdit = !!initial;
 
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
     try {
-      await call(`/api/leads/${leadId}/payments/${planId}`, { action: "addInstallment", amount, dueDate });
-      toast.success("Installment added.");
+      if (isEdit) {
+        await call(`/api/leads/${leadId}/payments/${planId}`, { action: "updateInstallment", installmentId: initial.id, amount, dueDate });
+        toast.success("Installment updated.");
+      } else {
+        await call(`/api/leads/${leadId}/payments/${planId}`, { action: "addInstallment", amount, dueDate });
+        toast.success("Installment added.");
+      }
       onDone();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
 
   return (
-    <ModalShell title="Add Installment" onClose={onClose}>
+    <ModalShell title={isEdit ? "Edit Installment" : "Add Installment"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <p className="text-muted-foreground text-xs">Outstanding on this plan: {formatMoney(remaining, currency)}</p>
         <Field label="Amount *"><input required type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} /></Field>
         <Field label="Due Date *"><input required type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputClass} /></Field>
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />} Add</button>
+          <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">{saving && <Loader2 className="h-4 w-4 animate-spin" />} {isEdit ? "Save" : "Add"}</button>
         </div>
       </form>
     </ModalShell>
@@ -200,46 +206,57 @@ function RecordPaymentModal({ leadId, planId, installments, remaining, currency,
  * silently send on its own; the employee still presses Send inside
  * WhatsApp, same as every other logged WhatsApp message here.
  */
+/**
+ * Sends a lead a secure, single-purpose payment link — never the company's
+ * raw UPI ID or an editable upi://pay link. Under the hood this mints a
+ * payment_requests row (see /api/leads/[id]/payment-requests) and shares
+ * only its public confirmation page (/pay/[token]), which shows a fixed,
+ * non-editable amount and its own QR — nobody who receives or forwards the
+ * link can change what it asks for.
+ */
 function CollectPaymentModal({ leadId, lead, defaultAmount, currency, onClose }) {
   const [amount, setAmount] = useState(defaultAmount > 0 ? String(defaultAmount) : "");
-  const [link, setLink] = useState(null);
+  const [request, setRequest] = useState(null); // { token, publicUrl }
   const [loading, setLoading] = useState(false);
   const number = (lead?.whatsapp || lead?.phone || "").replace(/\D/g, "");
 
   async function generate() {
     if (!(Number(amount) > 0)) { toast.error("Enter a valid amount."); return; }
     setLoading(true);
-    setLink(null);
+    setRequest(null);
     try {
-      const res = await apiFetch(`/api/core/payments/upi-qr?format=json&amount=${encodeURIComponent(amount)}&note=${encodeURIComponent(`Lead #${leadId}`)}`);
+      const res = await apiFetch(`/api/leads/${leadId}/payment-requests`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, note: lead?.name ? `Payment from ${lead.name}` : undefined }),
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Couldn't generate a payment QR — check your UPI ID in Settings > Payments.");
-      setLink(data.link);
+      if (!res.ok) throw new Error(data.error || "Couldn't create a payment link — check your UPI ID in Settings > Payments.");
+      setRequest(data);
     } catch (err) { toast.error(err.message); } finally { setLoading(false); }
   }
 
-  const qrSrc = amount > 0 ? `/api/core/payments/upi-qr?amount=${encodeURIComponent(amount)}&note=${encodeURIComponent(`Lead #${leadId}`)}` : null;
-  const waMessage = link ? `Hi${lead?.name ? ` ${lead.name}` : ""}, please complete your payment of ${currency} ${amount} using this link: ${link}` : "";
+  const waMessage = request ? `Hi${lead?.name ? ` ${lead.name}` : ""}, please complete your payment of ${currency} ${amount} using this secure link: ${request.publicUrl}` : "";
 
   return (
     <ModalShell title="Collect Payment via UPI" onClose={onClose}>
       <div className="space-y-3">
         <Field label="Amount *">
           <div className="flex gap-2">
-            <input type="number" min="0" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); setLink(null); }} className={inputClass} />
+            <input type="number" min="0" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); setRequest(null); }} className={inputClass} />
             <button onClick={generate} disabled={loading} className="btn-brand flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer disabled:opacity-60 shrink-0">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} Generate
             </button>
           </div>
         </Field>
 
-        {qrSrc && link && (
+        {request && (
           <div className="flex flex-col items-center gap-3 pt-2 border-t border-border">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrSrc} alt="UPI payment QR" className="h-44 w-44 rounded-lg border border-border bg-white" />
+            <img src={`/api/public/pay/${request.token}/qr`} alt="UPI payment QR" className="h-44 w-44 rounded-lg border border-border bg-white" />
+            <p className="text-muted-foreground text-[11px] text-center">This QR and link only work for this exact amount — the lead can't edit it.</p>
             <div className="w-full flex items-center gap-2">
-              <input readOnly value={link} className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground text-xs truncate" />
-              <button onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copied."); }} aria-label="Copy payment link" className="p-1.5 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer transition"><Copy className="h-3.5 w-3.5" /></button>
+              <input readOnly value={request.publicUrl} className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground text-xs truncate" />
+              <button onClick={() => { navigator.clipboard.writeText(request.publicUrl); toast.success("Link copied."); }} aria-label="Copy payment link" className="p-1.5 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer transition"><Copy className="h-3.5 w-3.5" /></button>
             </div>
             {number ? (
               <a
@@ -281,6 +298,8 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
   const router = useRouter();
   const timezone = useTimezone();
   const [modal, setModal] = useState(null);
+  const [editingInstallment, setEditingInstallment] = useState(undefined); // undefined = closed, null = add mode, object = edit mode
+  const [removingId, setRemovingId] = useState(null);
 
   async function call(url, body) {
     const res = await apiFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -289,6 +308,18 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
     return data;
   }
   function close() { setModal(null); router.refresh(); refreshSidebarBadges(); }
+  function closeInstallmentModal() { setEditingInstallment(undefined); router.refresh(); refreshSidebarBadges(); }
+
+  async function removeInstallment(inst) {
+    if (!confirm(`Remove this ${formatMoney(inst.amount, activePlan?.plan?.currency)} installment?`)) return;
+    setRemovingId(inst.id);
+    try {
+      await call(`/api/leads/${leadId}/payments/${activePlan.plan.id}`, { action: "removeInstallment", installmentId: inst.id });
+      toast.success("Installment removed.");
+      router.refresh();
+      refreshSidebarBadges();
+    } catch (err) { toast.error(err.message); } finally { setRemovingId(null); }
+  }
 
   if (!activePlan) {
     return (
@@ -324,7 +355,7 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setModal("record")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-brand text-white text-xs font-medium cursor-pointer disabled:opacity-50"><CreditCard className="h-3.5 w-3.5" /> Record Payment</button>
               <button onClick={() => setModal("collect")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-50"><QrCode className="h-3.5 w-3.5" /> Collect via UPI</button>
-              <button onClick={() => setModal("installment")} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-50"><CalendarPlus className="h-3.5 w-3.5" /> Add Installment</button>
+              <button onClick={() => setEditingInstallment(null)} disabled={remaining <= 0} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-50"><CalendarPlus className="h-3.5 w-3.5" /> Add Installment</button>
               <button onClick={() => setModal("cancel")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-red-400 text-xs cursor-pointer"><XCircle className="h-3.5 w-3.5" /> Cancel Plan</button>
               {plan.status === "Paid" && <button onClick={() => setModal("refund")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-violet-400 text-xs cursor-pointer"><RotateCcw className="h-3.5 w-3.5" /> Mark Refunded</button>}
             </div>
@@ -360,15 +391,28 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
           <p className="text-muted-foreground text-sm">No installments — the full amount is payable directly.</p>
         ) : (
           <div className="space-y-2">
-            {installments.map((inst) => (
-              <div key={inst.id} className="flex items-center justify-between gap-3 bg-muted/30 border border-border rounded-lg p-3">
-                <div className="min-w-0">
-                  <p className="text-foreground text-sm">{formatMoney(inst.amount, currency)}</p>
-                  <p className="text-muted-foreground text-xs">Due {formatDate(inst.due_date, timezone)}{Number(inst.paid_amount) > 0 ? ` · ${formatMoney(inst.paid_amount, currency)} paid` : ""}</p>
+            {installments.map((inst) => {
+              const canEdit = canManage && Number(inst.paid_amount) === 0 && !["Cancelled"].includes(inst.status);
+              return (
+                <div key={inst.id} className="flex items-center justify-between gap-3 bg-muted/30 border border-border rounded-lg p-3">
+                  <div className="min-w-0">
+                    <p className="text-foreground text-sm">{formatMoney(inst.amount, currency)}</p>
+                    <p className="text-muted-foreground text-xs">Due {formatDate(inst.due_date, timezone)}{Number(inst.paid_amount) > 0 ? ` · ${formatMoney(inst.paid_amount, currency)} paid` : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <StatusPill status={inst.status} />
+                    {canEdit && (
+                      <>
+                        <button onClick={() => setEditingInstallment(inst)} aria-label="Edit installment" className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => removeInstallment(inst)} disabled={removingId === inst.id} aria-label="Remove installment" className="text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60">
+                          {removingId === inst.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <StatusPill status={inst.status} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -428,7 +472,12 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
       )}
 
       {modal === "createPlan" && <CreatePlanModal leadId={leadId} services={services} onClose={() => setModal(null)} onDone={close} call={call} />}
-      {modal === "installment" && <InstallmentModal leadId={leadId} planId={plan.id} remaining={remaining} currency={currency} onClose={() => setModal(null)} onDone={close} call={call} />}
+      {editingInstallment !== undefined && (
+        <InstallmentModal
+          leadId={leadId} planId={plan.id} remaining={remaining} currency={currency} initial={editingInstallment}
+          onClose={() => setEditingInstallment(undefined)} onDone={closeInstallmentModal} call={call}
+        />
+      )}
       {modal === "record" && (
         <RecordPaymentModal leadId={leadId} planId={plan.id} installments={installments} remaining={remaining} currency={currency} availableMethods={availableMethods} onClose={() => setModal(null)} onDone={close} call={call} />
       )}

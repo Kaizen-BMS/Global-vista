@@ -1,4 +1,6 @@
+import { getSession } from "@/lib/auth";
 import { getPlatformDashboard, resolveRange } from "@/lib/platform/actions/dashboard";
+import { getSupportTicketStats } from "@/lib/platform/actions/supportTickets";
 import { getPlatformTimezone } from "@/lib/platform/actions/settings";
 import KpiGrid from "@/components/platform/dashboard/KpiGrid";
 import RangeFilter from "@/components/shared/RangeFilter";
@@ -9,13 +11,18 @@ import {
 } from "@/components/platform/dashboard/DashboardTables";
 
 export default async function PlatformDashboard({ searchParams }) {
+  const session = await getSession();
   const sp = await searchParams;
   const range = sp?.range || "month";
   const timezone = await getPlatformTimezone();
   const { start, end, label } = resolveRange(range, sp?.from, sp?.to, {
     timeZone: timezone, quarter: sp?.quarter, qyear: sp?.qyear, years: sp?.years,
   });
-  const { kpis, charts, tables } = await getPlatformDashboard({ start, end });
+  const [{ kpis, charts, tables }, supportStats] = await Promise.all([
+    getPlatformDashboard({ start, end }),
+    getSupportTicketStats(session),
+  ]);
+  kpis.openSupportTickets = supportStats.open;
 
   return (
     <div className="space-y-6">
@@ -38,7 +45,7 @@ export default async function PlatformDashboard({ searchParams }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <RecentCompaniesTable companies={tables.recentCompanies} timezone={timezone} />
         <RecentSubscriptionsTable subscriptions={tables.recentSubscriptions} timezone={timezone} />
-        <LatestPaymentsTable />
+        <LatestPaymentsTable payments={tables.latestPayments} timezone={timezone} />
         <LatestErrorsTable errors={tables.recentErrors} timezone={timezone} />
         <RecentPlatformEventsTable events={tables.recentPlatformEvents} timezone={timezone} />
       </div>

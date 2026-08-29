@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 import { PERMISSION_MODULE_ORDER, PERMISSION_MODULE_LABELS } from "@/lib/constants/permissionModules";
 import { apiFetch } from "@/components/shared/apiClient";
 
@@ -28,7 +28,9 @@ export default function PermissionMatrix({ roleId, allPermissions, assignedIds }
             <p className="text-foreground text-sm font-medium mb-3">{PERMISSION_MODULE_LABELS[m] || m}</p>
             <div className="flex flex-wrap gap-2">
               {grouped[m].map((p) => { const active = selected.has(p.id); return (
-                <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border cursor-pointer transition ${active ? "bg-indigo-600/10 text-indigo-400 border-indigo-600/30" : "bg-muted/60 text-muted-foreground border-border hover:border-indigo-500/30"}`}>{active && <Check className="h-3 w-3" />}{p.name}</button>
+                <button key={p.id} type="button" onClick={() => toggle(p.id)} aria-pressed={active} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border cursor-pointer transition ${active ? "bg-emerald-600/10 text-emerald-400 border-emerald-600/30 hover:border-emerald-500/50" : "bg-red-600/10 text-red-400 border-red-600/30 hover:border-red-500/50"}`}>
+                  {active ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}{p.name}
+                </button>
               ); })}
             </div>
           </div>

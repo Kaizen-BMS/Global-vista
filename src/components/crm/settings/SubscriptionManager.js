@@ -12,6 +12,18 @@ import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 
+/** Only BillDesk/Razorpay ever get mentioned, and only the ones actually
+ * connected to at least one plan shown here — currently just Razorpay, so
+ * this reads "Razorpay" rather than a hardcoded "BillDesk or Razorpay" that
+ * would name a gateway no plan can actually be checked out through. */
+function gatewayTrustLabel(plans) {
+  const gateways = [];
+  if (plans.some((p) => p.hasBillDesk)) gateways.push("billdesk");
+  if (plans.some((p) => p.hasRazorpay)) gateways.push("razorpay");
+  if (!gateways.length) return "your payment gateway";
+  return gateways.map((g) => GATEWAY_LABEL[g]).join(" or ");
+}
+
 const STATUS_META = {
   completed: { label: "Paid", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
   pending: { label: "Pending", color: "text-sky-400 border-sky-500/30 bg-sky-500/10" },
@@ -120,7 +132,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, onClose }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
             <p className="text-foreground font-semibold">Choose a Plan</p>
-            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by BillDesk or Razorpay</p>
+            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by {gatewayTrustLabel(plans)}</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
@@ -226,7 +238,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
   return (
     <div className="mt-4 pt-4 border-t border-border">
       <div className="flex items-center gap-1.5 mb-3 text-[11px] text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by BillDesk or Razorpay
+        <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by {gatewayTrustLabel(plans)}
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setShowPicker(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer transition">

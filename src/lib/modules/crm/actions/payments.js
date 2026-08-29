@@ -166,11 +166,13 @@ export async function createPaymentPlan(session, leadId, data, createdBy) {
     [session.company_id, leadId, data.serviceId, originalAmount, discountAmount, negotiatedAmount, taxAmount, totalPayable, data.currency || "INR", data.notes || null, createdBy, createdBy]
   );
 
+  // Best-effort — the plan itself is already committed above; a logging
+  // hiccup must never come back to the employee as "the plan wasn't created".
   await logActivity({
     userId: createdBy, module: "leads", action: "payment_plan_created", entityType: "payment_plan", entityId: result.insertId, companyId: session.company_id,
     description: `Created payment plan for ${lead.name} — ${data.currency || "INR"} ${totalPayable}`,
     meta: { leadId, originalAmount, discountAmount, negotiatedAmount, taxAmount, totalPayable },
-  });
+  }).catch(() => {});
 
   return result.insertId;
 }
@@ -197,10 +199,13 @@ export async function addInstallment(session, planId, { amount, dueDate }, actor
     );
     await recalculatePlanStatus(conn, plan);
     await conn.commit();
+    conn.release();
 
-    await logActivity({ userId: actorId, module: "leads", action: "payment_installment_created", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Added installment of ${plan.currency} ${amt} due ${dueDate}` });
+    // Best-effort, after commit — a logging hiccup must never surface as
+    // "the installment wasn't added" when it already was.
+    logActivity({ userId: actorId, module: "leads", action: "payment_installment_created", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Added installment of ${plan.currency} ${amt} due ${dueDate}` }).catch(() => {});
     return result.insertId;
-  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  } catch (e) { await conn.rollback(); conn.release(); throw e; }
 }
 
 export async function updateInstallment(session, planId, installmentId, { amount, dueDate }, actorId) {
@@ -224,8 +229,9 @@ export async function updateInstallment(session, planId, installmentId, { amount
     await conn.query(`UPDATE payment_installments SET amount = ?, due_date = ?, status = ? WHERE id = ?`, [amt, due, installmentStatus(amt, 0, due), installmentId]);
     await recalculatePlanStatus(conn, plan);
     await conn.commit();
-    await logActivity({ userId: actorId, module: "leads", action: "payment_installment_updated", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Updated installment #${installmentId}` });
-  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+    conn.release();
+    logActivity({ userId: actorId, module: "leads", action: "payment_installment_updated", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Updated installment #${installmentId}` }).catch(() => {});
+  } catch (e) { await conn.rollback(); conn.release(); throw e; }
 }
 
 export async function removeInstallment(session, planId, installmentId, actorId) {
@@ -240,8 +246,9 @@ export async function removeInstallment(session, planId, installmentId, actorId)
     await conn.query(`DELETE FROM payment_installments WHERE id = ?`, [installmentId]);
     await recalculatePlanStatus(conn, plan);
     await conn.commit();
-    await logActivity({ userId: actorId, module: "leads", action: "payment_installment_removed", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Removed installment #${installmentId}` });
-  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+    conn.release();
+    logActivity({ userId: actorId, module: "leads", action: "payment_installment_removed", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Removed installment #${installmentId}` }).catch(() => {});
+  } catch (e) { await conn.rollback(); conn.release(); throw e; }
 }
 
 /**
@@ -301,28 +308,36 @@ export async function recordPayment(session, planId, data, actorId) {
     await conn.query(`UPDATE payment_plans SET updated_by = ? WHERE id = ?`, [actorId, planId]);
     const newStatus = await recalculatePlanStatus(conn, plan);
     await conn.commit();
+    conn.release();
 
-    const [[lead]] = await pool.query(`SELECT id, name, lead_number, assigned_to FROM leads WHERE id = ?`, [plan.lead_id]);
-    await logActivity({
+    // Everything below is best-effort audit/notification, after the payment
+    // itself is already safely committed — previously a hiccup in either of
+    // these (or the plain conn.rollback() that followed, on an already-
+    // committed connection) surfaced to the employee as "something went
+    // wrong" / the payment failing to record, when it had in fact already
+    // been saved. Never let this be the difference between "recorded" and
+    // "not recorded" again.
+    const [[lead]] = await pool.query(`SELECT id, name, lead_number, assigned_to FROM leads WHERE id = ?`, [plan.lead_id]).catch(() => [[null]]);
+    logActivity({
       userId: actorId, module: "leads", action: "payment_recorded", entityType: "payment_plan", entityId: planId, companyId: session.company_id,
       description: `Recorded ${data.method} payment of ${plan.currency} ${amount} for ${lead?.name || `lead #${plan.lead_id}`}${data.referenceId ? ` (ref ${data.referenceId})` : ""}`,
       meta: { paymentId: result.insertId, amount, method: data.method, installmentId: installment?.id || null },
-    });
+    }).catch(() => {});
     if (lead?.assigned_to && lead.assigned_to !== actorId) {
-      await createNotification(session.company_id, lead.assigned_to, {
+      createNotification(session.company_id, lead.assigned_to, {
         title: "Payment received", message: `${plan.currency} ${amount} received for ${lead.name}`, type: "payment_received", link: `/workspace/lead-management/${plan.lead_id}`,
-      });
+      }).catch(() => {});
     }
 
     return { paymentId: result.insertId, planStatus: newStatus };
-  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  } catch (e) { await conn.rollback(); conn.release(); throw e; }
 }
 
 export async function cancelPaymentPlan(session, planId, reason, actorId) {
   const plan = await getOwnedPlan(pool, session, planId);
   if (["Cancelled", "Refunded"].includes(plan.status)) { const e = new Error(`Plan is already ${plan.status}.`); e.status = 400; throw e; }
   await pool.query(`UPDATE payment_plans SET status = 'Cancelled', updated_by = ? WHERE id = ?`, [actorId, planId]);
-  await logActivity({ userId: actorId, module: "leads", action: "payment_plan_cancelled", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Cancelled payment plan${reason ? `: ${reason}` : ""}` });
+  logActivity({ userId: actorId, module: "leads", action: "payment_plan_cancelled", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Cancelled payment plan${reason ? `: ${reason}` : ""}` }).catch(() => {});
 }
 
 /**
@@ -335,7 +350,7 @@ export async function refundPaymentPlan(session, planId, reason, actorId) {
   const plan = await getOwnedPlan(pool, session, planId);
   if (plan.status === "Refunded") { const e = new Error("Plan is already Refunded."); e.status = 400; throw e; }
   await pool.query(`UPDATE payment_plans SET status = 'Refunded', updated_by = ? WHERE id = ?`, [actorId, planId]);
-  await logActivity({ userId: actorId, module: "leads", action: "payment_plan_refunded", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Marked payment plan as refunded${reason ? `: ${reason}` : ""}` });
+  logActivity({ userId: actorId, module: "leads", action: "payment_plan_refunded", entityType: "payment_plan", entityId: planId, companyId: session.company_id, description: `Marked payment plan as refunded${reason ? `: ${reason}` : ""}` }).catch(() => {});
 }
 
 export async function getPaymentReceipt(session, paymentId) {
@@ -354,7 +369,7 @@ export async function getPaymentReceipt(session, paymentId) {
   );
   if (!payment) { const e = new Error("Payment not found in this company."); e.status = 404; throw e; }
   const { totalPaid } = await computePlanTotals(pool, payment.payment_plan_id);
-  await logActivity({ userId: session.id, module: "leads", action: "payment_receipt_generated", entityType: "payment_plan", entityId: payment.payment_plan_id, companyId: session.company_id, description: `Generated receipt for payment #${paymentId}` });
+  logActivity({ userId: session.id, module: "leads", action: "payment_receipt_generated", entityType: "payment_plan", entityId: payment.payment_plan_id, companyId: session.company_id, description: `Generated receipt for payment #${paymentId}` }).catch(() => {});
   return { payment, totalPaid: round2(totalPaid), remaining: round2(Number(payment.total_payable) - totalPaid) };
 }
 

@@ -97,7 +97,7 @@ function UploadDropzone({ userId, type, onUploaded }) {
 
   return (
     <div className="space-y-2">
-      {type.expiry_required && (
+      {!!type.expiry_required && (
         <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="w-full px-2.5 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs" placeholder="Expiry date" />
       )}
       <div

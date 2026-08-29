@@ -16,6 +16,7 @@ import { TimezoneProvider } from "@/components/shared/TimezoneProvider";
 import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 import FollowupReminderWatcher from "@/components/notifications/FollowupReminderWatcher";
 import SessionLivenessWatcher from "@/components/shared/SessionLivenessWatcher";
+import RealtimeUpdatesWatcher from "@/components/shared/RealtimeUpdatesWatcher";
 
 export default async function WorkspaceLayout({ children }) {
   const session = await getSession();
@@ -59,6 +60,7 @@ export default async function WorkspaceLayout({ children }) {
         >
           <BrandFavicon faviconUrl={company?.favicon_url} />
           <SessionLivenessWatcher />
+          <RealtimeUpdatesWatcher />
           {canViewLeads && <FollowupReminderWatcher />}
           <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
           <div className="flex-1 flex flex-col min-w-0">

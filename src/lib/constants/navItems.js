@@ -11,6 +11,7 @@ export const PLATFORM_NAV_ITEMS = [
   { href: "/platform/offers", label: "Offers", icon: "Megaphone" },
   { href: "/platform/activity-logs", label: "Activity Logs", icon: "ScrollText" },
   { href: "/platform/system-health", label: "System Health", icon: "Activity" },
+  { href: "/platform/support", label: "Support Tickets", icon: "MessageSquareWarning" },
   { href: "/platform/settings", label: "Settings", icon: "Settings" },
 ];
 export const ALL_NAV_ITEMS = [

@@ -6,6 +6,7 @@ import { createNotification } from "@/lib/actions/notifications";
 import { sendFollowupCreatedEmail, sendFollowupRescheduledEmail, sendFollowupCancelledEmail } from "@/lib/modules/crm/actions/followupNotifications";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { parseDateTimeLocalInZone } from "@/lib/helpers/dateRange";
+import { hasFollowupCompletedAtColumn } from "@/lib/db/schemaFlags";
 
 /** Every follow-up write goes through this — the single point where an
  * HTML datetime-local value (no timezone of its own) gets interpreted as
@@ -73,7 +74,8 @@ export async function getTodaysFollowups(session) {
 
 export async function getFollowupDashboard(session) {
   const { where, params } = await getVisibleLeadFilter(session);
-  const base = `SELECT f.id, f.type, f.status, f.scheduled_at, l.id AS lead_id, l.name AS lead_name, l.phone AS lead_phone, l.priority, l.company_id, u.name AS assigned_name
+  const withCompletedAt = await hasFollowupCompletedAtColumn();
+  const base = `SELECT f.id, f.type, f.status, f.scheduled_at${withCompletedAt ? ", f.completed_at" : ""}, l.id AS lead_id, l.name AS lead_name, l.phone AS lead_phone, l.priority, l.company_id, u.name AS assigned_name
      FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0 AND ${where}
      LEFT JOIN users u ON u.id = l.assigned_to`;
 
@@ -87,7 +89,14 @@ export async function getFollowupDashboard(session) {
   );
   const [upcoming] = await pool.query(`${base} WHERE f.status='Scheduled' AND DATE(f.scheduled_at) > DATE_ADD(CURDATE(), INTERVAL 7 DAY) ORDER BY f.scheduled_at ASC LIMIT 100`, params);
   const [highPriority] = await pool.query(`${base} WHERE f.status='Scheduled' AND l.priority IN ('High','Urgent') ORDER BY f.scheduled_at ASC LIMIT 100`, params);
-  const [completedToday] = await pool.query(`${base} WHERE f.status='Completed' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at DESC LIMIT 100`, params);
+  // Filtered on WHEN IT WAS ACTUALLY COMPLETED, not its original due date —
+  // an overdue follow-up (scheduled for a past date) completed today must
+  // show up here. Falls back to the old (inaccurate for overdue-then-
+  // completed-today items) scheduled_at check only on an environment where
+  // completed_at hasn't been migrated in yet.
+  const [completedToday] = withCompletedAt
+    ? await pool.query(`${base} WHERE f.status='Completed' AND DATE(COALESCE(f.completed_at, f.scheduled_at)) = CURDATE() ORDER BY f.completed_at DESC LIMIT 100`, params)
+    : await pool.query(`${base} WHERE f.status='Completed' AND DATE(f.scheduled_at) = CURDATE() ORDER BY f.scheduled_at DESC LIMIT 100`, params);
 
   return { overdue, today, tomorrow, thisWeek, upcoming, highPriority, completedToday };
 }
@@ -176,13 +185,21 @@ export async function cancelFollowup(session, id, leadId, updatedBy) {
  */
 export async function logQuickActivity(session, leadId, { type, note, nextFollowUp: nextFollowUpInput, durationSeconds, disposition }, actorId) {
   const nextFollowUp = await toStoredDateTime(session, nextFollowUpInput);
+  const withCompletedAt = await hasFollowupCompletedAtColumn();
   const conn = await pool.getConnection();
   let completedId;
   try {
     await conn.beginTransaction();
+    // A quick-log entry is logged as already-completed at the moment it's
+    // created — scheduled_at and completed_at are the same instant here,
+    // unlike completeFollowup's case where a follow-up scheduled earlier
+    // gets completed later (possibly much later, if it was overdue).
     const [result] = await conn.query(
-      `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, outcome, notes, duration_seconds, disposition, created_by, updated_by)
-       VALUES (?, ?, ?, 'Completed', NOW(), ?, ?, ?, ?, ?, ?)`,
+      withCompletedAt
+        ? `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, completed_at, outcome, notes, duration_seconds, disposition, created_by, updated_by)
+           VALUES (?, ?, ?, 'Completed', NOW(), NOW(), ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, outcome, notes, duration_seconds, disposition, created_by, updated_by)
+           VALUES (?, ?, ?, 'Completed', NOW(), ?, ?, ?, ?, ?, ?)`,
       [session.company_id, leadId, type, note || null, note || null, durationSeconds || null, disposition || null, actorId, actorId]
     );
     completedId = result.insertId;
@@ -215,8 +232,11 @@ export async function logQuickActivity(session, leadId, { type, note, nextFollow
 
 export async function completeFollowup(session, id, leadId, { outcome, nextFollowUp: nextFollowUpInput, durationSeconds, disposition }, updatedBy) {
   const nextFollowUp = await toStoredDateTime(session, nextFollowUpInput);
+  const withCompletedAt = await hasFollowupCompletedAtColumn();
   await pool.query(
-    `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, duration_seconds = ?, disposition = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
+    withCompletedAt
+      ? `UPDATE lead_followups SET status = 'Completed', completed_at = NOW(), outcome = ?, next_follow_up = ?, duration_seconds = ?, disposition = ?, updated_by = ? WHERE id = ? AND company_id = ?`
+      : `UPDATE lead_followups SET status = 'Completed', outcome = ?, next_follow_up = ?, duration_seconds = ?, disposition = ?, updated_by = ? WHERE id = ? AND company_id = ?`,
     [outcome || null, nextFollowUp, durationSeconds || null, disposition || null, updatedBy, id, session.company_id]
   );
   if (nextFollowUp) {

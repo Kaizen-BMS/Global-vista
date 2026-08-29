@@ -21,6 +21,9 @@ export default function LayoutWrapper({ children }) {
   // deliberately distinct from Global Vista Educators' identity) is already
   // covered by the "/platform" prefix check above. /blog is the KaizenBMS
   // Platform's own public blog (uses PlatformHomeNavbar) — same reasoning.
+  // /pay/[token] is a standalone public payment-request page (opened from a
+  // WhatsApp link a lead receives) — it owns its own full-viewport look,
+  // same as /forms/[slug].
   const isApplication =
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/platform") ||
@@ -30,7 +33,8 @@ export default function LayoutWrapper({ children }) {
     pathname.startsWith("/register") ||
     pathname.startsWith("/crm") ||
     pathname.startsWith("/forms") ||
-    pathname.startsWith("/blog");
+    pathname.startsWith("/blog") ||
+    pathname.startsWith("/pay");
 
   if (isApplication) {
     return <>{children}</>;

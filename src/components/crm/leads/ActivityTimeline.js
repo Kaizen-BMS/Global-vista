@@ -53,10 +53,21 @@ function FollowupDetail({ item, leadId, canManage, timezone, onChanged }) {
   }
 
   if (!item) return <p className="text-muted-foreground text-xs">This follow-up's record could not be found (it may have been part of a bulk action).</p>;
+  // Surfaces the gap between "when this was due" and "when it actually got
+  // done" — an overdue follow-up completed today should never just look
+  // like it happened on schedule.
+  const wasOverdueCompletion = item.status === "Completed" && item.completed_at
+    && new Date(item.completed_at).toDateString() !== new Date(item.scheduled_at).toDateString();
   return (
     <div>
       <Row label="Type" value={item.type} />
       <Row label="Scheduled" value={formatDateTime(item.scheduled_at, timezone)} />
+      {item.status === "Completed" && item.completed_at && (
+        <Row
+          label="Completed"
+          value={wasOverdueCompletion ? <span className="text-amber-400">{formatDateTime(item.completed_at, timezone)} — completed late</span> : formatDateTime(item.completed_at, timezone)}
+        />
+      )}
       <Row label="Status" value={item.status} />
       <Row label="Created by" value={item.created_by_name} />
       {item.disposition && <Row label="Disposition" value={<span className={`px-1.5 py-0.5 rounded-md border text-[10px] ${DISPOSITION_COLORS[item.disposition] || ""}`}>{item.disposition}</span>} />}
