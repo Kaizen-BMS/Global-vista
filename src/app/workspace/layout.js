@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { can, isPlatformOperator, isCompanySuspended } from "@/lib/helpers/permissions";
 import { getVisibleNavItems } from "@/lib/helpers/menu";
+import { getVisibleGuideEntries } from "@/lib/helpers/guide";
 import { getCurrentCompany, getSubscriptionDetails } from "@/lib/platform/tenant";
 import { getPlatformSettingsByGroup } from "@/lib/platform/actions/settings";
 import { getSettingsByGroup } from "@/lib/actions/settings";
@@ -17,6 +18,7 @@ import { MobileNavProvider } from "@/components/layout/MobileNavContext";
 import FollowupReminderWatcher from "@/components/notifications/FollowupReminderWatcher";
 import SessionLivenessWatcher from "@/components/shared/SessionLivenessWatcher";
 import RealtimeUpdatesWatcher from "@/components/shared/RealtimeUpdatesWatcher";
+import FeatureGuideWidget from "@/components/workspace/FeatureGuideWidget";
 
 export default async function WorkspaceLayout({ children }) {
   const session = await getSession();
@@ -42,9 +44,9 @@ export default async function WorkspaceLayout({ children }) {
     );
   }
 
-  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads] = await Promise.all([
+  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads, guideEntries] = await Promise.all([
     getVisibleNavItems(session), getCurrentCompany(session.company_id), getPlatformSettingsByGroup("branding"), getSettingsByGroup(session, "branding"),
-    getSettingsByGroup(session, "system"), can(session, "leads.view"),
+    getSettingsByGroup(session, "system"), can(session, "leads.view"), getVisibleGuideEntries(session),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const hour12 = systemSettings.time_format !== "24h";
@@ -69,6 +71,7 @@ export default async function WorkspaceLayout({ children }) {
               {session.must_change_password ? <div className="max-w-md mx-auto mt-12"><h1 className="text-xl font-semibold text-foreground mb-1">Set a New Password</h1><ChangePasswordForm forced /></div> : <PageTransition>{children}</PageTransition>}
             </main>
           </div>
+          {!session.must_change_password && <FeatureGuideWidget entries={guideEntries} />}
         </div>
       </MobileNavProvider>
     </TimezoneProvider>
