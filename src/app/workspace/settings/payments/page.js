@@ -12,7 +12,7 @@ export default async function PaymentSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Payment Integration</h1>
       <SettingsTabs />
       <p className="text-muted-foreground text-sm mb-6 max-w-xl">
         Configure how your team collects payment. This is your company&apos;s own UPI details — no other company can see or use it.

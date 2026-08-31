@@ -4,7 +4,7 @@ import { ok, withErrorHandling } from "@/lib/helpers/response";
 import { getSettingsByGroup, updateSettings } from "@/lib/actions/settings";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
-const ALLOWED = ["branding", "email", "notifications", "system", "payments"];
+const ALLOWED = ["branding", "email", "notifications", "system", "payments", "calling"];
 export const GET = withErrorHandling(async (request, ctx) => {
   const { group } = await ctx.params;
   const session = await getSession();

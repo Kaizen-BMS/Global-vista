@@ -2,7 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { assertPlatformOperator } from "@/lib/helpers/permissions";
-import { hasOffersSchema } from "@/lib/db/schemaFlags";
+import { hasOffersSchema, hasOfferImageColumn } from "@/lib/db/schemaFlags";
 
 function assertSchemaReady() {
   const e = new Error("The offers schema hasn't been applied to this database yet."); e.status = 503; throw e;
@@ -23,11 +23,12 @@ export async function createOffer(session, data) {
   if (!(await hasOffersSchema())) assertSchemaReady();
   const text = (data.text || "").trim();
   if (!text) { const e = new Error("Offer text is required."); e.status = 400; throw e; }
+  const imageReady = await hasOfferImageColumn();
 
   const [[maxRow]] = await pool.query(`SELECT COALESCE(MAX(sort_order), -1) AS maxOrder FROM platform_offers`);
   const [result] = await pool.query(
-    `INSERT INTO platform_offers (text, sort_order, status, created_by) VALUES (?,?,?,?)`,
-    [text, Number(maxRow.maxOrder) + 1, data.status === "inactive" ? "inactive" : "active", session.id]
+    `INSERT INTO platform_offers (text${imageReady ? ", image_url" : ""}, sort_order, status, created_by) VALUES (?${imageReady ? ",?" : ""},?,?,?)`,
+    [text, ...(imageReady ? [data.imageUrl || null] : []), Number(maxRow.maxOrder) + 1, data.status === "inactive" ? "inactive" : "active", session.id]
   );
   await logActivity({ userId: session.id, module: "platform", action: "offer_created", entityType: "platform_offer", entityId: result.insertId, description: `Added offer "${text}"` }).catch(() => {});
   return { id: result.insertId };
@@ -40,8 +41,12 @@ export async function updateOffer(session, id, data) {
   if (!existing) { const e = new Error("Offer not found."); e.status = 404; throw e; }
   const text = (data.text || "").trim();
   if (!text) { const e = new Error("Offer text is required."); e.status = 400; throw e; }
+  const imageReady = await hasOfferImageColumn();
 
-  await pool.query(`UPDATE platform_offers SET text=?, status=? WHERE id=?`, [text, data.status === "inactive" ? "inactive" : "active", id]);
+  await pool.query(
+    `UPDATE platform_offers SET text=?${imageReady ? ", image_url=?" : ""}, status=? WHERE id=?`,
+    [text, ...(imageReady ? [data.imageUrl || null] : []), data.status === "inactive" ? "inactive" : "active", id]
+  );
   await logActivity({ userId: session.id, module: "platform", action: "offer_updated", entityType: "platform_offer", entityId: id, description: "Updated offer" }).catch(() => {});
 }
 
@@ -76,6 +81,7 @@ export async function reorderOffers(session, orderedIds) {
 
 export async function listActiveOffers() {
   if (!(await hasOffersSchema())) return [];
-  const [rows] = await pool.query(`SELECT id, text FROM platform_offers WHERE status = 'active' ORDER BY sort_order ASC`);
+  const imageReady = await hasOfferImageColumn();
+  const [rows] = await pool.query(`SELECT id, text${imageReady ? ", image_url" : ""} FROM platform_offers WHERE status = 'active' ORDER BY sort_order ASC`);
   return rows;
 }

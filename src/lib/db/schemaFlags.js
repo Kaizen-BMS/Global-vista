@@ -66,6 +66,7 @@ export async function hasLeadNoteEditColumns() { return columnExists("lead_notes
 export async function hasFollowupCompletedAtColumn() { return columnExists("lead_followups", "completed_at"); }
 export async function hasPaymentRequestsSchema() { return tableExists("payment_requests"); }
 export async function hasLeadMeetingsSchema() { return tableExists("lead_meetings"); }
+export async function hasLeadCallsSchema() { return tableExists("lead_calls"); }
 
 export async function hasComplaintsSchema() { return tableExists("complaints"); }
 export async function hasPlatformSupportSchema() { return tableExists("platform_support_tickets"); }
@@ -73,6 +74,7 @@ export async function hasIdeasSchema() { return tableExists("ideas"); }
 
 export async function hasBlogSchema() { return tableExists("blog_posts"); }
 export async function hasOffersSchema() { return tableExists("platform_offers"); }
+export async function hasOfferImageColumn() { return columnExists("platform_offers", "image_url"); }
 export async function hasCouponsSchema() { return tableExists("coupons"); }
 
 /** Messages v2 migration — message_type + edited_at land together, so

@@ -75,6 +75,23 @@ export async function deleteCoupon(session, id) {
   await logActivity({ userId: session.id, module: "platform", action: "coupon_deleted", entityType: "coupon", entityId: id, description: `Deleted coupon "${existing.code}"` }).catch(() => {});
 }
 
+/** Which companies actually redeemed a coupon, newest first — the admin's
+ * "used X / Y" count on the list already comes from coupons.redemption_count;
+ * this is the drill-down into who those redemptions were. */
+export async function listRedemptionsForCoupon(session, couponId) {
+  assertPlatformOperator(session);
+  if (!(await hasCouponsSchema())) return [];
+  const [rows] = await pool.query(
+    `SELECT r.id, r.company_id, c.name AS company_name, r.subscription_id, r.discount_amount, r.redeemed_at
+     FROM coupon_redemptions r
+     LEFT JOIN companies c ON c.id = r.company_id
+     WHERE r.coupon_id = ?
+     ORDER BY r.redeemed_at DESC`,
+    [couponId]
+  );
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // Checkout-time — validate a code against a specific plan's price, and
 // record redemption once a payment for it actually completes.

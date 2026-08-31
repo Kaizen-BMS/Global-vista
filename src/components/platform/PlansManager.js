@@ -244,8 +244,14 @@ function DeletePlanButton({ plan, onDeleted }) {
       const res = await apiFetch(`/api/platform/plans/${plan.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete plan.");
-      if (data.archived) toast.warning(`"${plan.name}" is used by ${data.companiesUsingIt} company subscription(s) — archived instead of deleted (set to inactive, hidden from new assignments).`);
-      else toast.success(`"${plan.name}" deleted.`);
+      if (data.archived) {
+        const reason = data.companiesUsingIt > 0 && data.paymentsOnRecord > 0
+          ? `${data.companiesUsingIt} company subscription(s) and ${data.paymentsOnRecord} recorded payment(s)`
+          : data.companiesUsingIt > 0
+          ? `${data.companiesUsingIt} company subscription(s)`
+          : `${data.paymentsOnRecord} recorded payment(s) (e.g. a past test charge) — deleting would break that payment's record`;
+        toast.warning(`"${plan.name}" is referenced by ${reason} — archived instead of deleted (set to inactive, hidden from new assignments).`);
+      } else toast.success(`"${plan.name}" deleted.`);
       onDeleted();
     } catch (err) { toast.error(err.message); } finally { setBusy(false); }
   }

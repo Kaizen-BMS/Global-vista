@@ -13,7 +13,7 @@ export default async function LeadDocumentTypesSettingsPage() {
   const types = schemaReady ? await listLeadDocumentTypes(session) : [];
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Lead Document Types</h1>
       <SettingsTabs />
       <LeadDocumentTypeManager initialTypes={types} schemaReady={schemaReady} />
     </div>

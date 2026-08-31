@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
-  Pencil, Phone, Mail, MessageCircle, MoreHorizontal, UserCog, UploadCloud, Wallet,
+  Pencil, Phone, Mail, MessageCircle, MoreHorizontal, UserCog, UploadCloud, Wallet, History,
 } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
@@ -20,7 +20,7 @@ function IconAction({ href, icon: Icon, label, disabled }) {
   );
 }
 
-function MoreActionsMenu({ lead, leadId, canEdit, canManageAssignment, canManageDocs, paymentsEnabled, employees, assignedTo }) {
+function MoreActionsMenu({ lead, leadId, canEdit, canManageAssignment, canManageDocs, paymentsEnabled, callsEnabled, employees, assignedTo }) {
   const [open, setOpen] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const ref = useRef(null);
@@ -69,6 +69,11 @@ function MoreActionsMenu({ lead, leadId, canEdit, canManageAssignment, canManage
               <Wallet className="h-3.5 w-3.5" /> Record Payment
             </button>
           )}
+          {callsEnabled && (
+            <button onClick={() => scrollTo("calls")} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition cursor-pointer">
+              <History className="h-3.5 w-3.5" /> Call History
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -90,7 +95,7 @@ function AssignedChip({ lead, leadId, session, canEdit, canManageAssignment }) {
   );
 }
 
-export default function LeadHeader({ lead, leadId, score, tags, session, canEdit, canManageAssignment, canManageDocs, paymentsEnabled, employees }) {
+export default function LeadHeader({ lead, leadId, score, tags, session, canEdit, canManageAssignment, canManageDocs, paymentsEnabled, callsEnabled, employees }) {
   const timezone = useTimezone();
   return (
     <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 mb-6">
@@ -125,7 +130,7 @@ export default function LeadHeader({ lead, leadId, score, tags, session, canEdit
           <IconAction href={`https://wa.me/${(lead.whatsapp || lead.phone || "").replace(/\D/g, "")}`} icon={MessageCircle} label="WhatsApp" disabled={!lead.whatsapp && !lead.phone} />
           <MoreActionsMenu
             lead={lead} leadId={leadId} canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs}
-            paymentsEnabled={paymentsEnabled} employees={employees} assignedTo={lead.assigned_to}
+            paymentsEnabled={paymentsEnabled} callsEnabled={callsEnabled} employees={employees} assignedTo={lead.assigned_to}
           />
         </div>
       </div>

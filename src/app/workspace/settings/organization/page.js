@@ -13,17 +13,18 @@ export default async function OrganizationalSettingPage() {
   const session = await getSession();
   if (!isSuperAdmin(session)) return <ForbiddenState />;
 
-  const [branding, notificationValues, emailValues, branches, departments, designations, employeeTypes] = await Promise.all([
+  const [branding, notificationValues, emailValues, callingValues, branches, departments, designations, employeeTypes] = await Promise.all([
     getCompanyBranding(session),
     getSettingsByGroup(session, "notifications"),
     getSettingsByGroup(session, "email"),
+    getSettingsByGroup(session, "calling"),
     listOrgRecords(session, "branches"), listOrgRecords(session, "departments"),
     listOrgRecords(session, "designations"), listOrgRecords(session, "employee-types"),
   ]);
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Organizational Setting</h1>
       <SettingsTabs />
       <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
         Everything about how your company is set up — branding, who gets notified about what, and your org structure.
@@ -54,6 +55,38 @@ export default async function OrganizationalSettingPage() {
               { key: "notify_messages", label: "Messages", type: "toggle", hint: "New direct and group messages." },
               { key: "notify_support", label: "Support & Feedback", type: "toggle", hint: "Complaints and ideas activity." },
               { key: "notify_account", label: "Account & Team", type: "toggle", hint: "New employees, role changes, company profile updates." },
+            ]}
+          />
+        </section>
+
+        <section>
+          <h2 className="text-foreground font-medium mb-1">Calling Integration</h2>
+          <p className="text-muted-foreground text-sm mb-3 max-w-2xl">
+            Connect your own Exotel account so employees can call a lead straight from the lead page — Exotel rings your
+            employee's phone first, then bridges to the lead's number, and records both sides so you can verify a call
+            actually happened. This uses your company's own Exotel account and its own per-minute billing; no calling
+            cost is charged by this platform. Find these values on your Exotel dashboard under Settings → API Credentials.
+          </p>
+          <SettingsForm
+            group="calling"
+            initialValues={callingValues}
+            fields={[
+              {
+                key: "calling_enabled", label: "Call Recording", type: "toggle",
+                hint: "Turn off anytime to stop employees from placing new calls — this pauses the feature without losing your saved Exotel credentials below, since every call is billed by Exotel to your account, not by this platform.",
+              },
+              {
+                key: "calling_provider", label: "Provider", type: "select",
+                options: [
+                  { value: "", label: "Not connected" },
+                  { value: "exotel", label: "Exotel" },
+                ],
+              },
+              { key: "exotel_sid", label: "Account SID" },
+              { key: "exotel_api_key", label: "API Key" },
+              { key: "exotel_api_token", label: "API Token", type: "password" },
+              { key: "exotel_exophone", label: "Exophone (Caller ID)", hint: "The virtual number purchased in your Exotel account, used as the caller ID for both call legs." },
+              { key: "exotel_api_base", label: "API Base URL (optional)", hint: "Only needed if your Exotel dashboard shows a regional API domain other than https://api.exotel.com." },
             ]}
           />
         </section>

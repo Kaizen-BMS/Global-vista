@@ -11,7 +11,7 @@ export default async function DocumentTypesSettingsPage() {
   const types = await listEmployeeDocumentTypes(session);
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Employee Document Types</h1>
       <SettingsTabs />
       <DocumentTypeManager initialTypes={types} />
     </div>

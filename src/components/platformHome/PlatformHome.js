@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Sheet, Check, Minus, ChevronDown } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Minus, Target, SlidersHorizontal, MessageSquare, BarChart3, Building2, CreditCard, ShieldCheck } from "lucide-react";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import PlatformHomeNavbar from "@/components/platformHome/PlatformHomeNavbar";
 import { PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_FAINT, BORDER, BORDER_SOFT, ACCENT } from "@/components/platformHome/editorialTheme";
@@ -108,10 +108,20 @@ function formatPostDate(d) {
  * than the site's own marquee band, via the dedicated .animate-marquee-fast
  * class — deliberately not touching the shared .animate-marquee speed. */
 function OffersMarquee({ offers }) {
+  // The loop animation translates by exactly -50% of this track's own
+  // width (one copy of `repeated`), so that copy must be at least as wide
+  // as the widest screen this renders on — otherwise the untranslated
+  // remainder of the track (which is real content, just not enough of it)
+  // leaves a visibly empty gap next to the text before the loop restarts.
+  // A fixed "duplicate twice" was fine for a long offer list but broke
+  // down to exactly this gap with only 1–2 short offers, so repeat count
+  // scales inversely with how much text there actually is.
+  const repeatCount = Math.max(2, Math.ceil(16 / Math.max(offers.length, 1)));
+  const repeated = Array.from({ length: repeatCount }, () => offers).flat();
   return (
     <div className="border-b border-white/10 bg-[#0B0E14] overflow-hidden">
       <div className="flex w-max animate-marquee-fast py-1.5">
-        {[...offers, ...offers].map((offer, i) => (
+        {[...repeated, ...repeated].map((offer, i) => (
           <div key={`${offer.id}-${i}`} className="mx-6 flex shrink-0 items-center gap-3 whitespace-nowrap">
             <span className="text-[11px] uppercase tracking-[0.15em] text-white/80">{offer.text}</span>
             <span className="h-1 w-1 rounded-full bg-indigo-400 shrink-0" />
@@ -134,6 +144,19 @@ function OffersMarquee({ offers }) {
  */
 const DURATION_LABELS = { 1: "1 month", 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
 function durationLabel(m) { return DURATION_LABELS[m] || `${m} months`; }
+
+/** Shared between the homepage's compact icon grid and the footer's
+ * "Services" text column — one list, two presentations, so the two never
+ * drift apart the way a full duplicated section would. */
+const SERVICES = [
+  { icon: Target, label: "CRM & Leads" },
+  { icon: SlidersHorizontal, label: "Customization" },
+  { icon: MessageSquare, label: "Communication" },
+  { icon: BarChart3, label: "Analytics" },
+  { icon: Building2, label: "Operations" },
+  { icon: CreditCard, label: "Payments" },
+  { icon: ShieldCheck, label: "Security" },
+];
 
 function HostingerPricingSection({ plans, viewer, offers = [] }) {
   const paidPlans = plans.filter((p) => Number(p.price) > 0);
@@ -195,21 +218,36 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
   return (
     <div>
       {pricingBanner && (
-        <div className={`mb-8 rounded-xl border border-indigo-600/30 dark:border-indigo-400/30 bg-indigo-500/10 px-5 py-3.5 text-center text-sm font-medium ${TEXT_PRIMARY}`}>
-          {pricingBanner.text}
-        </div>
+        pricingBanner.image_url ? (
+          <div className="mb-8 rounded-xl overflow-hidden border border-indigo-600/30 dark:border-indigo-400/30">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={pricingBanner.image_url} alt={pricingBanner.text || "Special offer"} className="w-full max-h-64 object-cover" />
+            {pricingBanner.text && (
+              <div className={`bg-indigo-500/10 px-5 py-3 text-center text-sm font-medium ${TEXT_PRIMARY}`}>{pricingBanner.text}</div>
+            )}
+          </div>
+        ) : (
+          <div className={`mb-8 rounded-xl border border-indigo-600/30 dark:border-indigo-400/30 bg-indigo-500/10 px-5 py-3.5 text-center text-sm font-medium ${TEXT_PRIMARY}`}>
+            {pricingBanner.text}
+          </div>
+        )
       )}
 
       {durationOptions.length > 1 && (
-        <div className="flex justify-end mb-8">
-          <div className="relative w-fit">
-            <select
-              value={months} onChange={(e) => setMonths(Number(e.target.value))}
-              className={`appearance-none rounded-md border ${BORDER} bg-transparent pl-4 pr-9 py-2.5 text-sm font-medium cursor-pointer focus:outline-none`}
-            >
-              {durationOptions.map((m) => <option key={m} value={m} className="text-black">{durationLabel(m)} plan</option>)}
-            </select>
-            <ChevronDown className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 ${TEXT_FAINT}`} />
+        <div className="flex justify-center mb-10">
+          <div className={`inline-flex flex-wrap items-center justify-center gap-1 rounded-full border ${BORDER} p-1`}>
+            {durationOptions.map((m) => (
+              <button
+                key={m} type="button" onClick={() => setMonths(m)}
+                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  months === m
+                    ? "bg-[#0B0E14] text-white dark:bg-[#F4F3EF] dark:text-[#07080B]"
+                    : `${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF]`
+                }`}
+              >
+                {durationLabel(m)}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -402,92 +440,32 @@ export default function PlatformHome({ plans, posts, offers, viewer }) {
       </RevealSection>
 
       {/* ============================================================
-          02–08 — CONSOLIDATED. Every topic used to get its own
-          min-h-screen-ish section; combined into one dense, scannable list
-          (same real content, same real feature names — just laid out like a
-          spec sheet instead of a slideshow) so the CRM → Pricing stretch
-          takes a fraction of the scroll distance it used to.
-          ============================================================ */}
-      <RevealSection className={`border-t ${BORDER_SOFT} py-14! sm:py-20!`}>
-        <div className="mb-10 sm:mb-14 max-w-2xl">
-          <MicroLabel>02 – 08 / Everything, connected</MicroLabel>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-medium tracking-tight leading-[1.1]">One workspace, every part of the business.</h2>
-        </div>
-        <div className={`border-t ${BORDER}`}>
-          {[
-            {
-              n: "02", label: "CRM", title: "Turn every lead into an organized workflow.",
-              desc: "Capture, assign, and track every lead from first contact to conversion — stage, priority, source, and ownership always visible.",
-              tags: ["Lead pipeline", "Follow-ups & meetings", "Bulk assignment"],
-            },
-            {
-              n: "03", label: "Customization", title: "Your company. Your fields. Your workflow.",
-              desc: "Every company configures its own Lead Form — sections, built-in fields, and unlimited custom fields. An education consultancy and an industrial equipment supplier run the same platform with completely different forms.",
-              tags: ["Configurable sections", "Built-in field control", "Unlimited custom fields"],
-            },
-            {
-              n: "04", label: "Activity & Communication", title: "Every conversation, kept in context.",
-              desc: "Calls, meetings, notes, and WhatsApp log against the lead they belong to — a single timeline instead of separate tools nobody remembers to check.",
-              tags: ["Lead timeline", "Direct & group messaging", "Company announcements", "Real-time notifications"],
-            },
-            {
-              n: "05", label: "Analytics", title: "Know what's moving. Know what needs attention.",
-              desc: "Real dashboards for pipeline, revenue, and team performance — broken down by source, stage, owner, and outcome, filterable by any date range.",
-              tags: ["Live dashboards", "Reports", "Range filtering"],
-            },
-            {
-              n: "06", label: "Operations", title: "From leads to operations, keep the business connected.",
-              desc: "Employees, branches, departments, designations, and documents live in the same platform as your leads — governed by the same permission system.",
-              tags: ["Employee management", "Document management", "Role permissions", "Operational reporting"],
-            },
-            {
-              n: "07", label: "Payments & Subscriptions", title: "Billing that fits how you actually get paid.",
-              desc: "Plans, trials, and usage limits are fully configurable. Company subscription checkout is powered by BillDesk once a workspace connects its own gateway credentials.",
-              tags: ["Configurable plans", "BillDesk checkout", "Manual payments", "Retry & recovery"],
-            },
-            {
-              n: "08", label: "Security & Control", title: "Every company's data, completely isolated.",
-              desc: "Every request is scoped server-side to the company that owns it. Access is governed by role, plan, and module — checked on every request.",
-              tags: ["Company isolation", "Role-based permissions", "Super Admin controls", "Secure document storage"],
-            },
-          ].map((row, i) => (
-            <motion.div
-              key={row.n}
-              initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }}
-              transition={{ delay: (i % 4) * 0.05, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className={`group grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-10 py-10 sm:py-12 px-4 sm:px-6 -mx-4 sm:-mx-6 border-b ${BORDER} transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]`}
-            >
-              <div className="sm:col-span-4 flex items-start gap-4">
-                <span className={`text-3xl sm:text-4xl font-semibold tabular-nums leading-none shrink-0 ${ACCENT} opacity-30 group-hover:opacity-100 transition-opacity`}>{row.n}</span>
-                <div>
-                  <p className={`text-[11px] font-medium uppercase tracking-[0.15em] ${TEXT_FAINT}`}>{row.label}</p>
-                  <p className="mt-1.5 text-lg sm:text-xl font-medium tracking-tight leading-snug">{row.title}</p>
-                </div>
-              </div>
-              <div className="sm:col-span-8">
-                <p className={`text-sm sm:text-[15px] leading-relaxed max-w-2xl ${TEXT_SECONDARY}`}>{row.desc}</p>
-                <div className="mt-4 flex flex-wrap gap-x-2 gap-y-2">
-                  {row.tags.map((t) => (
-                    <span key={t} className={`text-xs px-3 py-1.5 rounded-full border ${BORDER_SOFT} ${TEXT_SECONDARY} bg-black/[0.015] dark:bg-white/[0.02]`}>{t}</span>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </RevealSection>
-
-      {/* ============================================================
-          INTEGRATIONS — small honest band, not a full mega-section.
+          02 — SERVICES, compact icon grid (Odoo-style app tiles). The
+          previous version of this section spelled out every module as a
+          full title + paragraph + tag row, one per screen-width block —
+          replaced with a small grid that just shows what exists at a
+          glance; the full names still appear in the footer's Services
+          column for anyone who wants the list in text form.
           ============================================================ */}
       <RevealSection className={`border-t ${BORDER_SOFT} py-14! sm:py-16!`}>
-        <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10 border ${BORDER} p-6 sm:p-8`}>
-          <div className={`h-11 w-11 shrink-0 border ${BORDER} flex items-center justify-center ${ACCENT}`}><Sheet className="h-5 w-5" /></div>
-          <div className="flex-1 min-w-0">
-            <MicroLabel>Integrations</MicroLabel>
-            <p className="text-lg font-medium mt-1.5">Connect the workflows your team already uses.</p>
-            <p className={`text-sm mt-1.5 ${TEXT_SECONDARY}`}>KaizenBMS supports spreadsheet synchronization, so leads already living in Google Sheets can flow into your pipeline. Each company sets this up on its own — nothing syncs until you connect it.</p>
-          </div>
+        <div className="mb-8 sm:mb-10 max-w-2xl">
+          <Numeral n="02" label="Everything, connected" />
+          <h2 className="text-2xl sm:text-3xl font-medium tracking-tight leading-[1.1]">One workspace, every part of the business.</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4">
+          {SERVICES.map((s, i) => (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-40px" }}
+              transition={{ delay: (i % 7) * 0.05, duration: 0.4 }}
+              className={`flex flex-col items-center text-center gap-3 rounded-xl border ${BORDER_SOFT} p-4 sm:p-5 hover:border-current transition-colors`}
+            >
+              <div className={`h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center rounded-lg ${ACCENT} bg-indigo-500/10`}>
+                <s.icon className="h-5 w-5" />
+              </div>
+              <p className="text-xs sm:text-[13px] font-medium leading-snug">{s.label}</p>
+            </motion.div>
+          ))}
         </div>
       </RevealSection>
 
@@ -495,7 +473,7 @@ export default function PlatformHome({ plans, posts, offers, viewer }) {
           PRICING
           ============================================================ */}
       <RevealSection id="pricing" className={`border-t ${BORDER_SOFT} py-14! sm:py-20!`}>
-        <Numeral n="09" label="Pricing" />
+        <Numeral n="03" label="Pricing" />
         <h2 className="text-3xl sm:text-4xl font-medium tracking-tight leading-[1.1] mb-10 max-w-xl">Simple pricing. Choose the plan that fits your team.</h2>
         <HostingerPricingSection plans={plans} viewer={viewer} offers={offers} />
       </RevealSection>
@@ -552,11 +530,19 @@ export default function PlatformHome({ plans, posts, offers, viewer }) {
       <footer className={`border-t ${BORDER}`}>
         <div className="max-w-[1400px] mx-auto px-6 sm:px-10 lg:px-16 py-16">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 pb-12">
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-4">
               <p className="text-3xl sm:text-4xl font-semibold tracking-tight">KAIZENBMS</p>
               <p className={`text-sm mt-3 max-w-sm ${TEXT_SECONDARY}`}>CRM, operations, and billing for growing businesses — one workspace, fully configurable.</p>
             </div>
             <div className="lg:col-span-3">
+              <MicroLabel className="mb-4">Services</MicroLabel>
+              <div className="flex flex-col gap-2.5">
+                {SERVICES.map((s) => (
+                  <a key={s.label} href="#platform" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>{s.label}</a>
+                ))}
+              </div>
+            </div>
+            <div className="lg:col-span-2">
               <MicroLabel className="mb-4">Platform</MicroLabel>
               <div className="flex flex-col gap-2.5">
                 {[
@@ -575,11 +561,15 @@ export default function PlatformHome({ plans, posts, offers, viewer }) {
               </div>
             </div>
           </div>
-          <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 pt-8 border-t ${BORDER_SOFT}`}>
-            <div className="flex items-center gap-2.5">
+          <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t ${BORDER_SOFT}`}>
+            <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={GLOBAL_VISTA_BRANDING.logoUrl} alt={GLOBAL_VISTA_BRANDING.name} className="h-6 w-6 rounded object-contain" />
+              <img src={GLOBAL_VISTA_BRANDING.logoUrl} alt={GLOBAL_VISTA_BRANDING.name} className="h-9 sm:h-10 w-auto object-contain" />
               <span className={`text-xs ${TEXT_FAINT}`}>{GLOBAL_VISTA_BRANDING.poweredByLabel} · © {new Date().getFullYear()}</span>
+            </div>
+            <div className="flex items-center gap-5">
+              <Link href="/privacy-policy" className={`text-xs ${TEXT_FAINT} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer`}>Privacy Policy</Link>
+              <Link href="/terms-of-service" className={`text-xs ${TEXT_FAINT} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer`}>Terms of Service</Link>
             </div>
           </div>
         </div>

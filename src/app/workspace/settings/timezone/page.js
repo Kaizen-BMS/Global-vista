@@ -12,7 +12,7 @@ export default async function TimezoneSettingsPage() {
   const session = await getSession();
   const values = await getSettingsByGroup(session, "system");
   values.fiscal_year_start_month = values.fiscal_year_start_month || "4";
-  return (<div><h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1><SettingsTabs /><SettingsForm group="system" initialValues={values} fields={[
+  return (<div><h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Timezone</h1><SettingsTabs /><SettingsForm group="system" initialValues={values} fields={[
     { key: "timezone", label: "Timezone", type: "timezone-search", hint: "Applied to every date/time shown across the workspace, including follow-up scheduling." },
     { key: "time_format", label: "Time Format", type: "select", options: [{ value: "12h", label: "12-hour (1:48 PM)" }, { value: "24h", label: "24-hour (13:48)" }] },
     { key: "date_format", label: "Date Format" },

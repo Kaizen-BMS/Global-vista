@@ -160,12 +160,25 @@ export async function deletePlan(id, operatorId) {
   const [[payCount]] = paymentsExist
     ? await pool.query(`SELECT COUNT(*) AS n FROM subscription_payments WHERE plan_id = ?`, [id])
     : [{ n: 0 }];
-  const inUse = Number(subCount.n) > 0 || Number(payCount.n) > 0;
+  const companiesUsingIt = Number(subCount.n);
+  const paymentsOnRecord = Number(payCount.n);
+  const inUse = companiesUsingIt > 0 || paymentsOnRecord > 0;
 
   if (inUse) {
+    // Report whichever reason actually applies — a plan can have zero
+    // *current* subscriptions but still carry real payment history (e.g. a
+    // company since switched off it, or a one-off test charge), and
+    // `subscription_payments.plan_id` has a hard FK back to plans, so a
+    // hard DELETE would fail anyway. Archiving (not deleting) preserves
+    // that financial record either way.
+    const reason = companiesUsingIt > 0 && paymentsOnRecord > 0
+      ? `${companiesUsingIt} company subscription(s) and ${paymentsOnRecord} recorded payment(s) reference it`
+      : companiesUsingIt > 0
+      ? `${companiesUsingIt} company subscription(s) reference it`
+      : `${paymentsOnRecord} recorded payment(s) reference it`;
     await pool.query(`UPDATE plans SET status = 'inactive' WHERE id = ?`, [id]);
-    await logActivity({ userId: operatorId, module: "platform", action: "plan_archived", entityType: "plan", entityId: id, description: `Archived plan "${plan.name}" — ${subCount.n} company subscription(s) reference it, so it can't be deleted.` }).catch(() => {});
-    return { deleted: false, archived: true, companiesUsingIt: Number(subCount.n) };
+    await logActivity({ userId: operatorId, module: "platform", action: "plan_archived", entityType: "plan", entityId: id, description: `Archived plan "${plan.name}" — ${reason}, so it can't be deleted.` }).catch(() => {});
+    return { deleted: false, archived: true, companiesUsingIt, paymentsOnRecord };
   }
 
   const conn = await pool.getConnection();

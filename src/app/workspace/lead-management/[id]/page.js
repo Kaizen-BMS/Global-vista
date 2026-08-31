@@ -6,6 +6,7 @@ import { listLeadFollowups } from "@/lib/modules/crm/actions/leadFollowups";
 import { listLeadMeetings } from "@/lib/modules/crm/actions/leadMeetings";
 import { listLeadTasks } from "@/lib/modules/crm/actions/leadTasks";
 import { listLeadDocuments } from "@/lib/modules/crm/actions/leadDocuments";
+import { listLeadCalls, getCallingSettings } from "@/lib/modules/crm/actions/leadCalling";
 import { getLeadTimeline } from "@/lib/modules/crm/actions/leadTimeline";
 import { listPaymentPlansForLead, getPaymentPlanDetail } from "@/lib/modules/crm/actions/payments";
 import { listServices } from "@/lib/actions/leadMeta";
@@ -26,6 +27,7 @@ import LeadFieldsDisplay from "@/components/crm/leads/LeadFieldsDisplay";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
 import LeadPayments from "@/components/crm/leads/LeadPayments";
+import LeadCalls from "@/components/crm/leads/LeadCalls";
 import DuplicateBanner from "@/components/crm/leads/DuplicateBanner";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
@@ -46,6 +48,7 @@ export default async function LeadDetailsPage({ params }) {
     notes, followups, meetings, tasks, documents, timeline, paymentPlans, services, availableMethods,
     canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment,
     fieldGroups, documentTypes, employeesResult,
+    calls, canMakeCalls, canViewCalls, callingSettings,
   ] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadMeetings(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
@@ -57,6 +60,8 @@ export default async function LeadDetailsPage({ params }) {
     getLeadDetailFieldGroups(session, lead),
     documentTypesSchemaReady ? listLeadDocumentTypes(session, { activeOnly: true }) : [],
     listUsers(session, { status: "active", pageSize: 100 }),
+    listLeadCalls(session, id), can(session, "leads.calls.make"), can(session, "leads.calls.view"),
+    getCallingSettings(session),
   ]);
 
   // The "active" plan is the most recent one that isn't Cancelled/Refunded —
@@ -83,7 +88,7 @@ export default async function LeadDetailsPage({ params }) {
       <LeadHeader
         lead={lead} leadId={id} score={score} tags={tags} session={session}
         canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs}
-        paymentsEnabled={paymentsEnabled} employees={employeesResult.users}
+        paymentsEnabled={paymentsEnabled} employees={employeesResult.users} callsEnabled={canViewCalls}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -123,6 +128,16 @@ export default async function LeadDetailsPage({ params }) {
             <p className="text-foreground font-medium mb-3">Documents</p>
             <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
           </div>
+
+          {canViewCalls && (
+            <div id="calls" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
+              <p className="text-foreground font-medium mb-3">Calls</p>
+              <LeadCalls
+                leadId={id} initialCalls={calls} canMakeCalls={canMakeCalls} canViewCalls={canViewCalls}
+                callingConfigured={callingSettings.configured} callingHasCredentials={callingSettings.hasCredentials}
+              />
+            </div>
+          )}
 
           <div className="bg-card border border-border rounded-2xl p-5">
             <p className="text-foreground font-medium mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4 text-muted-foreground" /> Tasks</p>

@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Loader2, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, X, ChevronDown, ChevronUp, Users } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
@@ -128,9 +128,46 @@ function formatDiscount(coupon) {
   return coupon.discount_type === "percent" ? `${Number(coupon.discount_value)}% off` : `₹${Number(coupon.discount_value).toLocaleString()} off`;
 }
 
+function RedemptionsPanel({ couponId }) {
+  const [loading, setLoading] = useState(true);
+  const [redemptions, setRedemptions] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/platform/coupons/${couponId}/redemptions`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load redemptions.");
+        if (!cancelled) setRedemptions(data.redemptions);
+      } catch (err) { if (!cancelled) setError(err.message); } finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [couponId]);
+
+  if (loading) return <div className="px-4 pb-4 flex items-center gap-2 text-muted-foreground text-xs"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading redemptions…</div>;
+  if (error) return <p className="px-4 pb-4 text-red-400 text-xs">{error}</p>;
+  if (redemptions.length === 0) return <p className="px-4 pb-4 text-muted-foreground text-xs">Not redeemed by anyone yet.</p>;
+
+  return (
+    <div className="px-4 pb-4">
+      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        {redemptions.map((r) => (
+          <div key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+            <span className="text-foreground truncate">{r.company_name || `Company #${r.company_id}`}</span>
+            <span className="text-muted-foreground shrink-0">₹{Number(r.discount_amount).toLocaleString()} off · {new Date(r.redeemed_at).toLocaleDateString()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CouponsManager({ coupons }) {
   const router = useRouter();
   const [editing, setEditing] = useState(undefined);
+  const [expanded, setExpanded] = useState(null);
 
   return (
     <div>
@@ -144,21 +181,29 @@ export default function CouponsManager({ coupons }) {
       ) : (
         <div className="bg-card border border-border rounded-xl divide-y divide-border">
           {coupons.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 p-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-foreground text-sm font-medium font-mono">{c.code}</p>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${c.status === "active" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-border text-muted-foreground"}`}>{c.status}</span>
+            <div key={c.id}>
+              <div className="flex items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-foreground text-sm font-medium font-mono">{c.code}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${c.status === "active" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-border text-muted-foreground"}`}>{c.status}</span>
+                  </div>
+                  <p className="text-muted-foreground text-xs mt-0.5">
+                    {formatDiscount(c)} · used {c.redemption_count}{c.max_redemptions ? ` / ${c.max_redemptions}` : ""}
+                    {c.valid_until ? ` · expires ${toDateInputValue(c.valid_until)}` : ""}
+                  </p>
                 </div>
-                <p className="text-muted-foreground text-xs mt-0.5">
-                  {formatDiscount(c)} · used {c.redemption_count}{c.max_redemptions ? ` / ${c.max_redemptions}` : ""}
-                  {c.valid_until ? ` · expires ${toDateInputValue(c.valid_until)}` : ""}
-                </p>
+                <div className="flex items-center gap-3 shrink-0">
+                  {c.redemption_count > 0 && (
+                    <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} aria-label={`${expanded === c.id ? "Hide" : "Show"} who redeemed ${c.code}`} className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer text-[11px]">
+                      <Users className="h-3.5 w-3.5" /> Used by {expanded === c.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                  )}
+                  <button onClick={() => setEditing(c)} aria-label={`Edit coupon ${c.code}`} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
+                  <DeleteButton coupon={c} onDeleted={() => router.refresh()} />
+                </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button onClick={() => setEditing(c)} aria-label={`Edit coupon ${c.code}`} className="text-muted-foreground hover:text-foreground cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button>
-                <DeleteButton coupon={c} onDeleted={() => router.refresh()} />
-              </div>
+              {expanded === c.id && <RedemptionsPanel couponId={c.id} />}
             </div>
           ))}
         </div>

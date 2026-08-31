@@ -44,7 +44,7 @@ export default async function SubscriptionSettingsPage({ searchParams }) {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Subscription</h1>
       <SettingsTabs />
 
       {!subscription.hasSubscription ? (
