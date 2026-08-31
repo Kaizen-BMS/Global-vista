@@ -118,9 +118,19 @@ function OffersMarquee({ offers }) {
   // scales inversely with how much text there actually is.
   const repeatCount = Math.max(2, Math.ceil(16 / Math.max(offers.length, 1)));
   const repeated = Array.from({ length: repeatCount }, () => offers).flat();
+  // .animate-marquee-fast's own 18s is tuned for the ORIGINAL fixed
+  // "duplicate twice" track width — once repeatCount started scaling the
+  // track wider (to fix the empty-gap bug), that same fixed 18s covered
+  // more distance, so the visible scroll speed silently sped up along
+  // with it. Duration now scales with repeatCount so px/second — the
+  // thing that actually determines whether it's readable — stays
+  // constant no matter how many offers there are, at a deliberately
+  // slower per-copy pace than the original 18s so it's comfortable to
+  // read rather than just "not broken."
+  const seconds = repeatCount * 14;
   return (
     <div className="border-b border-white/10 bg-[#0B0E14] overflow-hidden">
-      <div className="flex w-max animate-marquee-fast py-1.5">
+      <div className="flex w-max animate-marquee-fast py-1.5" style={{ animationDuration: `${seconds}s` }}>
         {[...repeated, ...repeated].map((offer, i) => (
           <div key={`${offer.id}-${i}`} className="mx-6 flex shrink-0 items-center gap-3 whitespace-nowrap">
             <span className="text-[11px] uppercase tracking-[0.15em] text-white/80">{offer.text}</span>
@@ -159,7 +169,13 @@ const SERVICES = [
 ];
 
 function HostingerPricingSection({ plans, viewer, offers = [] }) {
-  const paidPlans = plans.filter((p) => Number(p.price) > 0);
+  // Every publicly-listable plan, including a free/trial one (price is
+  // NULL, not 0 — e.g. Starter's 30-day trial). listPublicPlans() already
+  // only ever returns status='active' plans, ordered with any null-price
+  // plan first — so this is deliberately NOT filtered down to "priced
+  // plans only" the way it used to be, which is exactly why Starter was
+  // silently missing from this page before.
+  const displayPlans = plans;
   // Reuses the existing Offers system (Platform Console → Modules →
   // Offers) rather than a second, parallel "banner" feature — a festival/
   // sale announcement IS exactly what that already models. The most
@@ -175,9 +191,9 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
   // chosen tier just falls back to its own 1-month price, handled below).
   const durationOptions = useMemo(() => {
     const months = new Set([1]);
-    paidPlans.forEach((p) => (p.durationTiers || []).forEach((t) => months.add(t.durationMonths)));
+    displayPlans.forEach((p) => (p.durationTiers || []).forEach((t) => months.add(t.durationMonths)));
     return [...months].sort((a, b) => a - b);
-  }, [paidPlans]);
+  }, [displayPlans]);
   const [months, setMonths] = useState(1);
   const [comparing, setComparing] = useState(false);
 
@@ -211,7 +227,7 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
     return { href: target, label: "Choose Plan" };
   }
 
-  if (paidPlans.length === 0) {
+  if (displayPlans.length === 0) {
     return <p className={`text-sm ${TEXT_SECONDARY}`}>Plans are being configured — check back soon, or start your free trial to get started.</p>;
   }
 
@@ -252,12 +268,17 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
         </div>
       )}
 
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${{ 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3" }[paidPlans.length] || "lg:grid-cols-4"}`}>
-        {paidPlans.map((p, i) => {
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${{ 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3" }[displayPlans.length] || "lg:grid-cols-4"}`}>
+        {displayPlans.map((p, i) => {
+          const isFree = p.price == null;
           const tier = tierFor(p);
-          const discountPercent = tier.months > 1 && Number(p.price) > 0 ? Math.round((1 - Number(tier.price) / Number(p.price)) * 100) : 0;
+          const discountPercent = !isFree && tier.months > 1 && Number(p.price) > 0 ? Math.round((1 - Number(tier.price) / Number(p.price)) * 100) : 0;
           const totalForTerm = Number(tier.price) * tier.months;
-          const cta = ctaFor(p, tier);
+          // A free/trial plan (Starter) isn't something to "check out" —
+          // there's no gateway plan behind a null price — so it always
+          // routes to self-registration instead of ctaFor's login/upgrade
+          // logic, regardless of who's currently looking at the page.
+          const cta = isFree ? { href: "/register", label: "Start Free Trial" } : ctaFor(p, tier);
           return (
             <motion.div
               key={p.id} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5 }}
@@ -270,14 +291,23 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
               {p.description && <p className={`text-xs mt-1 ${TEXT_SECONDARY}`}>{p.description}</p>}
 
               <div className="mt-5">
-                {discountPercent > 0 && <p className={`text-xs line-through ${TEXT_FAINT}`}>{p.currency} {p.price}/mo</p>}
-                <p className="text-3xl font-semibold tabular-nums">
-                  {p.currency} {tier.price}<span className={`text-xs font-normal ml-1 ${TEXT_FAINT}`}>/{p.pricing_model === "per_user" ? "user/mo" : "mo"}</span>
-                </p>
-                <p className={`text-[11px] mt-1 ${TEXT_FAINT}`}>
-                  {tier.months === 1 ? "Billed monthly." : `${p.currency} ${totalForTerm.toLocaleString()} billed every ${tier.months} months.`}
-                  {!!p.trial_days && ` ${p.trial_days}-day free trial.`}
-                </p>
+                {isFree ? (
+                  <>
+                    <p className="text-3xl font-semibold tabular-nums">Free</p>
+                    <p className={`text-[11px] mt-1 ${TEXT_FAINT}`}>{p.trial_days ? `${p.trial_days}-day trial. No card required.` : "Free to get started."}</p>
+                  </>
+                ) : (
+                  <>
+                    {discountPercent > 0 && <p className={`text-xs line-through ${TEXT_FAINT}`}>{p.currency} {p.price}/mo</p>}
+                    <p className="text-3xl font-semibold tabular-nums">
+                      {p.currency} {tier.price}<span className={`text-xs font-normal ml-1 ${TEXT_FAINT}`}>/{p.pricing_model === "per_user" ? "user/mo" : "mo"}</span>
+                    </p>
+                    <p className={`text-[11px] mt-1 ${TEXT_FAINT}`}>
+                      {tier.months === 1 ? "Billed monthly." : `${p.currency} ${totalForTerm.toLocaleString()} billed every ${tier.months} months.`}
+                      {!!p.trial_days && ` ${p.trial_days}-day free trial.`}
+                    </p>
+                  </>
+                )}
               </div>
 
               {cta.disabled ? (
@@ -313,7 +343,7 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
             <thead>
               <tr className={`border-b ${BORDER} text-left`}>
                 <th className={`py-3 pr-4 font-medium ${TEXT_FAINT}`}>Feature</th>
-                {paidPlans.map((p) => <th key={p.id} className="py-3 px-4 font-medium">{p.name}</th>)}
+                {displayPlans.map((p) => <th key={p.id} className="py-3 px-4 font-medium">{p.name}</th>)}
               </tr>
             </thead>
             <tbody className={`divide-y ${BORDER_SOFT}`}>
@@ -321,7 +351,7 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
                 { label: "Registration", get: (p) => p.registration_label || "Self" },
                 { label: "Development Cost", get: (p) => p.development_cost_label || "Free" },
                 { label: "Installation Cost", get: (p) => p.installation_cost_label || "Free" },
-                { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo` },
+                { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
                 { label: "Annual Maintenance", get: (p) => (p.maintenance_annual_fee ? `${p.currency} ${p.maintenance_annual_fee}/yr` : "None") },
                 { label: "Employees", get: (p) => p.max_users || "Unlimited" },
                 { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
@@ -330,7 +360,7 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
               ].map((row) => (
                 <tr key={row.label}>
                   <td className={`py-3 pr-4 ${TEXT_SECONDARY}`}>{row.label}</td>
-                  {paidPlans.map((p) => {
+                  {displayPlans.map((p) => {
                     const value = row.get(p);
                     return (
                       <td key={p.id} className="py-3 px-4">
