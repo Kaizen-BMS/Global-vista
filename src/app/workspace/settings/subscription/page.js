@@ -23,8 +23,14 @@ const STATE_META = {
   no_subscription: { label: "No Subscription", color: "text-muted-foreground bg-muted/20 border-border/30", icon: AlertTriangle },
 };
 
-export default async function SubscriptionSettingsPage() {
+export default async function SubscriptionSettingsPage({ searchParams }) {
   const session = await getSession();
+  const sp = await searchParams;
+  // Arriving from the public pricing page's "Choose Plan"/"Upgrade" CTA —
+  // see SubscriptionManager's own handling of these two params, which
+  // fires the real checkout the moment this page loads instead of making
+  // the visitor click through the plan picker again.
+  const autoCheckout = sp?.checkoutPlan ? { planId: Number(sp.checkoutPlan), months: Number(sp.checkoutMonths) || 1 } : null;
   const [subscription, storage, systemSettings, usage, plans, payments, billDeskStatus] = await Promise.all([
     getSubscriptionDetails(session.company_id), getStorageUsage(session), getSettingsByGroup(session, "system"), getUsageCounts(session.company_id),
     listPublicPlans(), isSuperAdmin(session) ? listSubscriptionPayments(session) : [],
@@ -46,7 +52,7 @@ export default async function SubscriptionSettingsPage() {
           <AlertTriangle className="h-6 w-6 text-amber-400 mx-auto mb-2" />
           <p className="text-foreground text-sm">No subscription is configured for this company yet.</p>
           {canManage ? (
-            <div className="mt-3 flex justify-center"><SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={false} billDeskStatus={billDeskStatus} /></div>
+            <div className="mt-3 flex justify-center"><SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={false} billDeskStatus={billDeskStatus} autoCheckout={autoCheckout} /></div>
           ) : (
             <p className="text-muted-foreground text-xs mt-1">Contact your Company Super Admin.</p>
           )}
@@ -92,7 +98,7 @@ export default async function SubscriptionSettingsPage() {
                 Switching to "{subscription.pendingPlanName}" on {formatDate(subscription.endsAt, timezone)} — your current plan stays active until then.
               </p>
             )}
-            {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} billDeskStatus={billDeskStatus} />}
+            {canManage && <SubscriptionManager subscription={subscription} plans={plans} payments={payments} canResume={canResume} billDeskStatus={billDeskStatus} autoCheckout={autoCheckout} />}
           </div>
 
           <div className="bg-card border border-border rounded-xl p-5">

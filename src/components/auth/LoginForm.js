@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Mail, Lock, Loader2, CheckCircle2, ArrowRight } from "lucide-react";
@@ -8,8 +8,22 @@ import Link from "next/link";
 import { apiFetch } from "@/components/shared/apiClient";
 import FloatingInput from "@/components/auth/FloatingInput";
 
+/** Only ever follows a redirect that's a genuine internal path — e.g.
+ * `/workspace/settings/subscription?checkoutPlan=3&checkoutMonths=12` from
+ * the pricing page. Never `//evil.com` or `https://…` (both of which would
+ * make this an open-redirect vector for a phishing link built around this
+ * app's own login page), and never a `/platform/*` path for a non-operator
+ * request either — role mismatches like that just fall back to the normal
+ * post-login destination instead of erroring. */
+function safeRedirect(raw) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+  return raw;
+}
+
 export default function LoginForm({ onNavigate }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTarget = safeRedirect(searchParams.get("redirect"));
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -31,7 +45,8 @@ export default function LoginForm({ onNavigate }) {
       // Brief, purely cosmetic pause so the success state is visible before navigating away.
       await new Promise((r) => setTimeout(r, 600));
 
-      if (data.mustChangePassword) router.push("/workspace/change-password?forced=1");
+      if (data.mustChangePassword) router.push("/workspace/change-password?forced=1"); // forced password change always wins, even over a pending checkout
+      else if (redirectTarget) router.push(redirectTarget);
       else if (data.user.is_platform_operator) router.push("/platform");
       else router.push("/workspace/dashboard");
       router.refresh();

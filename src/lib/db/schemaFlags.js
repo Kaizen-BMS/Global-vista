@@ -44,6 +44,8 @@ export async function hasTieredPlansSchema() { return columnExists("plans", "pri
 export async function hasCompanySubscriptionsGatewayColumns() { return columnExists("company_subscriptions", "gateway"); }
 export async function hasCancelAtPeriodEndColumn() { return columnExists("company_subscriptions", "cancel_at_period_end"); }
 export async function hasPendingPlanIdColumn() { return columnExists("company_subscriptions", "pending_plan_id"); }
+export async function hasDurationPricingSchema() { return tableExists("plan_duration_prices"); }
+export async function hasCommitmentMonthsColumn() { return columnExists("company_subscriptions", "commitment_months"); }
 export async function hasSubscriptionPaymentsTable() { return tableExists("subscription_payments"); }
 export async function hasPaymentWebhookEventsTable() { return tableExists("payment_webhook_events"); }
 

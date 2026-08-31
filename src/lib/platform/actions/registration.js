@@ -6,6 +6,7 @@ import { createRazorpayCheckoutForCompany } from "@/lib/platform/actions/razorpa
 import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
 import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
+import { listPublicDurationPrices } from "@/lib/platform/actions/planDurationPricing";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
  * only, no internal-only fields. `description` only selected once the
@@ -24,9 +25,11 @@ export async function listPublicPlans() {
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
   const billDeskAvailable = getBillDeskStatus().configured;
+  const durationTiersByPlan = await listPublicDurationPrices();
   return rows.map((r) => ({
     ...r, hasRazorpay: !!r.hasRazorpay, hasBillDesk: billDeskAvailable,
     pricing_model: r.pricing_model || "flat", allow_import_export: r.allow_import_export ?? 1,
+    durationTiers: durationTiersByPlan[r.id] || [],
   }));
 }
 
@@ -126,16 +129,17 @@ export async function registerCompany(input) {
   }
 
   if (requiresPayment && gateway === "razorpay") {
-    const { razorpaySubscriptionId, razorpayKeyId, amount, currency } = await createRazorpayCheckoutForCompany({
+    const { razorpaySubscriptionId, razorpayKeyId, amount, currency, maintenanceRazorpaySubscriptionId, maintenanceAmount, seatQuantity, totalAmount } = await createRazorpayCheckoutForCompany({
       companyId: result.companyId,
       planId: plan.id,
       subscriberEmail: adminEmail.trim().toLowerCase(),
       subscriberName: adminName.trim(),
       couponCode: input.couponCode || null,
+      durationMonths: input.durationMonths || 1,
     });
     return {
       companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "razorpay",
-      razorpaySubscriptionId, razorpayKeyId, amount, currency,
+      razorpaySubscriptionId, razorpayKeyId, amount, currency, maintenanceRazorpaySubscriptionId, maintenanceAmount, seatQuantity, totalAmount,
     };
   }
 

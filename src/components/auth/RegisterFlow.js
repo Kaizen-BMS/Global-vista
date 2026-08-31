@@ -48,7 +48,7 @@ export default function RegisterFlow() {
   const [form, setForm] = useState({
     companyName: "", companyEmail: "", companyPhone: "", companyWebsite: "", companyCountry: "", companyState: "", companyCity: "", companyAddress: "",
     adminName: "", adminEmail: "", adminPhone: "", adminPassword: "", confirmPassword: "",
-    planId: "", gateway: "", couponCode: "",
+    planId: "", gateway: "", couponCode: "", durationMonths: 1,
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -71,10 +71,19 @@ export default function RegisterFlow() {
   // with a clear message rather than the client guessing.
   const effectiveGateway = bothGatewaysAvailable ? form.gateway : selectedPlan?.hasBillDesk ? "billdesk" : selectedPlan?.hasRazorpay ? "razorpay" : "";
 
+  // Commitment tiers only exist on Razorpay (BillDesk's one-time
+  // order-create has no recurring-Plan concept to attach a longer interval
+  // to) — the 1-month option is always available (it's just the plan's own
+  // price), longer ones only when the operator has configured them.
+  const durationOptions = selectedPlan && effectiveGateway === "razorpay"
+    ? [{ months: 1, price: selectedPlan.price }, ...(selectedPlan.durationTiers || []).map((t) => ({ months: t.durationMonths, price: t.price }))].sort((a, b) => a.months - b.months)
+    : [{ months: 1, price: selectedPlan?.price }];
+  const selectedDurationOption = durationOptions.find((o) => o.months === form.durationMonths) || durationOptions[0];
+
   function selectPlan(id) {
     const plan = plans.find((p) => String(p.id) === String(id));
     const onlyGateway = plan?.hasBillDesk && !plan?.hasRazorpay ? "billdesk" : plan?.hasRazorpay && !plan?.hasBillDesk ? "razorpay" : "";
-    setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway }));
+    setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway, durationMonths: 1 }));
   }
 
   function validateStep(i) {
@@ -96,6 +105,45 @@ export default function RegisterFlow() {
   function next() { if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { setStep((s) => Math.max(s - 1, 0)); }
 
+  /** Opens the SECOND Checkout overlay for the annual maintenance fee, once
+   * the main subscription's payment has already succeeded — Razorpay bills
+   * one recurring amount per subscription object, so a plan with both a
+   * per-user price and a maintenance fee needs two separate authorizations,
+   * not one combined charge. Mirrors SubscriptionManager.js's own version
+   * of this, using the session-less /register/* verify endpoint since
+   * there's no logged-in admin yet at this point in signup. */
+  async function payMaintenanceThenFinish(data) {
+    await loadRazorpayScript();
+    return new Promise((resolve) => {
+      const rzp = new window.Razorpay({
+        key: data.razorpayKeyId,
+        subscription_id: data.maintenanceRazorpaySubscriptionId,
+        name: "KaizenBMS Platform",
+        description: `${data.planName} — annual maintenance`,
+        theme: { color: "#4f46e5" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await apiFetch("/api/public/register/razorpay-verify-maintenance", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpaySubscriptionId: response.razorpay_subscription_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Maintenance payment verification failed. Please contact support.");
+          } catch (err) {
+            toast.error(`${err.message} — your plan is active, but the maintenance fee still needs payment (contact support).`);
+          } finally { resolve(); }
+        },
+        modal: { ondismiss: () => { toast.warning("Account created, but the maintenance fee wasn't paid — you'll be asked again after logging in."); resolve(); } },
+      });
+      rzp.on("payment.failed", () => { toast.error("Maintenance payment could not be completed — you'll be asked again after logging in."); resolve(); });
+      rzp.open();
+    });
+  }
+
   async function payWithRazorpayThenFinish(data) {
     try {
       await loadRazorpayScript();
@@ -103,7 +151,7 @@ export default function RegisterFlow() {
         key: data.razorpayKeyId,
         subscription_id: data.razorpaySubscriptionId,
         name: "KaizenBMS Platform",
-        description: `${data.planName} subscription`,
+        description: data.seatQuantity > 1 ? `${data.planName} subscription (${data.seatQuantity} users)` : `${data.planName} subscription`,
         theme: { color: "#4f46e5" },
         handler: async (response) => {
           // Same rule as everywhere else in this app: Razorpay Checkout
@@ -121,6 +169,7 @@ export default function RegisterFlow() {
             });
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
+            if (data.maintenanceRazorpaySubscriptionId) await payMaintenanceThenFinish(data);
             setResult(data);
           } catch (err) { toast.error(err.message); }
           finally { setSubmitting(false); }
@@ -264,6 +313,28 @@ export default function RegisterFlow() {
                 </div>
               )}
 
+              {planRequiresPayment && effectiveGateway === "razorpay" && durationOptions.length > 1 && (
+                <div className="pt-1">
+                  <p className="text-white/50 text-xs mb-1.5">Commitment length</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {durationOptions.map((opt) => (
+                      <button
+                        key={opt.months} type="button" onClick={() => set("durationMonths", opt.months)}
+                        className={`px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition text-center ${form.durationMonths === opt.months ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"}`}
+                      >
+                        <p className="font-medium">{opt.months} {opt.months === 1 ? "month" : "months"}</p>
+                        <p className="text-white/40">{selectedPlan.currency} {opt.price}/mo</p>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedDurationOption && selectedDurationOption.months > 1 && (
+                    <p className="text-white/40 text-xs mt-1.5">
+                      Billed {selectedPlan.currency} {(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} every {selectedDurationOption.months} months{selectedPlan.pricing_model === "per_user" ? ", per user" : ""}.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {planRequiresPayment && bothGatewaysAvailable && (
                 <div className="pt-1">
                   <p className="text-white/50 text-xs mb-1.5">Payment method</p>
@@ -307,7 +378,9 @@ export default function RegisterFlow() {
               </div>
               {planRequiresPayment ? (
                 <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">
-                  This plan requires payment. Submitting creates your account, then sends you to {GATEWAY_LABEL[effectiveGateway] || "your chosen payment method"} to complete a secure {selectedPlan?.currency} {Number(selectedPlan?.price).toLocaleString()} / {selectedPlan?.billing_cycle} subscription. Your plan activates automatically once payment is confirmed.
+                  This plan requires payment. Submitting creates your account, then sends you to {GATEWAY_LABEL[effectiveGateway] || "your chosen payment method"} to complete a secure {selectedPlan?.currency} {selectedDurationOption && selectedDurationOption.months > 1
+                    ? `${(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} charge, billed every ${selectedDurationOption.months} months`
+                    : `${Number(selectedPlan?.price).toLocaleString()} / ${selectedPlan?.billing_cycle}`} subscription. Your plan activates automatically once payment is confirmed.
                 </p>
               ) : (
                 <p className="text-white/30 text-xs">No payment required — your trial starts immediately after you submit.</p>

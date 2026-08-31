@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil, Loader2, X, Check, Trash2, Link2 } from "lucide-react";
+import { Plus, Pencil, Loader2, X, Check, Trash2, Link2, CalendarRange } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
@@ -158,6 +158,82 @@ function SyncToRazorpayButton({ plan, onSynced }) {
   );
 }
 
+/**
+ * Hostinger-style commitment tiers — the plan's own `price` field always
+ * stays the 1-month price (untouched, so every existing checkout/dashboard
+ * still works); this only adds OPTIONAL longer tiers with their own
+ * manually-set price. No discount formula — the operator types every
+ * tier's price directly, exactly like the real Hostinger backend does.
+ */
+function DurationPricingEditor({ plan, tiers }) {
+  const router = useRouter();
+  const [months, setMonths] = useState("");
+  const [price, setPrice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function addTier(e) {
+    e.preventDefault();
+    if (!months || !price) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/platform/plans/${plan.id}/duration-prices`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ durationMonths: Number(months), price: Number(price) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save.");
+      toast.success(`${months}-month tier saved.`);
+      setMonths(""); setPrice("");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+  }
+
+  async function removeTier(id) {
+    if (!confirm("Remove this duration tier?")) return;
+    try {
+      const res = await apiFetch(`/api/platform/plans/${plan.id}/duration-prices/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to remove.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); }
+  }
+
+  if (!(Number(plan.price) > 0)) return null; // free/trial plans don't offer commitment tiers
+
+  const DURATION_LABELS = { 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
+  const configuredMonths = new Set(tiers.map((t) => t.duration_months));
+
+  return (
+    <div className="pt-2 mt-2 border-t border-border">
+      <p className="flex items-center gap-1.5 text-muted-foreground text-[11px] font-medium mb-1.5"><CalendarRange className="h-3 w-3" /> Commitment Pricing (per {plan.pricing_model === "per_user" ? "user, " : ""}month)</p>
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
+        <span>1 month (default)</span><span>{plan.currency} {plan.price}</span>
+      </div>
+      {tiers.map((t) => (
+        <div key={t.id} className="flex items-center justify-between text-[11px] text-foreground mb-1.5">
+          <span>{DURATION_LABELS[t.duration_months] ? `${DURATION_LABELS[t.duration_months]} (${t.duration_months}mo)` : `${t.duration_months} months`}</span>
+          <span className="flex items-center gap-1.5">
+            {plan.currency} {t.price}
+            <button onClick={() => removeTier(t.id)} aria-label={`Remove ${t.duration_months}-month tier`} className="text-muted-foreground hover:text-red-400 cursor-pointer"><Trash2 className="h-3 w-3" /></button>
+          </span>
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-1 mt-2">
+        {Object.entries(DURATION_LABELS).filter(([m]) => !configuredMonths.has(Number(m))).map(([m, label]) => (
+          <button key={m} type="button" onClick={() => setMonths(m)} className={`px-1.5 py-0.5 rounded text-[10px] border cursor-pointer transition ${months === m ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border text-muted-foreground hover:border-indigo-500/30"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={addTier} className="flex items-center gap-1.5 mt-2">
+        <input type="number" min="2" placeholder="Months" value={months} onChange={(e) => setMonths(e.target.value)} className="w-16 px-1.5 py-1 rounded bg-muted border border-border text-foreground text-[11px]" />
+        <input type="number" min="0" step="0.01" placeholder={`${plan.currency}/mo`} value={price} onChange={(e) => setPrice(e.target.value)} className="w-20 px-1.5 py-1 rounded bg-muted border border-border text-foreground text-[11px]" />
+        <button type="submit" disabled={saving || !months || !price} className="flex items-center gap-1 px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] cursor-pointer disabled:opacity-50">
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function DeletePlanButton({ plan, onDeleted }) {
   const [busy, setBusy] = useState(false);
 
@@ -181,7 +257,7 @@ function DeletePlanButton({ plan, onDeleted }) {
   );
 }
 
-export default function PlansManager({ plans, allModules = [], planModulesByPlan = {} }) {
+export default function PlansManager({ plans, allModules = [], planModulesByPlan = {}, durationPricesByPlan = {} }) {
   const router = useRouter();
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, object = edit
 
@@ -225,6 +301,9 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
               </div>
               <div className="pt-2 mt-2 border-t border-border">
                 <SyncToRazorpayButton plan={p} onSynced={() => router.refresh()} />
+              </div>
+              <div className="pt-0">
+                <DurationPricingEditor plan={p} tiers={durationPricesByPlan[p.id] || []} />
               </div>
             </div>
           );

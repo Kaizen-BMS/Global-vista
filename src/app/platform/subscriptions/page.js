@@ -2,14 +2,16 @@ import { listSubscriptions, listPlansForAdmin, listAllPlanModules } from "@/lib/
 import { listAllModules } from "@/lib/platform/actions/companies";
 import { getPlatformTimezone } from "@/lib/platform/actions/settings";
 import { getSubscriptionBillingStats } from "@/lib/platform/actions/subscriptionBilling";
+import { listAllDurationPrices } from "@/lib/platform/actions/planDurationPricing";
 import SubscriptionsTable from "@/components/platform/SubscriptionsTable";
 import PlansManager from "@/components/platform/PlansManager";
 import StatCard from "@/components/crm/cards/StatCard";
-import { IndianRupee, Clock, AlertTriangle, XCircle } from "lucide-react";
+import { IndianRupee, Clock, AlertTriangle, XCircle, Megaphone } from "lucide-react";
+import Link from "next/link";
 
 export default async function PlatformSubscriptionsPage() {
-  const [subscriptions, plans, timezone, allModules, planModulesByPlan, billingStats] = await Promise.all([
-    listSubscriptions(), listPlansForAdmin(), getPlatformTimezone(), listAllModules(), listAllPlanModules(), getSubscriptionBillingStats(),
+  const [subscriptions, plans, timezone, allModules, planModulesByPlan, billingStats, durationPricesByPlan] = await Promise.all([
+    listSubscriptions(), listPlansForAdmin(), getPlatformTimezone(), listAllModules(), listAllPlanModules(), getSubscriptionBillingStats(), listAllDurationPrices(),
   ]);
 
   const revenueLabel = billingStats.revenueByCurrency.length === 0
@@ -34,9 +36,14 @@ export default async function PlatformSubscriptionsPage() {
 
       <SubscriptionsTable subscriptions={subscriptions} plans={plans} timezone={timezone} />
       <div>
-        <h2 className="text-lg font-semibold text-foreground mb-1">Plans</h2>
-        <p className="text-muted-foreground text-sm mb-4">Configure the plans available to assign to companies.</p>
-        <PlansManager plans={plans} allModules={allModules} planModulesByPlan={planModulesByPlan} />
+        <div className="flex items-start justify-between gap-4 mb-1">
+          <h2 className="text-lg font-semibold text-foreground">Plans</h2>
+          <Link href="/platform/offers" className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 shrink-0 mt-0.5">
+            <Megaphone className="h-3.5 w-3.5" /> Manage pricing banner (Offers)
+          </Link>
+        </div>
+        <p className="text-muted-foreground text-sm mb-4">Configure the plans available to assign to companies. A sale/festival announcement set in Offers shows as a banner right above the pricing cards on the homepage.</p>
+        <PlansManager plans={plans} allModules={allModules} planModulesByPlan={planModulesByPlan} durationPricesByPlan={durationPricesByPlan} />
       </div>
     </div>
   );

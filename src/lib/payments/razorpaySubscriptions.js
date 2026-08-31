@@ -17,24 +17,42 @@ const PERIOD_BY_CYCLE = { monthly: "monthly", quarterly: "monthly", yearly: "yea
 const TOTAL_COUNT_BY_CYCLE = { monthly: 120, quarterly: 40, yearly: 20 };
 const INTERVAL_BY_CYCLE = { monthly: 1, quarterly: 3, yearly: 1 };
 
+/** Any whole number of months maps to a valid Razorpay period/interval —
+ * 12/24/36 (Hostinger-style commitment tiers) collapse cleanly onto
+ * period="yearly" with interval=months/12; anything not a multiple of 12
+ * (including the plain 1-month case) uses period="monthly" with
+ * interval=months. Razorpay bills `item.amount` once per that interval. */
+function razorpayPeriodForMonths(months) {
+  if (months % 12 === 0) return { period: "yearly", interval: months / 12 };
+  return { period: "monthly", interval: months };
+}
+
 /** Creates the recurring Razorpay Plan for a CRM plan row. `plan` must have
  * price/currency/billing_cycle already resolved from the DB — never from
  * the browser. Amount is converted to the smallest currency unit (paise
- * for INR) as Razorpay requires. */
-export async function createRazorpayPlan(plan) {
-  const period = PERIOD_BY_CYCLE[plan.billing_cycle];
+ * for INR) as Razorpay requires.
+ *
+ * `periodOverride`/`intervalOverride`/`nameOverride` are used for
+ * commitment-tier plans (see plan_duration_prices) — the Plan's period and
+ * amount then reflect the CHOSEN TERM (e.g. "every 24 months, amount =
+ * 24 x that tier's per-month price"), completely bypassing the plan row's
+ * own billing_cycle/price, which stay the untouched 1-month default.
+ */
+export async function createRazorpayPlan(plan, { periodOverride, intervalOverride, nameOverride, amountOverride } = {}) {
+  const period = periodOverride || PERIOD_BY_CYCLE[plan.billing_cycle];
   if (!period) { const e = new Error(`Plan "${plan.name}" has billing_cycle="${plan.billing_cycle}", which has no Razorpay recurring interval — only monthly/quarterly/yearly plans can be synced to Razorpay.`); e.status = 400; throw e; }
-  if (!(Number(plan.price) > 0)) { const e = new Error(`Plan "${plan.name}" has no positive price — free/trial plans are never synced to Razorpay.`); e.status = 400; throw e; }
+  const amount = amountOverride != null ? amountOverride : Number(plan.price);
+  if (!(amount > 0)) { const e = new Error(`Plan "${plan.name}" has no positive price — free/trial plans are never synced to Razorpay.`); e.status = 400; throw e; }
 
   const data = await razorpayFetch("/plans", {
     method: "POST",
     body: {
       period,
-      interval: INTERVAL_BY_CYCLE[plan.billing_cycle],
+      interval: intervalOverride || INTERVAL_BY_CYCLE[plan.billing_cycle],
       item: {
-        name: `${plan.name} (${plan.billing_cycle})`,
+        name: nameOverride || `${plan.name} (${plan.billing_cycle})`,
         description: (plan.description || `${plan.name} subscription plan`).slice(0, 500),
-        amount: Math.round(Number(plan.price) * 100),
+        amount: Math.round(amount * 100),
         currency: plan.currency,
       },
       notes: { crm_plan_id: String(plan.id) },
@@ -42,6 +60,8 @@ export async function createRazorpayPlan(plan) {
   });
   return data.id; // plan_XXXX
 }
+
+export { razorpayPeriodForMonths };
 
 /** Creates a real Razorpay subscription. The browser opens Razorpay
  * Checkout with the returned id — Razorpay Checkout is a JS overlay, not a

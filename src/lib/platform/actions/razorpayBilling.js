@@ -4,9 +4,9 @@ import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
-import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, updateRazorpaySubscriptionQuantity, cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
+import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, updateRazorpaySubscriptionQuantity, cancelRazorpaySubscription, razorpayPeriodForMonths } from "@/lib/payments/razorpaySubscriptions";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
-import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn, hasTieredPlansSchema, hasDurationPricingSchema, hasCommitmentMonthsColumn } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
@@ -77,6 +77,54 @@ async function ensureMaintenanceRazorpayPlanId(plan) {
   });
   await pool.query(`UPDATE plans SET maintenance_razorpay_plan_id = ? WHERE id = ?`, [razorpayPlanId, plan.id]);
   return razorpayPlanId;
+}
+
+/** A configured commitment tier for a plan (12/24/36 months, or whatever
+ * the operator set up — see plan_duration_prices) — null for the plain
+ * 1-month case, which just uses the plan's own price/cycle unchanged. */
+async function getDurationTier(planId, durationMonths) {
+  if (durationMonths <= 1) return null;
+  if (!(await hasDurationPricingSchema())) { const e = new Error("Duration-based pricing isn't available yet."); e.status = 503; throw e; }
+  const [[tier]] = await pool.query(`SELECT * FROM plan_duration_prices WHERE plan_id = ? AND duration_months = ? AND status = 'active'`, [planId, durationMonths]);
+  if (!tier) { const e = new Error(`This plan has no ${durationMonths}-month pricing configured.`); e.status = 400; throw e; }
+  return tier;
+}
+
+/** Ensures a Razorpay Plan exists for one specific commitment tier — bills
+ * tier.price × tier.duration_months once every `duration_months` (the
+ * subscription's own `quantity` still multiplies that by seat count for a
+ * per_user plan, same mechanism the plain 1-month case already uses).
+ * Idempotent via plan_duration_prices.razorpay_plan_id — cleared by
+ * setDurationPrice whenever the tier's price changes, so a stale amount is
+ * never reused. */
+async function ensureDurationRazorpayPlanId(plan, tier) {
+  if (tier.razorpay_plan_id) return tier.razorpay_plan_id;
+  const { period, interval } = razorpayPeriodForMonths(tier.duration_months);
+  const razorpayPlanId = await createRazorpayPlan(plan, {
+    periodOverride: period, intervalOverride: interval,
+    nameOverride: `${plan.name} (${tier.duration_months}mo term)`,
+    amountOverride: Number(tier.price) * tier.duration_months,
+  });
+  await pool.query(`UPDATE plan_duration_prices SET razorpay_plan_id = ? WHERE id = ?`, [razorpayPlanId, tier.id]);
+  return razorpayPlanId;
+}
+
+/** The maintenance fee's counterpart for a commitment tier — billed on the
+ * SAME cadence as the main plan (once per `durationMonths`), scaled
+ * proportionally (24 months = 2x the annual fee) so it's paid upfront for
+ * the whole covered term rather than still landing separately every 12
+ * months mid-commitment. Not cached/reused across calls the way the plain
+ * 12-month default is (no per-tier column to cache it in) — Razorpay Plan
+ * objects are cheap to create, so a little duplication here is an
+ * acceptable trade rather than a new schema column just for this. */
+async function ensureDurationMaintenanceRazorpayPlanId(plan, durationMonths) {
+  if (!(Number(plan.maintenance_annual_fee) > 0)) return null;
+  const { period, interval } = razorpayPeriodForMonths(durationMonths);
+  const scaledAmount = Number(plan.maintenance_annual_fee) * (durationMonths / 12);
+  return createRazorpayPlan(
+    { id: plan.id, name: plan.name, description: `${plan.name} maintenance fee`, currency: plan.currency },
+    { periodOverride: period, intervalOverride: interval, nameOverride: `${plan.name} (Maintenance, ${durationMonths}mo)`, amountOverride: scaledAmount }
+  );
 }
 
 export async function syncPlanToRazorpay(planId, operatorId) {
@@ -155,17 +203,26 @@ export async function syncSubscriptionSeatCount(companyId) {
  * simulated, and nothing here guesses at a Razorpay "offers" API that
  * hasn't been verified against real documentation.
  */
-export async function createRazorpayCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, couponCode = null, actorId = null }) {
+export async function createRazorpayCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, couponCode = null, actorId = null, durationMonths = 1 }) {
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no payment needed. Use the plan-change flow instead."); e.status = 400; throw e; }
   if (!plan.razorpay_plan_id) { const e = new Error("This plan hasn't been connected to Razorpay yet. Please contact the platform team."); e.status = 400; throw e; }
 
+  const months = Number(durationMonths) || 1;
+  const tier = months > 1 ? await getDurationTier(planId, months) : null;
+
   let couponId = null;
   let discountAmount = 0;
   let razorpayPlanIdForCheckout = plan.razorpay_plan_id;
   const couponsAvailable = await hasCouponsSchema();
-  if (couponCode && couponsAvailable) {
+  if (couponCode && months > 1) {
+    // A coupon discounts a single-cycle amount — stacking it with an
+    // already-discounted multi-month commitment price is two different
+    // discount mechanisms fighting over the same number, so this is
+    // refused rather than silently picking one.
+    const e = new Error("Coupons can only be applied to monthly billing, not a multi-month commitment plan."); e.status = 400; throw e;
+  } else if (couponCode && couponsAvailable) {
     const validated = await validateCouponForPlan(couponCode, plan);
     couponId = validated.coupon.id;
     discountAmount = validated.discountAmount;
@@ -174,10 +231,15 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
     razorpayPlanIdForCheckout = await createRazorpayPlan({ ...plan, price: validated.finalAmount });
   } else if (couponCode && !couponsAvailable) {
     const e = new Error("Coupons aren't available yet."); e.status = 404; throw e;
+  } else if (tier) {
+    // Commitment tier — the Plan bills tier.price x months once per
+    // `months`, not plan.price monthly. See ensureDurationRazorpayPlanId.
+    razorpayPlanIdForCheckout = await ensureDurationRazorpayPlanId(plan, tier);
   }
 
   const existing = await getSubscriptionForCompany(companyId);
   const tieredSchemaReady = await hasTieredPlansSchema();
+  const commitmentColumnReady = await hasCommitmentMonthsColumn();
 
   // Seat-based plans bill amount × quantity — quantity is the company's
   // current active headcount, kept in sync afterward by
@@ -190,7 +252,7 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
 
   const { razorpaySubscriptionId } = await createRazorpaySubscription({
     razorpayPlanId: razorpayPlanIdForCheckout,
-    billingCycle: plan.billing_cycle,
+    billingCycle: tier ? undefined : plan.billing_cycle,
     quantity: seatQuantity,
     customerEmail: subscriberEmail,
     customerName: subscriberName,
@@ -200,15 +262,20 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
   // The annual maintenance fee (if this plan has one) is a SEPARATE real
   // Razorpay subscription running in parallel — see
   // ensureMaintenanceRazorpayPlanId's comment for why Razorpay can't just
-  // bill "amount + annual add-on" on one subscription object. The browser
-  // opens a second Checkout overlay for this one right after the first
-  // succeeds (see SubscriptionManager.js).
+  // bill "amount + annual add-on" on one subscription object. On a
+  // commitment tier, it's billed on the SAME cadence as the main plan
+  // (once per `months`), scaled proportionally (24 months = 2x the annual
+  // fee) — not still charged separately every 12 months mid-term. The
+  // browser opens a second Checkout overlay for this one right after the
+  // first succeeds (see SubscriptionManager.js).
   let maintenanceRazorpaySubscriptionId = null;
   if (tieredSchemaReady && Number(plan.maintenance_annual_fee) > 0) {
-    const maintenancePlanId = await ensureMaintenanceRazorpayPlanId(plan);
+    const maintenancePlanId = tier
+      ? await ensureDurationMaintenanceRazorpayPlanId(plan, months)
+      : await ensureMaintenanceRazorpayPlanId(plan);
     if (maintenancePlanId) {
       const maintenanceResult = await createRazorpaySubscription({
-        razorpayPlanId: maintenancePlanId, billingCycle: "yearly", quantity: 1,
+        razorpayPlanId: maintenancePlanId, billingCycle: tier ? undefined : "yearly", quantity: 1,
         customerEmail: subscriberEmail, customerName: subscriberName, customId: `company:${companyId}:maintenance`,
       });
       maintenanceRazorpaySubscriptionId = maintenanceResult.razorpaySubscriptionId;
@@ -235,27 +302,29 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
       });
     }
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?, gateway='razorpay', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id=?, seat_quantity=?" : ""} WHERE id=?`,
+      `UPDATE company_subscriptions SET plan_id=?, gateway='razorpay', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id=?, seat_quantity=?" : ""}${commitmentColumnReady ? ", commitment_months=?" : ""} WHERE id=?`,
       [
         planId, razorpaySubscriptionId,
         ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []),
         ...(tieredSchemaReady ? [maintenanceRazorpaySubscriptionId, seatQuantity] : []),
+        ...(commitmentColumnReady ? [months] : []),
         existing.id,
       ]
     );
   } else {
     await pool.query(
-      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id, seat_quantity" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""}${tieredSchemaReady ? ",?,?" : ""})`,
+      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}${tieredSchemaReady ? ", maintenance_gateway_subscription_id, seat_quantity" : ""}${commitmentColumnReady ? ", commitment_months" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""}${tieredSchemaReady ? ",?,?" : ""}${commitmentColumnReady ? ",?" : ""})`,
       [
         companyId, planId, "razorpay", razorpaySubscriptionId, "pending",
         ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []),
         ...(tieredSchemaReady ? [maintenanceRazorpaySubscriptionId, seatQuantity] : []),
+        ...(commitmentColumnReady ? [months] : []),
       ]
     );
   }
 
-  await logActivity({ userId: actorId, module: "platform", action: "razorpay_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started Razorpay checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}` }).catch(() => {});
-  const perUserAmount = discountAmount ? Number(plan.price) - discountAmount : plan.price;
+  await logActivity({ userId: actorId, module: "platform", action: "razorpay_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started Razorpay checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}${tier ? ` (${months}-month commitment)` : ""}` }).catch(() => {});
+  const perUserAmount = tier ? Number(tier.price) : discountAmount ? Number(plan.price) - discountAmount : plan.price;
   return {
     razorpaySubscriptionId, razorpayKeyId: process.env.RAZORPAY_KEY_ID, planName: plan.name,
     amount: perUserAmount, seatQuantity, currency: plan.currency,
@@ -264,9 +333,9 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
   };
 }
 
-export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null } = {}) {
+export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null, durationMonths = 1 } = {}) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
-  return createRazorpayCheckoutForCompany({ companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, couponCode, actorId: session.id });
+  return createRazorpayCheckoutForCompany({ companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, couponCode, actorId: session.id, durationMonths });
 }
 
 /**
@@ -426,6 +495,25 @@ export async function verifyAndConfirmRazorpaySubscriptionPublic({ razorpaySubsc
  * same "close the revenue gap if the webhook is missed/delayed" reasoning
  * confirmRazorpaySubscription's own paymentId branch documents).
  */
+async function recordMaintenancePayment(row, razorpaySubscriptionId, razorpayPaymentId) {
+  const result = await confirmRazorpayMaintenanceSubscription(razorpaySubscriptionId);
+  const [[plan]] = await pool.query(`SELECT name, maintenance_annual_fee, currency FROM plans WHERE id=?`, [row.plan_id]);
+  if (plan?.maintenance_annual_fee) {
+    const months = Number(row.commitment_months) || 12;
+    // Scaled the same way ensureDurationMaintenanceRazorpayPlanId computed
+    // the charge itself — a 24-month term's maintenance payment really is
+    // 2x the annual fee, not the flat annual amount misrecorded as revenue.
+    const amount = Number(plan.maintenance_annual_fee) * (months / 12);
+    await recordSubscriptionPayment({
+      companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
+      amount: amount.toFixed(2), currency: plan.currency || "INR",
+      gatewayTransactionId: razorpayPaymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
+      billingCycle: months === 12 ? "yearly" : undefined,
+    }).catch(() => {});
+  }
+  return result;
+}
+
 export async function verifyAndConfirmRazorpayMaintenanceSubscription({ session, razorpaySubscriptionId, razorpayPaymentId, razorpaySignature }) {
   if (!(await hasTieredPlansSchema())) { const e = new Error("Tiered plans aren't available yet."); e.status = 503; throw e; }
   const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND maintenance_gateway_subscription_id = ? AND company_id = ? LIMIT 1`, [razorpaySubscriptionId, session.company_id]);
@@ -434,16 +522,22 @@ export async function verifyAndConfirmRazorpayMaintenanceSubscription({ session,
   const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
   if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
 
-  const result = await confirmRazorpayMaintenanceSubscription(razorpaySubscriptionId);
-  const [[plan]] = await pool.query(`SELECT name, maintenance_annual_fee, currency FROM plans WHERE id=?`, [row.plan_id]);
-  if (plan?.maintenance_annual_fee) {
-    await recordSubscriptionPayment({
-      companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
-      amount: plan.maintenance_annual_fee, currency: plan.currency || "INR",
-      gatewayTransactionId: razorpayPaymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed", billingCycle: "yearly",
-    }).catch(() => {});
-  }
-  return result;
+  return recordMaintenancePayment(row, razorpaySubscriptionId, razorpayPaymentId);
+}
+
+/** Public registration variant — same reasoning as
+ * verifyAndConfirmRazorpaySubscriptionPublic: no session exists yet at the
+ * moment this callback fires during signup, so the signature check (not
+ * session/company scoping) is what proves authenticity. */
+export async function verifyAndConfirmRazorpayMaintenanceSubscriptionPublic({ razorpaySubscriptionId, razorpayPaymentId, razorpaySignature }) {
+  if (!(await hasTieredPlansSchema())) { const e = new Error("Tiered plans aren't available yet."); e.status = 503; throw e; }
+  const [[row]] = await pool.query(`SELECT * FROM company_subscriptions WHERE gateway='razorpay' AND maintenance_gateway_subscription_id = ? LIMIT 1`, [razorpaySubscriptionId]);
+  if (!row) { const e = new Error("No matching maintenance subscription found."); e.status = 404; throw e; }
+
+  const validSignature = verifyRazorpaySubscriptionSignature({ paymentId: razorpayPaymentId, subscriptionId: razorpaySubscriptionId, signature: razorpaySignature });
+  if (!validSignature) { const e = new Error("Payment verification failed. Please contact support."); e.status = 400; throw e; }
+
+  return recordMaintenancePayment(row, razorpaySubscriptionId, razorpayPaymentId);
 }
 
 /**

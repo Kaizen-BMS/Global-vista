@@ -8,7 +8,7 @@ import { withCsrf } from "@/lib/helpers/withCsrf";
 export const POST = withCsrf(withErrorHandling(async (request) => {
   const session = await getSession();
   if (!isSuperAdmin(session)) return forbidden();
-  const { planId, couponCode } = await request.json();
+  const { planId, couponCode, durationMonths } = await request.json();
   if (!planId) return badRequest("planId is required.");
 
   // Usage-limit guard runs even on the checkout path — no point opening
@@ -16,6 +16,6 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   // they can't actually move to.
   await assertPlanChangeAllowed(session.company_id, planId);
 
-  const result = await startCompanyRazorpayCheckout(session, planId, { couponCode: couponCode || null });
+  const result = await startCompanyRazorpayCheckout(session, planId, { couponCode: couponCode || null, durationMonths: durationMonths || 1 });
   return ok(result);
 }));

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -35,11 +35,13 @@ const STATUS_META = {
   expired: { label: "Expired", color: "text-muted-foreground border-border bg-muted/30" },
 };
 
-function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGateway, currentEndsAt, timezone, onClose }) {
+function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGateway, currentEndsAt, timezone, onClose, autoCheckout }) {
   const router = useRouter();
   const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout, or "planId:now"/"planId:cycle_end" while switching in place
   const [couponCode, setCouponCode] = useState("");
   const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
+  const [durationByPlan, setDurationByPlan] = useState({}); // plan.id -> chosen commitment length in months, default 1
+  const getDuration = (plan) => durationByPlan[plan.id] || 1;
 
   // A company already on an active Razorpay subscription switches plans in
   // place (changeCompanyRazorpayPlan) instead of starting a whole new
@@ -57,6 +59,27 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const needsPayment = ["pending", "payment_failed", "past_due"].includes(subscriptionState);
   const anyGatewayAvailable = plans.some((p) => p.hasBillDesk || p.hasRazorpay);
   const anyPlanOffersChoice = plans.some((p) => p.hasBillDesk && p.hasRazorpay);
+
+  // Arriving here via the public pricing page's CTA (?checkoutPlan=X — see
+  // platform-home/page.js and SubscriptionSettingsPage) — the whole point
+  // of that flow is "go straight to payment", so this fires the real
+  // checkout itself rather than making the visitor click the plan again.
+  // Only auto-fires for a plan billed purely through Razorpay (never
+  // ambiguous about which gateway) and never twice, even if this effect
+  // re-runs for an unrelated reason.
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoCheckout || autoFiredRef.current) return;
+    const plan = plans.find((p) => p.id === autoCheckout.planId);
+    if (!plan || plan.id === currentPlanId || !plan.hasRazorpay || plan.hasBillDesk) return;
+    autoFiredRef.current = true;
+    if (canSwitchInPlace) {
+      changePlanInPlace(plan, "now"); // duration tiers aren't supported on the in-place switch path yet — see its own doc comment
+    } else {
+      choosePlan(plan, autoCheckout.months || 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCheckout, plans, currentPlanId, canSwitchInPlace]);
 
   useEffect(() => {
     function onKey(e) { if (e.key === "Escape") onClose(); }
@@ -140,7 +163,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     } catch (err) { toast.error(err.message); setCheckingOut(null); }
   }
 
-  async function choosePlan(plan) {
+  async function choosePlan(plan, monthsOverride) {
     if (!(Number(plan.price) > 0)) {
       toast.error("Switching to a free/trial plan requires the platform team — contact support to change to this plan.");
       return;
@@ -168,7 +191,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
 
     // Razorpay Checkout is an in-page modal, not a redirect.
     try {
-      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
+      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null, durationMonths: monthsOverride ?? getDuration(plan) }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
       await payWithRazorpayThenFinish(data);
@@ -270,6 +293,21 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                   {plan.max_storage_mb ? <li>{plan.max_storage_mb >= 1024 ? `${Math.round(plan.max_storage_mb / 1024)}GB` : `${plan.max_storage_mb}MB`} storage</li> : <li>Unlimited storage</li>}
                   <li>Import/Export: {plan.allow_import_export === 0 ? "No" : "Yes"}</li>
                 </ul>
+                {!isCurrent && !canSwitchInPlace && plan.hasRazorpay && plan.durationTiers?.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-muted-foreground text-[10px] mb-1">Commitment length</p>
+                    <div className="flex flex-wrap gap-1">
+                      {[{ durationMonths: 1, price: plan.price }, ...plan.durationTiers].map((opt) => (
+                        <button
+                          key={opt.durationMonths} type="button" onClick={() => setDurationByPlan((d) => ({ ...d, [plan.id]: opt.durationMonths }))}
+                          className={`px-2 py-1 rounded-md border text-[10px] cursor-pointer transition ${getDuration(plan) === opt.durationMonths ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
+                        >
+                          {opt.durationMonths}mo · {plan.currency}{opt.price}/mo
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {!isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay ? (
                   <div className="mt-3 flex gap-2">
                     <button
@@ -309,10 +347,14 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   );
 }
 
-export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume }) {
+export default function SubscriptionManager({ subscription, plans, payments: initialPayments, canResume, autoCheckout }) {
   const router = useRouter();
   const timezone = useTimezone();
-  const [showPicker, setShowPicker] = useState(false);
+  // Arriving with ?checkoutPlan=… (see the public pricing page) opens the
+  // picker immediately — PlanPickerModal's own effect then fires the real
+  // checkout, so this isn't a second interactive step, just what makes the
+  // modal (and its Razorpay overlay) exist on the page at all.
+  const [showPicker, setShowPicker] = useState(!!autoCheckout);
   const [showHistory, setShowHistory] = useState(false);
   const [payments] = useState(initialPayments);
   const [busy, setBusy] = useState(false);
@@ -402,7 +444,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
         )}
       </AnimatePresence>
 
-      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} currentGateway={subscription.gateway} currentEndsAt={subscription.endsAt} timezone={timezone} onClose={() => setShowPicker(false)} />}
+      {showPicker && <PlanPickerModal plans={plans} currentPlanId={subscription.planId} subscriptionState={subscription.state} currentGateway={subscription.gateway} currentEndsAt={subscription.endsAt} timezone={timezone} onClose={() => setShowPicker(false)} autoCheckout={autoCheckout} />}
     </div>
   );
 }
