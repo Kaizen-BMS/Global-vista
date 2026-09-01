@@ -2,22 +2,23 @@ import { getSession } from "@/lib/auth";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getSubscriptionDetails } from "@/lib/platform/tenant";
 import { listPublicPlans } from "@/lib/platform/actions/registration";
-import { listPublishedBlogPosts } from "@/lib/platform/actions/blog";
 import { listActiveOffers } from "@/lib/platform/actions/offers";
 import PlatformHome from "@/components/platformHome/PlatformHome";
 
 export const metadata = { title: "KaizenBMS Platform — One Platform. Complete Business Control." };
 // Pricing must reflect live plan data (Part 7 spec: "pull dynamically from
 // the plan system"), not a build-time snapshot — a Platform Operator
-// editing a plan should show up here without a rebuild. Same reasoning now
-// applies to the blog teaser and offers strip — both Platform-Operator-managed.
+// editing a plan should show up here without a rebuild. Same reasoning
+// applies to the offers strip — also Platform-Operator-managed. The blog
+// teaser was dropped from this page's own layout (the document-style
+// redesign has no room for it) — /blog itself is untouched and still
+// linked from the footer.
 export const dynamic = "force-dynamic";
 
 export default async function PlatformHomePage() {
   const session = await getSession();
-  const [plans, posts, offers, subscription] = await Promise.all([
+  const [plans, offers, subscription] = await Promise.all([
     listPublicPlans(),
-    listPublishedBlogPosts(3),
     listActiveOffers(),
     session ? getSubscriptionDetails(session.company_id) : null,
   ]);
@@ -31,5 +32,5 @@ export default async function PlatformHomePage() {
   const viewer = session
     ? { loggedIn: true, isSuperAdmin: isSuperAdmin(session), currentPlanId: subscription?.planId || null, currentPlanState: subscription?.state || null }
     : { loggedIn: false, isSuperAdmin: false, currentPlanId: null, currentPlanState: null };
-  return <PlatformHome plans={plans} posts={posts} offers={offers} viewer={viewer} />;
+  return <PlatformHome plans={plans} offers={offers} viewer={viewer} />;
 }

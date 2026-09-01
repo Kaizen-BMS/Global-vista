@@ -219,6 +219,38 @@
   }
 }
 
+/* From the supplied Kaizen BMS Landing v2 design file — same three
+   keyframes, verbatim (kb-rise/kb-wash/kb-rule), applied on page load
+   (not scroll-triggered) to the masthead rule and hero, exactly as that
+   file specified. */
+@keyframes kb-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes kb-wash {
+  from { opacity: 0; transform: scale(.9); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes kb-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.animate-kb-rise {
+  animation: kb-rise .8s cubic-bezier(.2,.7,.3,1) both;
+}
+.animate-kb-wash {
+  animation: kb-wash 1.4s ease-out both;
+}
+.animate-kb-rule {
+  animation: kb-rule .6s cubic-bezier(.2,.7,.3,1) both;
+  transform-origin: left;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-kb-rise, .animate-kb-wash, .animate-kb-rule {
+    animation: none;
+  }
+}
+
 /*
  * Workspace/Platform tenant-branding hooks. --brand-primary/--brand-secondary
  * are set inline on the workspace shell root (see workspace/layout.js) from

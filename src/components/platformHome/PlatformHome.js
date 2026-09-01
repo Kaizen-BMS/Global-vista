@@ -1,140 +1,102 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Check, Minus, Target, SlidersHorizontal, MessageSquare, BarChart3, Building2, CreditCard, ShieldCheck } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
-import PlatformHomeNavbar from "@/components/platformHome/PlatformHomeNavbar";
 import { PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_FAINT, BORDER, BORDER_SOFT, ACCENT } from "@/components/platformHome/editorialTheme";
 
-/** Full-bleed hero background video (public/videos/Background vidio.mp4).
- * Autoplays muted/looped/inline (the only way browsers allow autoplay at
- * all). Deliberately no `poster` attribute — a poster image is what the
- * browser shows until the video has buffered its first frame, so on a
- * slower connection it briefly reads as "the wrong image" before swapping
- * to the video. The wrapper's own solid `bg-[#07080B]` fills that gap
- * instead, so the load window is just a plain dark background. Users
- * who've asked the OS for reduced motion get part1.png as a static image
- * instead — no video element is even mounted for them, never just a paused
- * one.
- *
- * Deliberately NOT using a negative z-index to sit "behind" its siblings —
- * framer-motion's transform/opacity on the sibling headline creates its own
- * stacking context, which a negative z-index background can end up painting
- * behind entirely (the bug that made this invisible). Instead this is
- * simply the first child in DOM order with no z-index of its own, and the
- * text content that follows it is explicitly `relative z-10` — plain,
- * unambiguous paint order that no sibling's stacking context can disturb. */
-function HeroVideoBackground() {
-  const reduce = useReducedMotion();
+/**
+ * Document-style homepage — a printed-sheet look (masthead, thin rules,
+ * serif headline, a plain feature matrix) rather than the previous
+ * cinematic dark hero. Built from two supplied mockups in sequence — a
+ * plain PDF first, then a more refined "v2" HTML mockup (two-column hero,
+ * numbered modules list, an elevated "most chosen" pricing card, a
+ * collapsible feature matrix) — this file matches the v2 structure.
+ * Every number/word inside it is real, live data throughout: no plan
+ * name, price, limit, or module count here is invented to match either
+ * mockup's placeholder numbers. The v2 mockup's own product-screenshot
+ * section is deliberately NOT included — the only image available for it
+ * was a generic stock CRM template (wrong nav items, wrong entities, not
+ * actually KaizenBMS), and shipping a fake screenshot of the product
+ * would be actively misleading. Swap in real screenshots here once
+ * they exist as actual image files.
+ */
+const SERIF = "font-[family-name:var(--font-source-serif)]";
+// Written as their own complete, literal class strings (not derived via
+// .split() on PAGE_BG/ACCENT/etc at runtime) — Tailwind's build-time scanner
+// only ever generates CSS for a class name it can find as literal text
+// somewhere in the source, so a runtime-computed string never produces
+// real styles no matter how correct the resulting string looks.
+const HOVER_PRIMARY = "hover:text-[#0B0E14] dark:hover:text-[#F4F3EF]";
+const HOVER_ACCENT = "hover:text-indigo-600 dark:hover:text-indigo-400";
+
+function Fade({ children, className = "", delay = 0, id }) {
   return (
-    <div className="absolute inset-0 overflow-hidden bg-[#07080B]">
-      {reduce ? (
-        <Image
-          src="/images/part1.png" alt="" fill priority
-          className="object-cover object-center opacity-90"
-        />
-      ) : (
-        <video
-          autoPlay muted loop playsInline preload="auto"
-          className="absolute inset-0 w-full h-full object-cover"
-          aria-hidden="true"
-        >
-          <source src="/videos/Background%20vidio.mp4" type="video/mp4" />
-        </video>
-      )}
-      {/* Scrim — a vignette rather than a flat tint, so footage still reads
-          as footage at the center while the headline stays legible
-          everywhere, in both themes. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/45 to-[#07080B]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgba(0,0,0,0.55)_100%)]" />
-    </div>
+    <motion.div
+      id={id}
+      initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
   );
 }
 
 function MicroLabel({ children, className = "" }) {
-  return <p className={`text-[11px] font-medium uppercase tracking-[0.2em] ${TEXT_FAINT} ${className}`}>{children}</p>;
+  return <p className={`text-[10px] font-medium uppercase tracking-[0.16em] ${TEXT_FAINT} ${className}`}>{children}</p>;
 }
 
-/** The "annual report" numbered-section device used throughout — a large
- * faint numeral paired with a tiny uppercase label, establishing rhythm
- * between sections without repeating identical card chrome. */
-function Numeral({ n, label }) {
-  return (
-    <div className="flex items-baseline gap-3 mb-6">
-      <span className={`text-sm font-semibold tabular-nums ${ACCENT}`}>{n}</span>
-      <span className={`text-[11px] font-medium uppercase tracking-[0.2em] ${TEXT_FAINT}`}>{label}</span>
-    </div>
-  );
+/** Shared with the footer's own Services column — one list, two
+ * presentations, kept from the previous version of this page for the
+ * same "never lets the two drift apart" reason. */
+const SERVICES = [
+  { label: "CRM & Leads" },
+  { label: "Customization" },
+  { label: "Communication" },
+  { label: "Analytics" },
+  { label: "Operations" },
+  { label: "Payments" },
+  { label: "Security" },
+];
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const PACK_WORDS = ["ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX"];
+
+const DURATION_LABELS = { 1: "1 month", 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
+function durationLabel(m) { return DURATION_LABELS[m] || `${m} months`; }
+
+/** A plan's own name drives its color everywhere it appears (pricing card,
+ * feature matrix header) — Silver reads silver, Gold reads gold, Diamond
+ * reads diamond, matched case-insensitively on the plan's actual name so
+ * this never needs updating if plans are renamed/added later. Anything
+ * that isn't one of those three metals (Starter, or any custom plan name)
+ * falls back to the page's own neutral/indigo theme. */
+const PLAN_THEMES = {
+  silver: { text: "text-slate-500 dark:text-slate-300", border: "border-slate-400/40 dark:border-slate-300/30", wash: "bg-slate-400/10 dark:bg-slate-300/10", chip: "bg-slate-400/15 text-slate-600 dark:text-slate-300", button: "bg-slate-500 hover:bg-slate-400 text-white" },
+  gold: { text: "text-amber-600 dark:text-amber-400", border: "border-amber-500/40 dark:border-amber-400/30", wash: "bg-amber-500/10 dark:bg-amber-400/10", chip: "bg-amber-500/15 text-amber-700 dark:text-amber-400", button: "bg-amber-500 hover:bg-amber-400 text-black" },
+  diamond: { text: "text-sky-500 dark:text-sky-300", border: "border-sky-400/40 dark:border-sky-300/30", wash: "bg-sky-400/10 dark:bg-sky-300/10", chip: "bg-sky-400/15 text-sky-600 dark:text-sky-300", button: "bg-sky-500 hover:bg-sky-400 text-white" },
+};
+function planTheme(name) {
+  const key = Object.keys(PLAN_THEMES).find((k) => (name || "").toLowerCase().includes(k));
+  return key ? PLAN_THEMES[key] : null;
 }
 
-function RevealSection({ id, children, className = "" }) {
-  const reduce = useReducedMotion();
-  return (
-    <motion.section
-      id={id}
-      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-100px" }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className={`max-w-[1400px] mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-20 ${className}`}
-    >
-      {children}
-    </motion.section>
-  );
-}
-
-function EditorialButton({ href, children, primary, external }) {
-  const cls = primary
-    ? `inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-medium border ${TEXT_PRIMARY} bg-transparent border-current hover:bg-[#0B0E14] hover:text-white dark:hover:bg-[#F4F3EF] dark:hover:text-[#07080B] transition-colors cursor-pointer`
-    : `inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-medium border ${BORDER} ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] hover:border-[#0B0E14] dark:hover:border-white/30 transition-colors cursor-pointer`;
-  return external ? (
-    <a href={href} className={cls}>{children}</a>
-  ) : (
-    <Link href={href} className={cls}>{children}</Link>
-  );
-}
-
-function formatPostDate(d) {
-  if (!d) return "";
-  return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
-
-/** Rendered as the fixed navbar's `topBar` — same solid dark strip
- * regardless of scroll state or theme, so it stays legible whether it's
- * sitting over the video hero or the page background, and fully occludes
- * whatever's behind it (no hero video/poster bleed-through). Faster loop
- * than the site's own marquee band, via the dedicated .animate-marquee-fast
- * class — deliberately not touching the shared .animate-marquee speed. */
+/** The scrolling offers ticker from the previous version of this page —
+ * dropped by mistake in the document-style rewrite, restored here as a
+ * thin strip under the masthead rather than the old fixed-dark bar, so it
+ * fits the lighter theme instead of clashing with it. */
 function OffersMarquee({ offers }) {
-  // The loop animation translates by exactly -50% of this track's own
-  // width (one copy of `repeated`), so that copy must be at least as wide
-  // as the widest screen this renders on — otherwise the untranslated
-  // remainder of the track (which is real content, just not enough of it)
-  // leaves a visibly empty gap next to the text before the loop restarts.
-  // A fixed "duplicate twice" was fine for a long offer list but broke
-  // down to exactly this gap with only 1–2 short offers, so repeat count
-  // scales inversely with how much text there actually is.
+  if (!offers.length) return null;
   const repeatCount = Math.max(2, Math.ceil(16 / Math.max(offers.length, 1)));
   const repeated = Array.from({ length: repeatCount }, () => offers).flat();
-  // .animate-marquee-fast's own 18s is tuned for the ORIGINAL fixed
-  // "duplicate twice" track width — once repeatCount started scaling the
-  // track wider (to fix the empty-gap bug), that same fixed 18s covered
-  // more distance, so the visible scroll speed silently sped up along
-  // with it. Duration now scales with repeatCount so px/second — the
-  // thing that actually determines whether it's readable — stays
-  // constant no matter how many offers there are, at a deliberately
-  // slower per-copy pace than the original 18s so it's comfortable to
-  // read rather than just "not broken."
   const seconds = repeatCount * 14;
   return (
-    <div className="border-b border-white/10 bg-[#0B0E14] overflow-hidden">
-      <div className="flex w-max animate-marquee-fast py-1.5" style={{ animationDuration: `${seconds}s` }}>
+    <div className={`border-b ${BORDER} overflow-hidden`}>
+      <div className="flex w-max animate-marquee-fast py-2" style={{ animationDuration: `${seconds}s` }}>
         {[...repeated, ...repeated].map((offer, i) => (
           <div key={`${offer.id}-${i}`} className="mx-6 flex shrink-0 items-center gap-3 whitespace-nowrap">
-            <span className="text-[11px] uppercase tracking-[0.15em] text-white/80">{offer.text}</span>
-            <span className="h-1 w-1 rounded-full bg-indigo-400 shrink-0" />
+            <span className={`text-[11px] uppercase tracking-[0.15em] ${TEXT_SECONDARY}`}>{offer.text}</span>
+            <span className="h-1 w-1 rounded-full shrink-0 bg-indigo-400" />
           </div>
         ))}
       </div>
@@ -143,59 +105,134 @@ function OffersMarquee({ offers }) {
 }
 
 /**
- * Hostinger-style pricing: one duration selector drives every card's price
- * at once (not a per-card toggle), a discount badge appears whenever the
- * chosen term is cheaper than the 1-month price, and a "Compare plans"
- * toggle reveals a full feature-by-feature table. Structure/interaction
- * pattern matches Hostinger's own pricing page; every color/typography
- * choice stays this site's own editorial theme, not Hostinger's palette —
- * same principle as the rest of this app's "borrow the layout, never the
- * brand" rule for competitor-inspired design.
+ * A compact, looping recreation of the product walkthrough — built from
+ * verified real screens of the actual app (dashboard stats, leads table,
+ * lead detail with lead score, notifications), using entirely fictional
+ * demo data. The design file's own walkthrough imports two external JSX
+ * animation components (animations-v3.jsx / crm-walkthrough.jsx) that
+ * only exist inside that Claude Design project, not in this codebase, so
+ * it can't be embedded directly — this reproduces its scene list
+ * (Dashboard → Leads → Detail → Follow-up) as a self-contained
+ * cross-fading sequence instead.
  */
-const DURATION_LABELS = { 1: "1 month", 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
-function durationLabel(m) { return DURATION_LABELS[m] || `${m} months`; }
-
-/** Shared between the homepage's compact icon grid and the footer's
- * "Services" text column — one list, two presentations, so the two never
- * drift apart the way a full duplicated section would. */
-const SERVICES = [
-  { icon: Target, label: "CRM & Leads" },
-  { icon: SlidersHorizontal, label: "Customization" },
-  { icon: MessageSquare, label: "Communication" },
-  { icon: BarChart3, label: "Analytics" },
-  { icon: Building2, label: "Operations" },
-  { icon: CreditCard, label: "Payments" },
-  { icon: ShieldCheck, label: "Security" },
+const WALKTHROUGH_SCENES = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "leads", label: "Leads" },
+  { key: "detail", label: "Lead Detail" },
+  { key: "followup", label: "Follow-up" },
 ];
+const DEMO_LEADS = [
+  { name: "Aarav Mehta", stage: "New Lead", priority: "Medium" },
+  { name: "Priya Sharma", stage: "Contacted", priority: "High" },
+  { name: "Rohan Gupta", stage: "Qualified", priority: "Medium" },
+];
+function ProductWalkthrough() {
+  const [scene, setScene] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setScene((s) => (s + 1) % WALKTHROUGH_SCENES.length), 3800);
+    return () => clearInterval(id);
+  }, []);
 
-function HostingerPricingSection({ plans, viewer, offers = [] }) {
-  // Every publicly-listable plan, including a free/trial one (price is
-  // NULL, not 0 — e.g. Starter's 30-day trial). listPublicPlans() already
-  // only ever returns status='active' plans, ordered with any null-price
-  // plan first — so this is deliberately NOT filtered down to "priced
-  // plans only" the way it used to be, which is exactly why Starter was
-  // silently missing from this page before.
-  const displayPlans = plans;
-  // Reuses the existing Offers system (Platform Console → Modules →
-  // Offers) rather than a second, parallel "banner" feature — a festival/
-  // sale announcement IS exactly what that already models. The most
-  // recent active offer gets a bold, standalone banner right above the
-  // cards here, in addition to (not instead of) its usual spot in the
-  // page-top scrolling strip.
+  return (
+    <div className={`rounded-lg border ${BORDER} shadow-lg overflow-hidden bg-[#0B0E14]`}>
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/10">
+        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+        <span className="ml-3 text-[10px] uppercase tracking-[0.15em] text-white/40">KaizenBMS Workspace</span>
+      </div>
+      <div className="relative h-72 sm:h-80">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={WALKTHROUGH_SCENES[scene].key}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+            className="absolute inset-0 p-5 sm:p-6"
+          >
+            {scene === 0 && (
+              <div>
+                <p className="text-white text-sm font-medium mb-4">Welcome back — here&apos;s today at a glance.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[["Total Leads", "128"], ["Assigned to Me", "12"], ["Unassigned", "4"], ["Today's Follow-ups", "6"], ["Conversion Rate", "24%"]].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-white/50 text-[10px]">{label}</p>
+                      <p className="text-white text-lg font-semibold mt-1">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 h-16 rounded-lg border border-white/10 bg-white/5 flex items-end gap-1.5 p-2">
+                  {[40, 65, 50, 80, 60, 90, 70].map((h, i) => <span key={i} className="flex-1 rounded-sm bg-indigo-400/70" style={{ height: `${h}%` }} />)}
+                </div>
+              </div>
+            )}
+            {scene === 1 && (
+              <div>
+                <p className="text-white text-sm font-medium mb-4">Leads (128)</p>
+                <div className="rounded-lg border border-white/10 overflow-hidden text-xs">
+                  <div className="grid grid-cols-3 bg-white/5 text-white/50 px-3 py-2">
+                    <span>Name</span><span>Stage</span><span>Priority</span>
+                  </div>
+                  {DEMO_LEADS.map((l) => (
+                    <div key={l.name} className="grid grid-cols-3 px-3 py-2.5 border-t border-white/5 text-white/80">
+                      <span>{l.name}</span>
+                      <span className="text-indigo-300">{l.stage}</span>
+                      <span>{l.priority}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {scene === 2 && (
+              <div>
+                <p className="text-white text-sm font-medium mb-1">Aarav Mehta <span className="text-white/40 font-normal">· New Lead</span></p>
+                <p className="text-white/40 text-[11px] mb-4">Lead Score</p>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-1">
+                  <div className="h-full bg-gradient-to-r from-emerald-400 to-amber-400" style={{ width: "72%" }} />
+                </div>
+                <p className="text-white/60 text-[11px] mb-4">72 / 100</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {[["Phone", "+91 90000 00000"], ["Email", "aarav.m@example.com"], ["Source", "Website"], ["Owner", "You"]].map(([label, value]) => (
+                    <div key={label}>
+                      <p className="text-white/40 text-[10px]">{label}</p>
+                      <p className="text-white/85 mt-0.5">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {scene === 3 && (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+                <span className="h-11 w-11 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-lg">✓</span>
+                <p className="text-white text-sm font-medium">Follow-up completed</p>
+                <p className="text-white/50 text-xs">Aarav Mehta &middot; notification sent</p>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <div className="flex items-center justify-center gap-1.5 py-3 border-t border-white/10">
+        {WALKTHROUGH_SCENES.map((s, i) => (
+          <button
+            key={s.key} type="button" onClick={() => setScene(i)} aria-label={s.label}
+            className={`h-1.5 rounded-full transition-all cursor-pointer ${i === scene ? "w-5 bg-indigo-400" : "w-1.5 bg-white/20"}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function PlatformHome({ plans, viewer, offers = [] }) {
+  const displayPlans = plans; // listPublicPlans() already returns only status='active' plans, null-price (free) one first
   const pricingBanner = offers[0] || null;
-  const activeStates = ["active", "trial", "past_due", "payment_failed"]; // "has some plan already, in some real state" — cancelled/expired/no_subscription don't count as "already has a plan" for CTA purposes
+  const activeStates = ["active", "trial", "past_due", "payment_failed"];
 
-  // Every distinct duration configured on ANY plan, plus the always-available
-  // 1-month baseline — a single dropdown that applies across all cards, even
-  // though not every plan necessarily has every tier (a plan missing the
-  // chosen tier just falls back to its own 1-month price, handled below).
   const durationOptions = useMemo(() => {
     const months = new Set([1]);
     displayPlans.forEach((p) => (p.durationTiers || []).forEach((t) => months.add(t.durationMonths)));
     return [...months].sort((a, b) => a - b);
   }, [displayPlans]);
   const [months, setMonths] = useState(1);
-  const [comparing, setComparing] = useState(false);
+  const [showMatrix, setShowMatrix] = useState(false);
 
   function tierFor(plan) {
     if (months === 1) return { months: 1, price: plan.price };
@@ -203,405 +240,332 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
     return tier ? { months, price: tier.price } : { months: 1, price: plan.price };
   }
 
-  /**
-   * The CTA has to know who's actually looking: a logged-out visitor goes
-   * to log in FIRST (redirect param carries them straight to checkout for
-   * this exact plan+term afterward, never back to a generic dashboard); a
-   * logged-in Super Admin already on this exact plan sees a disabled
-   * "Current Plan"; already on a DIFFERENT active plan sees "Upgrade"; no
-   * plan yet sees "Choose Plan" — both of those land on the same
-   * subscription page with checkoutPlan/checkoutMonths in the URL, which
-   * auto-fires the real checkout the moment it loads (see
-   * SubscriptionManager.js's own handling of those params) rather than
-   * making them click through the picker again. A logged-in employee who
-   * ISN'T the Super Admin can't manage billing at all (same gate the
-   * subscription page itself enforces) — sent there anyway, but told
-   * plainly rather than hitting a silent 403.
-   */
+  /** Same auth-aware routing this page has used since the duration-pricing
+   * work — a logged-out visitor logs in first (redirected straight back to
+   * checkout), an existing paying Super Admin sees "Upgrade", everyone
+   * else "Start Free"/"Choose Plan". A free/trial plan always routes to
+   * self-registration — there's no gateway checkout behind a null price. */
   function ctaFor(plan, tier) {
+    if (plan.price == null) return { href: "/register", label: "Start Free" };
     const target = `/workspace/settings/subscription?checkoutPlan=${plan.id}&checkoutMonths=${tier.months}`;
-    if (!viewer?.loggedIn) return { href: `/login?redirect=${encodeURIComponent(target)}`, label: "Log In to Subscribe" };
-    if (!viewer.isSuperAdmin) return { href: "/workspace/settings/subscription", label: "Ask Your Admin" };
-    if (viewer.currentPlanId === plan.id && activeStates.includes(viewer.currentPlanState)) return { href: target, label: "Current Plan", disabled: true };
+    if (!viewer?.loggedIn) return { href: `/login?redirect=${encodeURIComponent(target)}`, label: "Log in to subscribe" };
+    if (!viewer.isSuperAdmin) return { href: "/workspace/settings/subscription", label: "Ask your admin" };
+    if (viewer.currentPlanId === plan.id && activeStates.includes(viewer.currentPlanState)) return { href: target, label: "Current plan", disabled: true };
     if (viewer.currentPlanId && activeStates.includes(viewer.currentPlanState)) return { href: target, label: "Upgrade" };
-    return { href: target, label: "Choose Plan" };
+    return { href: target, label: "Choose plan" };
   }
 
-  if (displayPlans.length === 0) {
-    return <p className={`text-sm ${TEXT_SECONDARY}`}>Plans are being configured — check back soon, or start your free trial to get started.</p>;
-  }
+  const paidCount = displayPlans.filter((p) => p.price != null).length;
+  const highlightIndex = paidCount > 1 ? displayPlans.findIndex((p) => p.price != null) + 1 : -1;
+
+  const comparisonRows = [
+    { label: "Registration", get: (p) => p.registration_label || "Self" },
+    { label: "Development cost", get: (p) => p.development_cost_label || "Free" },
+    { label: "Installation cost", get: (p) => p.installation_cost_label || "Free" },
+    { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
+    { label: "Employees", get: (p) => p.max_users || "Unlimited" },
+    { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
+    { label: "Storage", get: (p) => (p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`}` : "Unlimited") },
+    { label: "Import / export", get: (p) => (p.allow_import_export === 0 ? false : true) },
+    { label: "Free trial", get: (p) => (p.trial_days ? `${p.trial_days} days` : false) },
+  ];
 
   return (
-    <div>
-      {pricingBanner && (
-        pricingBanner.image_url ? (
-          <div className="mb-8 rounded-xl overflow-hidden border border-indigo-600/30 dark:border-indigo-400/30">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pricingBanner.image_url} alt={pricingBanner.text || "Special offer"} className="w-full max-h-64 object-cover" />
-            {pricingBanner.text && (
-              <div className={`bg-indigo-500/10 px-5 py-3 text-center text-sm font-medium ${TEXT_PRIMARY}`}>{pricingBanner.text}</div>
-            )}
-          </div>
-        ) : (
-          <div className={`mb-8 rounded-xl border border-indigo-600/30 dark:border-indigo-400/30 bg-indigo-500/10 px-5 py-3.5 text-center text-sm font-medium ${TEXT_PRIMARY}`}>
-            {pricingBanner.text}
-          </div>
-        )
-      )}
-
-      {durationOptions.length > 1 && (
-        <div className="flex justify-center mb-10">
-          <div className={`inline-flex flex-wrap items-center justify-center gap-1 rounded-full border ${BORDER} p-1`}>
-            {durationOptions.map((m) => (
-              <button
-                key={m} type="button" onClick={() => setMonths(m)}
-                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                  months === m
-                    ? "bg-[#0B0E14] text-white dark:bg-[#F4F3EF] dark:text-[#07080B]"
-                    : `${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF]`
-                }`}
-              >
-                {durationLabel(m)}
-              </button>
-            ))}
-          </div>
+    <div className={`${PAGE_BG} ${TEXT_PRIMARY} min-h-screen antialiased relative overflow-hidden`}>
+      {/* Decorative radial wash, top-right — straight from the design file
+          (kb-wash), not something Framer Motion's whileInView can express
+          since it's a one-time page-load reveal of a fixed background
+          shape, not tied to any content scrolling into view. */}
+      <div
+        aria-hidden="true"
+        className="animate-kb-wash absolute top-0 -right-35 w-130 h-130 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle at 30% 30%, rgb(99 102 241 / 0.12), transparent 68%)" }}
+      />
+      {offers.length > 0 && (
+        <div className="relative">
+          <OffersMarquee offers={offers} />
         </div>
       )}
+      <div className="max-w-[1280px] mx-auto px-6 sm:px-10 py-10 sm:py-14 relative">
 
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-5 ${{ 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3" }[displayPlans.length] || "lg:grid-cols-4"}`}>
-        {displayPlans.map((p, i) => {
-          const isFree = p.price == null;
-          const tier = tierFor(p);
-          const discountPercent = !isFree && tier.months > 1 && Number(p.price) > 0 ? Math.round((1 - Number(tier.price) / Number(p.price)) * 100) : 0;
-          const totalForTerm = Number(tier.price) * tier.months;
-          // A free/trial plan (Starter) isn't something to "check out" —
-          // there's no gateway plan behind a null price — so it always
-          // routes to self-registration instead of ctaFor's login/upgrade
-          // logic, regardless of who's currently looking at the page.
-          const cta = isFree ? { href: "/register", label: "Start Free Trial" } : ctaFor(p, tier);
-          return (
-            <motion.div
-              key={p.id} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06, duration: 0.5 }}
-              className={`relative rounded-xl border ${i === 1 ? "border-current" : BORDER} p-6 flex flex-col`}
-            >
-              {discountPercent > 0 && (
-                <span className={`absolute top-4 right-4 text-[10px] font-semibold px-2 py-0.5 rounded-full ${ACCENT} bg-indigo-500/10`}>{discountPercent}% off</span>
-              )}
-              <p className="text-lg font-medium">{p.name}</p>
-              {p.description && <p className={`text-xs mt-1 ${TEXT_SECONDARY}`}>{p.description}</p>}
-
-              <div className="mt-5">
-                {isFree ? (
-                  <>
-                    <p className="text-3xl font-semibold tabular-nums">Free</p>
-                    <p className={`text-[11px] mt-1 ${TEXT_FAINT}`}>{p.trial_days ? `${p.trial_days}-day trial. No card required.` : "Free to get started."}</p>
-                  </>
-                ) : (
-                  <>
-                    {discountPercent > 0 && <p className={`text-xs line-through ${TEXT_FAINT}`}>{p.currency} {p.price}/mo</p>}
-                    <p className="text-3xl font-semibold tabular-nums">
-                      {p.currency} {tier.price}<span className={`text-xs font-normal ml-1 ${TEXT_FAINT}`}>/{p.pricing_model === "per_user" ? "user/mo" : "mo"}</span>
-                    </p>
-                    <p className={`text-[11px] mt-1 ${TEXT_FAINT}`}>
-                      {tier.months === 1 ? "Billed monthly." : `${p.currency} ${totalForTerm.toLocaleString()} billed every ${tier.months} months.`}
-                      {!!p.trial_days && ` ${p.trial_days}-day free trial.`}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {cta.disabled ? (
-                <span className={`mt-5 inline-flex items-center justify-center gap-1.5 text-sm font-medium rounded-md border ${BORDER_SOFT} ${TEXT_FAINT} px-4 py-2.5 cursor-default`}>
-                  {cta.label}
-                </span>
-              ) : (
-                <Link href={cta.href} className={`mt-5 inline-flex items-center justify-center gap-1.5 text-sm font-medium rounded-md border ${TEXT_PRIMARY} border-current px-4 py-2.5 hover:bg-[#0B0E14] hover:text-white dark:hover:bg-[#F4F3EF] dark:hover:text-[#07080B] transition-colors cursor-pointer`}>
-                  {cta.label}
-                </Link>
-              )}
-
-              <ul className={`mt-5 space-y-2 text-xs ${TEXT_SECONDARY} flex-1`}>
-                <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 shrink-0" /> {p.max_users ? `${p.max_users} employees` : "Unlimited employees"}</li>
-                <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 shrink-0" /> {p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`} storage` : "Unlimited storage"}</li>
-                <li className="flex items-center gap-2">{p.allow_import_export === 0 ? <Minus className="h-3.5 w-3.5 shrink-0" /> : <Check className="h-3.5 w-3.5 shrink-0" />} Lead import / export</li>
-              </ul>
-            </motion.div>
-          );
-        })}
-      </div>
-
-      <div className="mt-10 text-center">
-        <button onClick={() => setComparing((c) => !c)} className={`inline-flex items-center gap-2 text-sm font-medium rounded-md border ${BORDER} px-5 py-2.5 hover:border-current transition-colors cursor-pointer`}>
-          {comparing ? "Hide comparison" : "Compare plans"}
-        </button>
-      </div>
-
-      {comparing && (
-        <div className="mt-8 overflow-x-auto">
-          <table className="w-full min-w-140 text-sm">
-            <thead>
-              <tr className={`border-b ${BORDER} text-left`}>
-                <th className={`py-3 pr-4 font-medium ${TEXT_FAINT}`}>Feature</th>
-                {displayPlans.map((p) => <th key={p.id} className="py-3 px-4 font-medium">{p.name}</th>)}
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${BORDER_SOFT}`}>
-              {[
-                { label: "Registration", get: (p) => p.registration_label || "Self" },
-                { label: "Development Cost", get: (p) => p.development_cost_label || "Free" },
-                { label: "Installation Cost", get: (p) => p.installation_cost_label || "Free" },
-                { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
-                { label: "Employees", get: (p) => p.max_users || "Unlimited" },
-                { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
-                { label: "Storage", get: (p) => (p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`}` : "Unlimited") },
-                { label: "Import / Export", get: (p) => (p.allow_import_export === 0 ? false : true) },
-              ].map((row) => (
-                <tr key={row.label}>
-                  <td className={`py-3 pr-4 ${TEXT_SECONDARY}`}>{row.label}</td>
-                  {displayPlans.map((p) => {
-                    const value = row.get(p);
-                    return (
-                      <td key={p.id} className="py-3 px-4">
-                        {typeof value === "boolean" ? (value ? <Check className="h-4 w-4" /> : <Minus className={`h-4 w-4 ${TEXT_FAINT}`} />) : value}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function PlatformHome({ plans, posts, offers, viewer }) {
-  const hasOffers = offers.length > 0;
-  return (
-    <div className={`${PAGE_BG} ${TEXT_PRIMARY} min-h-screen overflow-x-hidden antialiased`}>
-      <PlatformHomeNavbar topBar={hasOffers ? <OffersMarquee offers={offers} /> : null} />
-
-      {/* ============================================================
-          HERO — editorial, asymmetric, video background. Text is fixed
-          light-on-dark here regardless of site theme, since a moving video
-          needs one consistent, always-legible scrim rather than trying to
-          contrast against both light and dark palettes.
-          ============================================================ */}
-      <header className={`relative min-h-[92vh] flex items-center ${hasOffers ? "pt-40 sm:pt-44" : "pt-32"} pb-20 px-6 sm:px-10 lg:px-16 text-white overflow-hidden`}>
-        <HeroVideoBackground />
-        <div className="relative z-10 max-w-[1400px] mx-auto w-full">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6">
-            <div className="lg:col-span-7">
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                className="flex items-center gap-3">
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0" />
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/70">KaizenBMS Platform</p>
-                <span className="text-white/20">·</span>
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-indigo-300">CRM · ERP · Automation · Analytics</p>
-              </motion.div>
-              <motion.h1
-                initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="mt-8 text-[13vw] leading-[0.92] sm:text-[6.5rem] sm:leading-[0.9] lg:text-[5.5rem] xl:text-[6.25rem] font-semibold tracking-tight text-white [text-shadow:0_2px_40px_rgba(0,0,0,0.35)]"
-              >
-                One platform.<br />Every part of your<br />business, connected.
-              </motion.h1>
-            </div>
-            <div className="lg:col-span-5 lg:pt-24 flex flex-col justify-end">
-              <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
-                className="text-base sm:text-lg leading-relaxed text-white/70">
-                Leads, employees, documents, payments, and follow-ups — run from a single workspace, configured to fit your business rather than the other way around.
-              </motion.p>
-              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
-                className="mt-8 flex flex-wrap items-center gap-3">
-                <Link href="/register" className="group inline-flex items-center gap-2 px-6 py-3.5 rounded-md text-sm font-medium bg-white text-[#07080B] hover:bg-indigo-400 hover:text-white transition-colors cursor-pointer shadow-[0_8px_30px_rgba(0,0,0,0.25)]">
-                  Start Free <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-                <a href="#platform" className="inline-flex items-center gap-2 px-6 py-3.5 rounded-md text-sm font-medium border border-white/30 text-white backdrop-blur-sm bg-white/5 hover:bg-white/10 hover:border-white/50 transition-colors cursor-pointer">
-                  Explore Platform
-                </a>
-              </motion.div>
-            </div>
-          </div>
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.9 }}
-          className="absolute bottom-8 left-6 sm:left-10 lg:left-16 z-10 flex items-center gap-2 text-white/50"
-        >
-          <span className="text-[10px] uppercase tracking-[0.2em]">Scroll</span>
-          <span className="h-px w-8 bg-white/30" />
-        </motion.div>
-      </header>
-
-      {/* ============================================================
-          PRODUCT STATEMENT — editorial transition after the hero.
-          ============================================================ */}
-      <RevealSection id="platform" className={`${PAGE_BG} border-t ${BORDER_SOFT} pt-14! sm:pt-16!`}>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-4">
-            <Numeral n="01" label="The Platform" />
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-2"
-            >
-              <div className={`relative overflow-hidden border ${BORDER}`}>
-                <Image
-                  src="/images/part1.png" alt="Scattered spreadsheets, contacts, and reports consolidating into one connected KaizenBMS workspace"
-                  width={1536} height={1024} sizes="(max-width: 1024px) 100vw, 460px"
-                  className="w-full h-auto"
-                />
-              </div>
-              <p className={`mt-3 text-[10px] uppercase tracking-[0.2em] ${TEXT_FAINT}`}>Scattered tools, one workspace</p>
-            </motion.div>
-          </div>
-          <div className="lg:col-span-8">
-            <p className="text-2xl sm:text-3xl lg:text-4xl font-medium tracking-tight leading-[1.15]">
-              Built for teams that need less fragmentation and more control.
-            </p>
-            <p className={`mt-6 max-w-xl text-sm leading-relaxed ${TEXT_SECONDARY}`}>
-              Not a CRM bolted onto a spreadsheet, and not a generic ERP with a CRM tab. KaizenBMS is a single platform where lead management, business operations, and billing share one company, one permission system, and one source of truth.
-            </p>
-          </div>
-        </div>
-      </RevealSection>
-
-      {/* ============================================================
-          02 — SERVICES, compact icon grid (Odoo-style app tiles). The
-          previous version of this section spelled out every module as a
-          full title + paragraph + tag row, one per screen-width block —
-          replaced with a small grid that just shows what exists at a
-          glance; the full names still appear in the footer's Services
-          column for anyone who wants the list in text form.
-          ============================================================ */}
-      <RevealSection className={`border-t ${BORDER_SOFT} py-14! sm:py-16!`}>
-        <div className="mb-8 sm:mb-10 max-w-2xl">
-          <Numeral n="02" label="Everything, connected" />
-          <h2 className="text-2xl sm:text-3xl font-medium tracking-tight leading-[1.1]">One workspace, every part of the business.</h2>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4">
-          {SERVICES.map((s, i) => (
-            <motion.div
-              key={s.label}
-              initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-40px" }}
-              transition={{ delay: (i % 7) * 0.05, duration: 0.4 }}
-              className={`flex flex-col items-center text-center gap-3 rounded-xl border ${BORDER_SOFT} p-4 sm:p-5 hover:border-current transition-colors`}
-            >
-              <div className={`h-10 w-10 sm:h-11 sm:w-11 flex items-center justify-center rounded-lg ${ACCENT} bg-indigo-500/10`}>
-                <s.icon className="h-5 w-5" />
-              </div>
-              <p className="text-xs sm:text-[13px] font-medium leading-snug">{s.label}</p>
-            </motion.div>
-          ))}
-        </div>
-      </RevealSection>
-
-      {/* ============================================================
-          PRICING
-          ============================================================ */}
-      <RevealSection id="pricing" className={`border-t ${BORDER_SOFT} py-14! sm:py-20!`}>
-        <Numeral n="03" label="Pricing" />
-        <h2 className="text-3xl sm:text-4xl font-medium tracking-tight leading-[1.1] mb-10 max-w-xl">Simple pricing. Choose the plan that fits your team.</h2>
-        <HostingerPricingSection plans={plans} viewer={viewer} offers={offers} />
-      </RevealSection>
-
-      {/* ============================================================
-          BLOG — Platform-Operator-managed, shown only when at least one
-          published post exists.
-          ============================================================ */}
-      {posts.length > 0 && (
-        <RevealSection className={`border-t ${BORDER_SOFT} py-14! sm:py-16!`}>
-          <div className="flex items-end justify-between mb-8 gap-4">
-            <MicroLabel>From the blog</MicroLabel>
-            <Link href="/blog" className={`inline-flex items-center gap-1.5 text-xs ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer shrink-0`}>
-              View all posts <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8">
-            {posts.map((p, i) => (
-              <motion.div key={p.id} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.5 }}>
-                <Link href={`/blog/${p.slug}`} className="group block cursor-pointer">
-                  {p.cover_image_url ? (
-                    <div className={`relative aspect-[3/2] overflow-hidden border ${BORDER}`}>
-                      <Image src={p.cover_image_url} alt={p.title} fill sizes="(max-width: 640px) 100vw, 33vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
-                    </div>
-                  ) : (
-                    <div className={`aspect-[3/2] border ${BORDER}`} />
-                  )}
-                  <p className={`mt-3 text-xs ${TEXT_FAINT}`}>{formatPostDate(p.published_at)}</p>
-                  <p className="mt-1.5 text-base font-medium tracking-tight leading-snug group-hover:underline underline-offset-4">{p.title}</p>
-                  {p.excerpt && <p className={`mt-1.5 text-sm leading-relaxed ${TEXT_SECONDARY}`}>{p.excerpt}</p>}
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </RevealSection>
-      )}
-
-      {/* ============================================================
-          FINAL CTA — dramatic, minimal.
-          ============================================================ */}
-      <RevealSection className={`border-t ${BORDER_SOFT} text-center`}>
-        <p className="text-4xl sm:text-6xl font-semibold tracking-tight leading-[1.05] max-w-3xl mx-auto">
-          Build a workspace that works the way you do.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <EditorialButton href="/register" primary>Start Free <ArrowRight className="h-3.5 w-3.5" /></EditorialButton>
-          <EditorialButton href="#platform" external>Explore Platform</EditorialButton>
-        </div>
-      </RevealSection>
-
-      {/* ============================================================
-          FOOTER
-          ============================================================ */}
-      <footer className={`border-t ${BORDER}`}>
-        <div className="max-w-[1400px] mx-auto px-6 sm:px-10 lg:px-16 py-16">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 pb-12">
-            <div className="lg:col-span-4">
-              <p className="text-3xl sm:text-4xl font-semibold tracking-tight">KAIZENBMS</p>
-              <p className={`text-sm mt-3 max-w-sm ${TEXT_SECONDARY}`}>CRM, operations, and billing for growing businesses — one workspace, fully configurable.</p>
-            </div>
-            <div className="lg:col-span-3">
-              <MicroLabel className="mb-4">Services</MicroLabel>
-              <div className="flex flex-col gap-2.5">
-                {SERVICES.map((s) => (
-                  <a key={s.label} href="#platform" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>{s.label}</a>
-                ))}
-              </div>
-            </div>
-            <div className="lg:col-span-2">
-              <MicroLabel className="mb-4">Platform</MicroLabel>
-              <div className="flex flex-col gap-2.5">
-                {[
-                  { href: "#platform", label: "Platform" },
-                  { href: "#pricing", label: "Pricing" },
-                ].map((l) => (
-                  <a key={l.href} href={l.href} className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>{l.label}</a>
-                ))}
-              </div>
-            </div>
-            <div className="lg:col-span-3">
-              <MicroLabel className="mb-4">Account</MicroLabel>
-              <div className="flex flex-col gap-2.5">
-                <Link href="/register" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>Start Free</Link>
-                <Link href="/login" className={`text-sm ${TEXT_SECONDARY} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer w-fit`}>Sign In</Link>
-              </div>
-            </div>
-          </div>
-          <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t ${BORDER_SOFT}`}>
+        {/* ============================================================
+            MASTHEAD
+            ============================================================ */}
+        <header>
+          <div className="flex items-end justify-between gap-4 flex-wrap pb-4">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={GLOBAL_VISTA_BRANDING.logoUrl} alt={GLOBAL_VISTA_BRANDING.name} className="h-9 sm:h-10 w-auto object-contain" />
-              <span className={`text-xs ${TEXT_FAINT}`}>{GLOBAL_VISTA_BRANDING.poweredByLabel} · © {new Date().getFullYear()}</span>
+              <img src="/images/KaizenBMS%20infinity%20logo.png" alt="" className="h-12 sm:h-14 w-auto object-contain" />
+              <p className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>
+                Kaizen <span className={ACCENT}>BMS</span>
+              </p>
             </div>
-            <div className="flex items-center gap-5">
-              <Link href="/privacy-policy" className={`text-xs ${TEXT_FAINT} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer`}>Privacy Policy</Link>
-              <Link href="/terms-of-service" className={`text-xs ${TEXT_FAINT} hover:text-[#0B0E14] dark:hover:text-[#F4F3EF] transition-colors cursor-pointer`}>Terms of Service</Link>
+            <div className="flex items-center gap-5 flex-wrap">
+              <a href="#modules" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Modules</a>
+              <a href="#pricing" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Packs</a>
+              <a href="#compare" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Compare</a>
+              <Link href="/login" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Log in</Link>
+              <Link href="/register" className={`text-sm font-medium border-b border-current ${TEXT_PRIMARY} pb-0.5`}>Start Free</Link>
             </div>
           </div>
+          {/* kb-rule — draws in left-to-right on load, exactly as specified */}
+          <div className={`animate-kb-rule border-t-2 ${BORDER}`} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 py-3">
+            <MicroLabel>CRM · ERP · Automation</MicroLabel>
+            <MicroLabel className="sm:text-center">For growing teams</MicroLabel>
+            <MicroLabel className="sm:text-right">30-day free trial</MicroLabel>
+          </div>
+          <div className={`border-t ${BORDER}`} />
+        </header>
+
+        {/* ============================================================
+            HERO — kb-rise on load (not scroll-triggered): the design
+            file only ever animates what's already in the first viewport
+            (this wash blob + this hero), nothing further down the page.
+            ============================================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-10 lg:gap-14 items-end pt-12 sm:pt-16 pb-10">
+          <div className="animate-kb-rise">
+            <MicroLabel className="mb-4">Business management system</MicroLabel>
+            <h1 className={`${SERIF} font-bold tracking-tight leading-[0.98] text-4xl sm:text-6xl`}>
+              Win the customer. Then <span className={`italic ${ACCENT}`}>run</span> the whole business.
+            </h1>
+            <p className={`mt-6 max-w-lg text-lg leading-relaxed ${TEXT_SECONDARY}`}>
+              Customers, money, documents, people and payments in one system. Start with CRM, switch on the rest when you need it.
+            </p>
+            <div className="mt-7 flex items-center gap-5 flex-wrap">
+              <Link href="/register" className={`inline-flex items-center gap-1.5 text-sm font-medium px-5 py-2.5 rounded-md border ${TEXT_PRIMARY} border-current hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>
+                Start Free →
+              </Link>
+              <a href="#compare" className={`text-sm border-b ${BORDER} ${TEXT_SECONDARY} pb-0.5`}>Compare the packs</a>
+              <span className={`text-sm ${TEXT_FAINT}`}>30-day trial, no card</span>
+            </div>
+          </div>
+          <div id="modules" className="animate-kb-rise" style={{ animationDelay: "0.18s" }}>
+            <MicroLabel className="mb-4">What&apos;s inside</MicroLabel>
+            <ol className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              {SERVICES.map((s, i) => (
+                <li key={s.label} className="flex items-baseline gap-2.5">
+                  <span className={`text-[11px] tabular-nums ${ACCENT}`}>{String(i + 1).padStart(2, "0")}</span>
+                  <span>{s.label}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
-      </footer>
+
+        {/* ============================================================
+            PRODUCT WALKTHROUGH — see ProductWalkthrough's own doc comment
+            for why this is a recreation rather than the design file's own
+            embedded animation.
+            ============================================================ */}
+        <Fade className="pb-10">
+          <ProductWalkthrough />
+        </Fade>
+
+        {/* ============================================================
+            PRICING
+            ============================================================ */}
+        <section id="pricing" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-6`}>
+          <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
+            <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Plans</h2>
+            <p className={`text-xs ${TEXT_FAINT}`}>Per company, per month. Longer terms cost less.</p>
+          </div>
+
+          {pricingBanner && (
+            <Fade className={`mt-5 rounded-lg border ${BORDER} overflow-hidden`}>
+              {pricingBanner.image_url ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={pricingBanner.image_url} alt={pricingBanner.text || "Special offer"} className="w-full max-h-56 object-cover" />
+                  {pricingBanner.text && <p className="px-4 py-2.5 text-sm">{pricingBanner.text}</p>}
+                </>
+              ) : (
+                <p className="px-4 py-2.5 text-sm">{pricingBanner.text}</p>
+              )}
+            </Fade>
+          )}
+
+          {durationOptions.length > 1 && (
+            <div className={`inline-flex flex-wrap items-center gap-1 rounded-md border ${BORDER} p-1 mt-6`}>
+              {durationOptions.map((m) => (
+                <button
+                  key={m} type="button" onClick={() => setMonths(m)}
+                  className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                    months === m ? `${TEXT_PRIMARY} bg-black/[0.06] dark:bg-white/[0.08]` : `${TEXT_FAINT} ${HOVER_PRIMARY}`
+                  }`}
+                >
+                  {durationLabel(m)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {displayPlans.length === 0 ? (
+            <p className={`mt-8 text-sm ${TEXT_SECONDARY}`}>Plans are being configured — check back soon.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8 items-stretch">
+              {displayPlans.map((p, i) => {
+                const isFree = p.price == null;
+                const tier = tierFor(p);
+                const cta = ctaFor(p, tier);
+                const highlighted = i === highlightIndex;
+                const theme = planTheme(p.name);
+                return (
+                  <Fade
+                    key={p.id} delay={i * 0.05}
+                    className={`rounded-lg p-5 flex flex-col border ${theme
+                      ? `${theme.wash} ${theme.border} ${highlighted ? "shadow-lg sm:-mt-3 sm:pt-8" : ""}`
+                      : highlighted
+                        ? "bg-indigo-500/6 dark:bg-indigo-400/8 shadow-lg sm:-mt-3 sm:pt-8 border-indigo-600/20 dark:border-indigo-400/20"
+                        : BORDER}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className={`${SERIF} text-4xl leading-none opacity-70 ${theme ? theme.text : highlighted ? ACCENT : TEXT_FAINT}`}>{String(i + 1).padStart(2, "0")}</span>
+                      {highlighted && <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${theme ? theme.chip : `${ACCENT} bg-indigo-500/10`}`}>Most chosen</span>}
+                    </div>
+                    <p className={`${SERIF} text-xl font-bold mt-3 ${theme ? theme.text : TEXT_PRIMARY}`}>{p.name}</p>
+
+                    <p className={`${TEXT_PRIMARY} mt-2`}>
+                      {isFree ? (
+                        <span className="text-2xl font-semibold tabular-nums">Free</span>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-semibold tabular-nums">{p.currency} {tier.price}</span>
+                          <span className={`text-xs ${TEXT_FAINT}`}>/{p.pricing_model === "per_user" ? "user/mo" : "mo"}</span>
+                        </>
+                      )}
+                    </p>
+                    <p className={`text-xs ${TEXT_FAINT} mt-1`}>{isFree ? (p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started.") : p.description || "Billed monthly."}</p>
+
+                    <div className={`mt-4 pt-4 border-t ${BORDER_SOFT} space-y-1.5 text-sm ${TEXT_SECONDARY} flex-1`}>
+                      <p>{p.max_users ? `${p.max_users} users` : "Unlimited users"}</p>
+                      <p>{p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`} storage` : "Unlimited storage"}</p>
+                      <p>{p.allow_import_export === 0 ? "No import/export" : "Import / export included"}</p>
+                    </div>
+
+                    {cta.disabled ? (
+                      <span className={`mt-5 text-center text-sm ${TEXT_FAINT} border ${BORDER_SOFT} rounded-md px-4 py-2`}>{cta.label}</span>
+                    ) : theme ? (
+                      <Link href={cta.href} className={`mt-5 text-center text-sm font-medium rounded-md px-4 py-2 transition-colors ${theme.button}`}>
+                        {cta.label} →
+                      </Link>
+                    ) : highlighted ? (
+                      <Link href={cta.href} className="mt-5 text-center text-sm font-medium rounded-md px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+                        {cta.label} →
+                      </Link>
+                    ) : (
+                      <Link href={cta.href} className={`mt-5 text-center text-sm font-medium rounded-md px-4 py-2 border ${BORDER} ${TEXT_PRIMARY} hover:bg-black/3 dark:hover:bg-white/5 transition-colors`}>
+                        {cta.label} →
+                      </Link>
+                    )}
+                  </Fade>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ============================================================
+            FEATURE MATRIX — collapsed by default, matching the v2 mockup's
+            own "+ Show / − Hide the full feature matrix" toggle.
+            ============================================================ */}
+        {displayPlans.length > 0 && (
+          <section id="compare" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
+            <button
+              type="button" onClick={() => setShowMatrix((s) => !s)}
+              className={`text-lg font-medium ${TEXT_PRIMARY} cursor-pointer`}
+            >
+              {showMatrix ? "−  Hide" : "+  Show"} the full feature matrix
+            </button>
+            {showMatrix && (
+              <Fade className="overflow-x-auto mt-6">
+                <table className="w-full min-w-140 text-sm">
+                  <thead>
+                    <tr className={`border-b ${BORDER} text-left`}>
+                      <th className={`py-2.5 pr-4 font-medium ${TEXT_FAINT} text-xs uppercase tracking-wide`}>Feature</th>
+                      {displayPlans.map((p) => <th key={p.id} className={`py-2.5 px-4 font-medium ${planTheme(p.name)?.text || ""}`}>{p.name}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${BORDER_SOFT}`}>
+                    {comparisonRows.map((row) => (
+                      <tr key={row.label}>
+                        <td className={`py-2.5 pr-4 ${TEXT_SECONDARY}`}>{row.label}</td>
+                        {displayPlans.map((p) => {
+                          const value = row.get(p);
+                          return (
+                            <td key={p.id} className="py-2.5 px-4">
+                              {typeof value === "boolean" ? <span className={TEXT_FAINT}>{value ? "•" : "—"}</span> : value}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Fade>
+            )}
+          </section>
+        )}
+
+        {/* ============================================================
+            CTA
+            ============================================================ */}
+        <section className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12 grid grid-cols-1 sm:grid-cols-2 gap-8`}>
+          <Fade>
+            <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight leading-tight`}>Start free this week.</h2>
+            <p className={`mt-4 text-sm leading-relaxed ${TEXT_SECONDARY} max-w-sm`}>
+              Sign up yourself — no sales call needed. Invite your team and start tracking leads in minutes.
+              30-day free trial, no card required.
+            </p>
+            <Link href="/register" className={`mt-5 inline-flex items-center gap-1.5 text-sm font-medium border-b border-current w-fit ${TEXT_PRIMARY} pb-0.5`}>
+              Start Free →
+            </Link>
+          </Fade>
+          <Fade delay={0.1}>
+            <MicroLabel className="mb-2">Talk to a person</MicroLabel>
+            <p className="text-sm">{GLOBAL_VISTA_BRANDING.supportEmail || "GlobalVistaEducators@gmail.com"}</p>
+            <p className="text-sm mt-1">{GLOBAL_VISTA_BRANDING.supportPhone || "+91 98145 61099"}</p>
+            <p className={`text-xs ${TEXT_FAINT} mt-1`}>We usually reply within a business day.</p>
+          </Fade>
+        </section>
+
+        {/* ============================================================
+            FOOTER
+            ============================================================ */}
+        <footer className={`border-t ${BORDER} mt-14 pt-8`}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 pb-8">
+            <div>
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/images/KaizenBMS%20infinity%20logo.png" alt="" className="h-10 w-auto object-contain" />
+                <p className={`${SERIF} text-lg font-bold`}>Kaizen <span className={ACCENT}>BMS</span></p>
+              </div>
+              <p className={`text-sm mt-2 max-w-xs ${TEXT_SECONDARY}`}>CRM, operations, and billing for growing businesses — one workspace, fully configurable.</p>
+            </div>
+            <div>
+              <MicroLabel className="mb-3">Services</MicroLabel>
+              <div className="flex flex-col gap-1.5">
+                {SERVICES.map((s) => <span key={s.label} className={`text-sm ${TEXT_SECONDARY}`}>{s.label}</span>)}
+              </div>
+            </div>
+            <div>
+              <MicroLabel className="mb-3">Account</MicroLabel>
+              <div className="flex flex-col gap-1.5">
+                <Link href="/register" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Start Free</Link>
+                <Link href="/login" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Sign In</Link>
+                <Link href="/blog" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Blog</Link>
+              </div>
+            </div>
+          </div>
+          <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t ${BORDER_SOFT}`}>
+            <div className="flex items-center gap-5">
+              <Link href="/privacy-policy" className={`text-xs ${TEXT_FAINT} ${HOVER_PRIMARY} transition-colors`}>Privacy Policy</Link>
+              <Link href="/terms-of-service" className={`text-xs ${TEXT_FAINT} ${HOVER_PRIMARY} transition-colors`}>Terms of Service</Link>
+            </div>
+            <p className={`text-xs ${TEXT_FAINT}`}>{GLOBAL_VISTA_BRANDING.poweredByLabel} · © {new Date().getFullYear()}</p>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

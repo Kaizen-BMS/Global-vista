@@ -1,4 +1,4 @@
-import { Manrope } from "next/font/google";
+import { Manrope, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import { Toaster } from "sonner";
 
@@ -17,6 +17,16 @@ const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
   weight: ["400", "500", "700", "800"],
+});
+
+// Editorial serif for the KaizenBMS Platform marketing homepage's
+// document-style headlines/logotype (see PlatformHome.js) — deliberately
+// its own variable, not aliased into --font-sans, so it's opt-in per
+// element rather than changing typography anywhere else in the app.
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-source-serif",
+  weight: ["400", "600", "700"],
 });
 
 export const metadata = {
@@ -42,7 +52,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={manrope.variable}
+      className={`${manrope.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
     >
     <head>
