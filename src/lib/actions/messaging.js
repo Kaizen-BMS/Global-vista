@@ -16,13 +16,34 @@ const EDIT_WINDOW_MS = 2 * 60 * 1000;
  * choke point every messaging action below goes through. */
 async function assertParticipant(session, conversationId) {
   const [[row]] = await pool.query(
-    `SELECT c.id, c.company_id, c.type, c.title, cp.last_read_at
+    `SELECT c.id, c.company_id, c.type, c.title, c.created_by, cp.last_read_at
      FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
      WHERE c.id = ? AND c.company_id = ?`,
     [session.id, conversationId, session.company_id]
   );
   if (!row) { const e = new Error("Conversation not found."); e.status = 404; throw e; }
   return row;
+}
+
+/** Whoever created a group is its admin — no separate role/column needed,
+ * `conversations.created_by` already captures exactly this and is set once
+ * at creation, never reassigned. Only the admin can rename the group or
+ * add/remove members; everyone else can still view membership and leave
+ * on their own (see leaveGroupConversation). */
+async function assertGroupAdmin(session, conversationId) {
+  const conversation = await assertParticipant(session, conversationId);
+  if (conversation.type !== "group") { const e = new Error("Only group conversations have an admin."); e.status = 400; throw e; }
+  if (conversation.created_by !== session.id) { const e = new Error("Only the group's creator can do this."); e.status = 403; throw e; }
+  return conversation;
+}
+
+async function postSystemMessage(session, conversationId, body) {
+  if (!(await hasMessageEditingSchema())) return; // message_type column lands in the same migration
+  await pool.query(
+    `INSERT INTO messages (company_id, conversation_id, sender_id, message_type, body) VALUES (?, ?, ?, 'system', ?)`,
+    [session.company_id, conversationId, session.id, body]
+  );
+  await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = ?`, [conversationId]);
 }
 
 async function assertSameCompanyUser(session, userId) {
@@ -165,7 +186,7 @@ export async function getOrCreateBroadcastConversation(session) {
 
 export async function listConversations(session) {
   const [rows] = await pool.query(
-    `SELECT c.id, c.type, c.title, c.updated_at, cp.last_read_at,
+    `SELECT c.id, c.type, c.title, c.created_by, c.updated_at, cp.last_read_at,
             (SELECT m.body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
             (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
             (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')) AS unread_count,
@@ -294,15 +315,62 @@ export async function leaveGroupConversation(session, conversationId) {
   if (conversation.type !== "group") { const e = new Error("Only group conversations can be left."); e.status = 400; throw e; }
 
   await pool.query(`DELETE FROM conversation_participants WHERE conversation_id = ? AND user_id = ?`, [conversationId, session.id]);
-
-  if (await hasMessageEditingSchema()) { // message_type column lands in the same migration
-    await pool.query(
-      `INSERT INTO messages (company_id, conversation_id, sender_id, message_type, body) VALUES (?, ?, ?, 'system', ?)`,
-      [session.company_id, conversationId, session.id, `${session.name} left the group.`]
-    );
-  }
-  await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = ?`, [conversationId]);
+  await postSystemMessage(session, conversationId, `${session.name} left the group.`);
   await logActivity({ userId: session.id, module: "messaging", action: "group_left", entityType: "conversation", entityId: conversationId, companyId: session.company_id, description: "Left a group conversation" });
+}
+
+/** Admin-only. Renames the group — the title shown to every member. */
+export async function renameGroupConversation(session, conversationId, title) {
+  const conversation = await assertGroupAdmin(session, conversationId);
+  const trimmed = (title || "").trim();
+  if (!trimmed) { const e = new Error("Group name can't be empty."); e.status = 400; throw e; }
+  if (trimmed === conversation.title) return;
+
+  await pool.query(`UPDATE conversations SET title = ? WHERE id = ?`, [trimmed, conversationId]);
+  await postSystemMessage(session, conversationId, `${session.name} changed the group name to "${trimmed}".`);
+  await logActivity({ userId: session.id, module: "messaging", action: "group_renamed", entityType: "conversation", entityId: conversationId, companyId: session.company_id, description: `Renamed group to "${trimmed}"` });
+}
+
+/** Admin-only. Adds one or more employees who aren't already members. */
+export async function addGroupParticipants(session, conversationId, userIds) {
+  await assertGroupAdmin(session, conversationId);
+  const ids = [...new Set((userIds || []).map(Number).filter((id) => id && id !== session.id))];
+  if (!ids.length) { const e = new Error("Select at least one person to add."); e.status = 400; throw e; }
+
+  const [existingRows] = await pool.query(`SELECT user_id FROM conversation_participants WHERE conversation_id = ?`, [conversationId]);
+  const already = new Set(existingRows.map((r) => r.user_id));
+  const toAdd = [];
+  for (const id of ids) {
+    if (already.has(id)) continue;
+    const user = await assertSameCompanyUser(session, id);
+    toAdd.push(user);
+  }
+  if (!toAdd.length) { const e = new Error("Everyone selected is already in the group."); e.status = 400; throw e; }
+
+  await pool.query(`INSERT INTO conversation_participants (conversation_id, user_id) VALUES ?`, [toAdd.map((u) => [conversationId, u.id])]);
+  const names = toAdd.map((u) => u.name).join(", ");
+  await postSystemMessage(session, conversationId, `${session.name} added ${names} to the group.`);
+  await logActivity({ userId: session.id, module: "messaging", action: "group_members_added", entityType: "conversation", entityId: conversationId, companyId: session.company_id, description: `Added ${names} to the group` });
+}
+
+/** Admin-only, and only for removing SOMEONE ELSE — the admin removes
+ * themselves (if they ever want to) the same way anyone else does, via
+ * leaveGroupConversation, so there's exactly one code path for "I'm out"
+ * rather than two that could drift apart. */
+export async function removeGroupParticipant(session, conversationId, userId) {
+  await assertGroupAdmin(session, conversationId);
+  const targetId = Number(userId);
+  if (targetId === session.id) { const e = new Error("Use \"Leave Group\" to remove yourself."); e.status = 400; throw e; }
+
+  const [[target]] = await pool.query(
+    `SELECT u.id, u.name FROM conversation_participants cp JOIN users u ON u.id = cp.user_id WHERE cp.conversation_id = ? AND cp.user_id = ?`,
+    [conversationId, targetId]
+  );
+  if (!target) { const e = new Error("That person isn't in this group."); e.status = 404; throw e; }
+
+  await pool.query(`DELETE FROM conversation_participants WHERE conversation_id = ? AND user_id = ?`, [conversationId, targetId]);
+  await postSystemMessage(session, conversationId, `${session.name} removed ${target.name} from the group.`);
+  await logActivity({ userId: session.id, module: "messaging", action: "group_member_removed", entityType: "conversation", entityId: conversationId, companyId: session.company_id, description: `Removed ${target.name} from the group` });
 }
 
 /**

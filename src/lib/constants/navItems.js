@@ -1,11 +1,12 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake };
 
 export const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
   { href: "/platform/companies", label: "Companies", icon: "Building2" },
   { href: "/platform/subscriptions", label: "Subscriptions", icon: "CreditCard" },
   { href: "/platform/coupons", label: "Coupons", icon: "Tag" },
+  { href: "/platform/partners", label: "Partners", icon: "Handshake" },
   { href: "/platform/modules", label: "Modules", icon: "Package" },
   { href: "/platform/blog", label: "Blog", icon: "Newspaper" },
   { href: "/platform/offers", label: "Offers", icon: "Megaphone" },
@@ -26,7 +27,6 @@ export const ALL_NAV_ITEMS = [
   // lives at Settings > Organization (see SettingsTabs.js) and stays fully
   // reachable there; this just removes the duplicate top-level link.
   { href: "/workspace/settings", label: "Settings", icon: "Settings", permission: "settings.manage" },
-  { href: "/workspace/documents", label: "Documents", icon: "FileText", permission: "employee_documents.manage" },
   { href: "/workspace/messages", label: "Messages", icon: "MessageSquare", permission: null },
   // Complaints and Ideas moved from separate top-level items into one
   // "Support & Feedback" entry, visually presented as part of Settings

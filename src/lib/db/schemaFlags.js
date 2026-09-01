@@ -36,10 +36,16 @@ export async function hasPlanDescriptionColumn() { return columnExists("plans", 
 export async function hasPlanPayPalColumns() { return columnExists("plans", "paypal_plan_id"); }
 export async function hasPlanRazorpayColumns() { return columnExists("plans", "razorpay_plan_id"); }
 /** Trial/Silver/Gold/Diamond tiered-pricing migration — pricing_model,
- * maintenance_annual_fee, the marketing-label fields, allow_import_export,
- * and company_subscriptions.seat_quantity/maintenance_gateway_subscription_id
- * all land together; any one column standing in for "has the whole thing
- * run" is fine, same convention as every other bundled migration here. */
+ * the marketing-label fields, allow_import_export, and
+ * company_subscriptions.seat_quantity all land together; any one column
+ * standing in for "has the whole thing run" is fine, same convention as
+ * every other bundled migration here. The migration also added
+ * plans.maintenance_annual_fee and company_subscriptions.
+ * maintenance_gateway_subscription_id for a separate annual-maintenance-fee
+ * feature that has since been removed — those columns are no longer read
+ * or written by any create/edit path, only defensively cleaned up (any
+ * leftover value cancelled and cleared) wherever a subscription's gateway
+ * state already gets touched. */
 export async function hasTieredPlansSchema() { return columnExists("plans", "pricing_model"); }
 export async function hasCompanySubscriptionsGatewayColumns() { return columnExists("company_subscriptions", "gateway"); }
 export async function hasCancelAtPeriodEndColumn() { return columnExists("company_subscriptions", "cancel_at_period_end"); }
@@ -76,6 +82,8 @@ export async function hasBlogSchema() { return tableExists("blog_posts"); }
 export async function hasOffersSchema() { return tableExists("platform_offers"); }
 export async function hasOfferImageColumn() { return columnExists("platform_offers", "image_url"); }
 export async function hasCouponsSchema() { return tableExists("coupons"); }
+export async function hasUserNotificationPreferencesSchema() { return tableExists("user_notification_preferences"); }
+export async function hasPartnersSchema() { return tableExists("partners"); }
 
 /** Messages v2 migration — message_type + edited_at land together, so
  * either can stand in for "has the whole migration run", but editing code

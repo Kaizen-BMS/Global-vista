@@ -8,13 +8,13 @@ import { withCsrf } from "@/lib/helpers/withCsrf";
 export const POST = withCsrf(withErrorHandling(async (request) => {
   const session = await getSession();
   if (!isSuperAdmin(session)) return forbidden();
-  const { planId, when } = await request.json();
+  const { planId, when, couponCode } = await request.json();
   if (!planId) return badRequest("planId is required.");
 
   // Same usage-limit guard the fresh-checkout path runs — no point
   // switching (now or scheduled) onto a plan the company already exceeds.
   await assertPlanChangeAllowed(session.company_id, planId);
 
-  const result = await changeCompanyRazorpayPlan(session, planId, when === "cycle_end" ? "cycle_end" : "now");
+  const result = await changeCompanyRazorpayPlan(session, planId, when === "cycle_end" ? "cycle_end" : "now", couponCode?.trim() || null);
   return ok(result);
 }));

@@ -292,9 +292,14 @@ function CollectPaymentModal({ leadId, lead, planId, defaultAmount, currency, on
         )}
 
         {recorded && (
-          <div className="flex flex-col items-center gap-3 pt-2 border-t border-border text-center">
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1.5"><CheckCircle2 className="h-4 w-4" /> Payment recorded</span>
-            <p className="text-muted-foreground text-xs">{currency} {amount} has been added to this lead's payment plan.</p>
+          <div className="flex flex-col items-center gap-3 pt-4 border-t border-border text-center animate-in zoom-in-95 fade-in duration-300">
+            <span className="flex items-center justify-center h-12 w-12 rounded-full bg-emerald-500/15 text-emerald-400 animate-in zoom-in-50 duration-500">
+              <CheckCircle2 className="h-7 w-7" />
+            </span>
+            <div>
+              <p className="text-emerald-400 text-sm font-semibold">Payment received!</p>
+              <p className="text-muted-foreground text-xs mt-0.5">{currency} {amount} has been added to this lead's payment plan.</p>
+            </div>
             {number ? (
               <a
                 href={`https://wa.me/${number}?text=${encodeURIComponent(thankYouMessage)}`} target="_blank" rel="noreferrer"
@@ -303,6 +308,9 @@ function CollectPaymentModal({ leadId, lead, planId, defaultAmount, currency, on
                 <Send className="h-4 w-4" /> Send confirmation to lead
               </a>
             ) : null}
+            <button onClick={onClose} className="w-full px-4 py-2 rounded-lg text-muted-foreground hover:text-foreground text-sm cursor-pointer transition">
+              Done
+            </button>
           </div>
         )}
       </div>
@@ -343,6 +351,12 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
     return data;
   }
   function close() { setModal(null); router.refresh(); refreshSidebarBadges(); }
+  // Refreshes the underlying lead/plan data WITHOUT closing whatever modal
+  // is open — used after "Mark as Received" so CollectPaymentModal gets to
+  // actually show its own "Payment recorded" confirmation instead of being
+  // unmounted the instant the payment succeeds (closing right away meant
+  // the modal just vanished, with no visible sign the payment went through).
+  function refreshLeadData() { router.refresh(); refreshSidebarBadges(); }
   function closeInstallmentModal() { setEditingInstallment(undefined); router.refresh(); refreshSidebarBadges(); }
 
   async function removeInstallment(inst) {
@@ -372,7 +386,7 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
           </div>
         )}
         {modal === "createPlan" && <CreatePlanModal leadId={leadId} services={services} onClose={() => setModal(null)} onDone={close} call={call} />}
-        {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={null} defaultAmount={0} currency="INR" onClose={() => setModal(null)} onRecorded={close} call={call} />}
+        {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={null} defaultAmount={0} currency="INR" onClose={() => setModal(null)} onRecorded={refreshLeadData} call={call} />}
       </div>
     );
   }
@@ -516,7 +530,7 @@ export default function LeadPayments({ leadId, lead, plans, activePlan, services
       {modal === "record" && (
         <RecordPaymentModal leadId={leadId} planId={plan.id} installments={installments} remaining={remaining} currency={currency} availableMethods={availableMethods} onClose={() => setModal(null)} onDone={close} call={call} />
       )}
-      {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={activePlan.plan.id} defaultAmount={remaining} currency={currency} onClose={() => setModal(null)} onRecorded={close} call={call} />}
+      {modal === "collect" && <CollectPaymentModal leadId={leadId} lead={lead} planId={activePlan.plan.id} defaultAmount={remaining} currency={currency} onClose={() => setModal(null)} onRecorded={refreshLeadData} call={call} />}
       {modal === "cancel" && (
         <ConfirmModal
           title="Cancel this payment plan?" confirmLabel="Cancel Plan"

@@ -323,7 +323,6 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
               <ul className={`mt-5 space-y-2 text-xs ${TEXT_SECONDARY} flex-1`}>
                 <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 shrink-0" /> {p.max_users ? `${p.max_users} employees` : "Unlimited employees"}</li>
                 <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 shrink-0" /> {p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`} storage` : "Unlimited storage"}</li>
-                {!!p.maintenance_annual_fee && <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 shrink-0" /> {p.currency} {p.maintenance_annual_fee}/yr maintenance</li>}
                 <li className="flex items-center gap-2">{p.allow_import_export === 0 ? <Minus className="h-3.5 w-3.5 shrink-0" /> : <Check className="h-3.5 w-3.5 shrink-0" />} Lead import / export</li>
               </ul>
             </motion.div>
@@ -352,7 +351,6 @@ function HostingerPricingSection({ plans, viewer, offers = [] }) {
                 { label: "Development Cost", get: (p) => p.development_cost_label || "Free" },
                 { label: "Installation Cost", get: (p) => p.installation_cost_label || "Free" },
                 { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
-                { label: "Annual Maintenance", get: (p) => (p.maintenance_annual_fee ? `${p.currency} ${p.maintenance_annual_fee}/yr` : "None") },
                 { label: "Employees", get: (p) => p.max_users || "Unlimited" },
                 { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
                 { label: "Storage", get: (p) => (p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`}` : "Unlimited") },

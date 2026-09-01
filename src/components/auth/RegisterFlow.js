@@ -51,6 +51,9 @@ export default function RegisterFlow() {
     planId: "", gateway: "", couponCode: "", durationMonths: 1,
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [appliedCoupon, setAppliedCoupon] = useState(null); // { code, discountType, discountValue }
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState("");
 
   useEffect(() => {
     apiFetch("/api/public/plans").then((r) => r.json()).then((d) => {
@@ -84,7 +87,36 @@ export default function RegisterFlow() {
     const plan = plans.find((p) => String(p.id) === String(id));
     const onlyGateway = plan?.hasBillDesk && !plan?.hasRazorpay ? "billdesk" : plan?.hasRazorpay && !plan?.hasBillDesk ? "razorpay" : "";
     setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway, durationMonths: 1 }));
+    setAppliedCoupon(null); setCouponError("");
   }
+
+  /** Same reasoning as SubscriptionManager.js's own applyCoupon — validates
+   * against the currently selected plan so the exact discount/final price
+   * shows up right here, before the real checkout (which only happens
+   * after the account is created) ever starts. Coupons only ever discount
+   * the 1-month price, so this is only offered at durationMonths === 1. */
+  async function applyCoupon() {
+    const code = form.couponCode.trim();
+    if (!code || !selectedPlan) return;
+    setCouponChecking(true);
+    setCouponError("");
+    try {
+      const res = await apiFetch("/api/public/coupons/validate", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: selectedPlan.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid coupon code.");
+      setAppliedCoupon({ code: data.code, discountType: data.discountType, discountValue: data.discountValue });
+      toast.success(`Coupon "${data.code}" applied.`);
+    } catch (err) { setCouponError(err.message); setAppliedCoupon(null); } finally { setCouponChecking(false); }
+  }
+  function removeCoupon() { setAppliedCoupon(null); set("couponCode", ""); setCouponError(""); }
+  const couponDiscount = appliedCoupon && selectedPlan && form.durationMonths === 1
+    ? Math.min(
+        Math.round((appliedCoupon.discountType === "percent" ? (Number(selectedPlan.price) * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue) * 100) / 100,
+        Number(selectedPlan.price)
+      )
+    : 0;
 
   function validateStep(i) {
     if (i === 0 && (!form.companyName.trim())) { toast.error("Company name is required."); return false; }
@@ -104,45 +136,6 @@ export default function RegisterFlow() {
 
   function next() { if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { setStep((s) => Math.max(s - 1, 0)); }
-
-  /** Opens the SECOND Checkout overlay for the annual maintenance fee, once
-   * the main subscription's payment has already succeeded — Razorpay bills
-   * one recurring amount per subscription object, so a plan with both a
-   * per-user price and a maintenance fee needs two separate authorizations,
-   * not one combined charge. Mirrors SubscriptionManager.js's own version
-   * of this, using the session-less /register/* verify endpoint since
-   * there's no logged-in admin yet at this point in signup. */
-  async function payMaintenanceThenFinish(data) {
-    await loadRazorpayScript();
-    return new Promise((resolve) => {
-      const rzp = new window.Razorpay({
-        key: data.razorpayKeyId,
-        subscription_id: data.maintenanceRazorpaySubscriptionId,
-        name: "KaizenBMS Platform",
-        description: `${data.planName} — annual maintenance`,
-        theme: { color: "#4f46e5" },
-        handler: async (response) => {
-          try {
-            const verifyRes = await apiFetch("/api/public/register/razorpay-verify-maintenance", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpaySubscriptionId: response.razorpay_subscription_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              }),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Maintenance payment verification failed. Please contact support.");
-          } catch (err) {
-            toast.error(`${err.message} — your plan is active, but the maintenance fee still needs payment (contact support).`);
-          } finally { resolve(); }
-        },
-        modal: { ondismiss: () => { toast.warning("Account created, but the maintenance fee wasn't paid — you'll be asked again after logging in."); resolve(); } },
-      });
-      rzp.on("payment.failed", () => { toast.error("Maintenance payment could not be completed — you'll be asked again after logging in."); resolve(); });
-      rzp.open();
-    });
-  }
 
   async function payWithRazorpayThenFinish(data) {
     try {
@@ -169,7 +162,6 @@ export default function RegisterFlow() {
             });
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
-            if (data.maintenanceRazorpaySubscriptionId) await payMaintenanceThenFinish(data);
             setResult(data);
           } catch (err) { toast.error(err.message); }
           finally { setSubmitting(false); }
@@ -302,7 +294,6 @@ export default function RegisterFlow() {
                           <p className="text-white text-sm">{p.price ? `${p.currency} ${p.price}${p.pricing_model === "per_user" ? "/user/mo" : `/${p.billing_cycle === "yearly" ? "yr" : "mo"}`}` : "Free"}</p>
                         </div>
                         {p.description && <p className="text-white/50 text-xs mt-0.5">{p.description}</p>}
-                        {!!p.maintenance_annual_fee && <p className="text-white/40 text-xs mt-0.5">+ {p.currency} {p.maintenance_annual_fee}/yr maintenance</p>}
                         <p className="text-white/40 text-xs mt-0.5">
                           {p.trial_days ? `${p.trial_days}-day free trial · ` : ""}
                           {p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
@@ -354,7 +345,23 @@ export default function RegisterFlow() {
               {planRequiresPayment && (
                 <>
                   <Field label="Coupon Code (optional)">
-                    <input value={form.couponCode} onChange={(e) => set("couponCode", e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className={inputClass} />
+                    {appliedCoupon ? (
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-medium">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCoupon.code} — {appliedCoupon.discountType === "percent" ? `${appliedCoupon.discountValue}% off` : `₹${appliedCoupon.discountValue} off`}
+                        </span>
+                        <button type="button" onClick={removeCoupon} className="text-white/40 hover:text-white text-xs cursor-pointer">Remove</button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input value={form.couponCode} onChange={(e) => { set("couponCode", e.target.value.toUpperCase()); setCouponError(""); }} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())} placeholder="e.g. SAVE20" className={inputClass} />
+                        <button type="button" onClick={applyCoupon} disabled={couponChecking || !form.couponCode.trim()} className="px-4 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-medium cursor-pointer disabled:opacity-50 transition shrink-0">
+                          {couponChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                        </button>
+                      </div>
+                    )}
+                    {couponError && <p className="text-red-400 text-xs mt-1">{couponError}</p>}
+                    {appliedCoupon && form.durationMonths !== 1 && <p className="text-amber-300 text-xs mt-1">Coupons only apply to monthly billing — switch to 1 month to use it.</p>}
                   </Field>
                   <p className="flex items-center gap-1.5 text-white/40 text-xs pt-1"><ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Secure payment powered by {GATEWAY_LABEL[effectiveGateway] || "BillDesk or Razorpay"}</p>
                 </>
@@ -372,15 +379,15 @@ export default function RegisterFlow() {
                 {selectedPlan?.trial_days ? (
                   <div className="flex justify-between"><span className="text-white/40">Trial</span><span className="text-white">{selectedPlan.trial_days} days, starting today</span></div>
                 ) : null}
-                {planRequiresPayment && form.couponCode.trim() && (
-                  <div className="flex justify-between"><span className="text-white/40">Coupon</span><span className="text-white">{form.couponCode.trim()}</span></div>
+                {planRequiresPayment && appliedCoupon && (
+                  <div className="flex justify-between"><span className="text-white/40">Coupon</span><span className="text-emerald-400">{appliedCoupon.code} (-{couponDiscount > 0 ? `${selectedPlan.currency} ${couponDiscount.toLocaleString()}` : `${appliedCoupon.discountValue}%`})</span></div>
                 )}
               </div>
               {planRequiresPayment ? (
                 <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">
                   This plan requires payment. Submitting creates your account, then sends you to {GATEWAY_LABEL[effectiveGateway] || "your chosen payment method"} to complete a secure {selectedPlan?.currency} {selectedDurationOption && selectedDurationOption.months > 1
                     ? `${(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} charge, billed every ${selectedDurationOption.months} months`
-                    : `${Number(selectedPlan?.price).toLocaleString()} / ${selectedPlan?.billing_cycle}`} subscription. Your plan activates automatically once payment is confirmed.
+                    : `${(Number(selectedPlan?.price) - couponDiscount).toLocaleString()} / ${selectedPlan?.billing_cycle}`} subscription. Your plan activates automatically once payment is confirmed.
                 </p>
               ) : (
                 <p className="text-white/30 text-xs">No payment required — your trial starts immediately after you submit.</p>

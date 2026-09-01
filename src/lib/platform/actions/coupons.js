@@ -8,11 +8,11 @@ function assertSchemaReady() {
   const e = new Error("The coupons schema hasn't been applied to this database yet."); e.status = 503; throw e;
 }
 
-function normalizeCode(code) {
+export function normalizeCode(code) {
   return (code || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
-function validateDiscount(discountType, discountValue) {
+export function validateDiscount(discountType, discountValue) {
   if (discountType !== "percent" && discountType !== "fixed") { const e = new Error("Discount type must be 'percent' or 'fixed'."); e.status = 400; throw e; }
   const value = Number(discountValue);
   if (!(value > 0)) { const e = new Error("Discount value must be greater than 0."); e.status = 400; throw e; }
@@ -120,6 +120,29 @@ export async function validateCouponForPlan(code, plan) {
   const finalAmount = Math.round((price - discountAmount) * 100) / 100;
 
   return { coupon, discountAmount, finalAmount };
+}
+
+/**
+ * Pure preview — no side effects, safe to call on every keystroke/Apply
+ * click. Powers the "Apply" button on both checkout surfaces
+ * (RegisterFlow.js, SubscriptionManager.js) so a company sees the real
+ * discount and final price BEFORE committing to checkout, instead of only
+ * finding out whether the code worked after Razorpay/BillDesk's own
+ * overlay is already open. Coupons only ever discount the plain 1-month
+ * price (see createRazorpayCheckoutForCompany's own rule), so this always
+ * previews against `plan.price`, regardless of any duration tier the
+ * caller might otherwise be looking at.
+ */
+export async function previewCoupon(code, planId) {
+  const [[plan]] = await pool.query(`SELECT id, name, price, currency FROM plans WHERE id = ? AND status = 'active'`, [planId]);
+  if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
+  if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no coupon needed."); e.status = 400; throw e; }
+
+  const { coupon, discountAmount, finalAmount } = await validateCouponForPlan(code, plan);
+  return {
+    code: coupon.code, discountType: coupon.discount_type, discountValue: Number(coupon.discount_value),
+    discountAmount, finalAmount, planPrice: Number(plan.price), currency: plan.currency,
+  };
 }
 
 /** Idempotent — UNIQUE(subscription_id) on coupon_redemptions means a

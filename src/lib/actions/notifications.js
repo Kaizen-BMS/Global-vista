@@ -4,7 +4,8 @@ import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import { can } from "@/lib/helpers/permissions";
 import { getSettingsByGroup } from "@/lib/actions/settings";
-import { isNotificationTypeEnabled } from "@/lib/helpers/notificationCategories";
+import { isNotificationTypeEnabled, getNotificationCategory, NOTIFICATION_CATEGORIES } from "@/lib/helpers/notificationCategories";
+import { hasUserNotificationPreferencesSchema } from "@/lib/db/schemaFlags";
 
 export async function getUserNotifications(session, { unreadOnly = false, limit = 20 } = {}) {
   const where = unreadOnly ? "AND is_read=0" : "";
@@ -106,6 +107,18 @@ export async function markNotificationRead(session, id) {
   await pool.query(`UPDATE notifications SET is_read=1 WHERE id=? AND user_id=? AND company_id=?`, [id, session.id, session.company_id]);
 }
 
+/** The employee's OWN, personal layer on top of the company-wide switch —
+ * see the 2026-09-01 migration's header comment for how the two relate.
+ * Uncategorized types ("other") have no personal switch, same fail-open
+ * reasoning as the company-wide check. */
+async function isUserNotificationPreferenceEnabled(userId, type) {
+  const category = getNotificationCategory(type);
+  if (category === "other") return true;
+  if (!(await hasUserNotificationPreferencesSchema())) return true;
+  const [[row]] = await pool.query(`SELECT enabled FROM user_notification_preferences WHERE user_id = ? AND category = ?`, [userId, category]);
+  return row ? !!row.enabled : true;
+}
+
 /**
  * Creates a single in-app notification for one user. Silently no-ops
  * if userId is null/undefined (e.g. an unassigned lead/task) rather
@@ -123,9 +136,31 @@ export async function createNotification(companyId, userId, { title, message = n
   // some cache window.
   const settings = await getSettingsByGroup({ company_id: companyId }, "notifications");
   if (!isNotificationTypeEnabled(type, settings)) return;
+  // Then the employee's own personal mute, if they've set one — both
+  // layers have to allow it.
+  if (!(await isUserNotificationPreferenceEnabled(userId, type))) return;
 
   await pool.query(
     `INSERT INTO notifications (company_id, user_id, title, message, type, link) VALUES (?, ?, ?, ?, ?, ?)`,
     [companyId, userId, title, message, type, link]
+  );
+}
+
+/** Every category, defaulting to enabled — the Notifications page's own
+ * "Preferences" panel. */
+export async function getUserNotificationPreferences(session) {
+  const prefs = Object.fromEntries(Object.keys(NOTIFICATION_CATEGORIES).map((k) => [k, true]));
+  if (!(await hasUserNotificationPreferencesSchema())) return prefs;
+  const [rows] = await pool.query(`SELECT category, enabled FROM user_notification_preferences WHERE user_id = ?`, [session.id]);
+  for (const r of rows) if (Object.prototype.hasOwnProperty.call(prefs, r.category)) prefs[r.category] = !!r.enabled;
+  return prefs;
+}
+
+export async function setUserNotificationPreference(session, category, enabled) {
+  if (!Object.prototype.hasOwnProperty.call(NOTIFICATION_CATEGORIES, category)) { const e = new Error("Unknown notification category."); e.status = 400; throw e; }
+  if (!(await hasUserNotificationPreferencesSchema())) { const e = new Error("Personal notification preferences aren't available yet."); e.status = 503; throw e; }
+  await pool.query(
+    `INSERT INTO user_notification_preferences (user_id, category, enabled) VALUES (?,?,?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)`,
+    [session.id, category, enabled ? 1 : 0]
   );
 }

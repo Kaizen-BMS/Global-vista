@@ -21,7 +21,7 @@ export async function listPublicPlans() {
   const [rows] = await pool.query(
     `SELECT id, name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
      ${withRazorpay ? ", (razorpay_plan_id IS NOT NULL) AS hasRazorpay" : ", 0 AS hasRazorpay"}
-     ${withTiers ? ", pricing_model, maintenance_annual_fee, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""}
+     ${withTiers ? ", pricing_model, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""}
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
   const billDeskAvailable = getBillDeskStatus().configured;
@@ -129,7 +129,7 @@ export async function registerCompany(input) {
   }
 
   if (requiresPayment && gateway === "razorpay") {
-    const { razorpaySubscriptionId, razorpayKeyId, amount, currency, maintenanceRazorpaySubscriptionId, maintenanceAmount, seatQuantity, totalAmount } = await createRazorpayCheckoutForCompany({
+    const { razorpaySubscriptionId, razorpayKeyId, amount, currency, seatQuantity, totalAmount } = await createRazorpayCheckoutForCompany({
       companyId: result.companyId,
       planId: plan.id,
       subscriberEmail: adminEmail.trim().toLowerCase(),
@@ -139,7 +139,7 @@ export async function registerCompany(input) {
     });
     return {
       companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "razorpay",
-      razorpaySubscriptionId, razorpayKeyId, amount, currency, maintenanceRazorpaySubscriptionId, maintenanceAmount, seatQuantity, totalAmount,
+      razorpaySubscriptionId, razorpayKeyId, amount, currency, seatQuantity, totalAmount,
     };
   }
 

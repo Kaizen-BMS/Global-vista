@@ -106,18 +106,27 @@ function NewConversationModal({ users, isSuperAdmin, onClose, onCreated }) {
   );
 }
 
-function GroupInfoPanel({ conversation, currentUserId, onClose, onLeave }) {
+function GroupInfoPanel({ conversation, currentUserId, messageableUsers, onClose, onLeave, onUpdated }) {
   const [participants, setParticipants] = useState(null);
   const [leaving, setLeaving] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+  const isAdmin = conversation.created_by === currentUserId;
 
-  useEffect(() => {
-    let cancelled = false;
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(conversation.title || "");
+  const [savingName, setSavingName] = useState(false);
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addSelected, setAddSelected] = useState([]);
+  const [adding, setAdding] = useState(false);
+
+  function load() {
     apiFetch(`/api/messaging/conversations/${conversation.id}/participants`)
       .then((res) => res.json())
-      .then((data) => { if (!cancelled) setParticipants(data.participants || []); })
-      .catch(() => { if (!cancelled) setParticipants([]); });
-    return () => { cancelled = true; };
-  }, [conversation.id]);
+      .then((data) => setParticipants(data.participants || []))
+      .catch(() => setParticipants([]));
+  }
+  useEffect(() => { load(); }, [conversation.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function leave() {
     if (!confirm("Leave this group? You'll stop receiving its messages.")) return;
@@ -130,27 +139,125 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onLeave }) {
     } catch (err) { toast.error(err.message); setLeaving(false); }
   }
 
+  async function saveName() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === conversation.title) { setEditingName(false); return; }
+    setSavingName(true);
+    try {
+      const res = await apiFetch(`/api/messaging/conversations/${conversation.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to rename group.");
+      setEditingName(false);
+      onUpdated();
+    } catch (err) { toast.error(err.message); } finally { setSavingName(false); }
+  }
+
+  async function addMembers() {
+    if (!addSelected.length) return;
+    setAdding(true);
+    try {
+      const res = await apiFetch(`/api/messaging/conversations/${conversation.id}/participants`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userIds: addSelected }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to add members.");
+      toast.success("Members added.");
+      setAddSelected([]);
+      setShowAdd(false);
+      load();
+      onUpdated();
+    } catch (err) { toast.error(err.message); } finally { setAdding(false); }
+  }
+
+  async function removeMember(userId, name) {
+    if (!confirm(`Remove ${name} from the group?`)) return;
+    setRemovingId(userId);
+    try {
+      const res = await apiFetch(`/api/messaging/conversations/${conversation.id}/participants`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to remove member.");
+      load();
+      onUpdated();
+    } catch (err) { toast.error(err.message); } finally { setRemovingId(null); }
+  }
+
+  const memberIds = new Set((participants || []).map((p) => p.id));
+  const addableUsers = (messageableUsers || []).filter((u) => !memberIds.has(u.id));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <ModalFocusTrap>
       <div role="dialog" aria-modal="true" aria-label="Group info" className="relative w-full max-w-sm max-h-[80vh] overflow-y-auto bg-background border border-border rounded-xl shadow-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-foreground font-medium">{conversationLabel(conversation)}</p>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+        <div className="flex items-center justify-between mb-4 gap-2">
+          {editingName ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName()} maxLength={100} className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-muted border border-border text-foreground text-sm" />
+              <button onClick={saveName} disabled={savingName} aria-label="Save group name" className="text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">{savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}</button>
+              <button onClick={() => { setEditingName(false); setNameDraft(conversation.title || ""); }} aria-label="Cancel" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-foreground font-medium truncate">{conversationLabel(conversation)}</p>
+              {isAdmin && (
+                <button onClick={() => setEditingName(true)} aria-label="Rename group" className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><Pencil className="h-3.5 w-3.5" /></button>
+              )}
+            </div>
+          )}
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><X className="h-4 w-4" /></button>
         </div>
-        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-2">{participants ? `${participants.length} members` : "Members"}</p>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">{participants ? `${participants.length} members` : "Members"}</p>
+          {isAdmin && (
+            <button onClick={() => setShowAdd((s) => !s)} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium cursor-pointer">{showAdd ? "Cancel" : "+ Add"}</button>
+          )}
+        </div>
+
+        {showAdd && (
+          <div className="mb-3 p-2.5 rounded-lg bg-muted/50 border border-border">
+            {addableUsers.length === 0 ? (
+              <p className="text-muted-foreground text-xs">Everyone in your company is already in this group.</p>
+            ) : (
+              <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
+                {addableUsers.map((u) => (
+                  <label key={u.id} className="flex items-center gap-2 px-1 py-1 rounded-md hover:bg-muted cursor-pointer text-sm text-foreground">
+                    <input type="checkbox" checked={addSelected.includes(u.id)} onChange={() => setAddSelected((prev) => prev.includes(u.id) ? prev.filter((x) => x !== u.id) : [...prev, u.id])} />
+                    {u.name}
+                  </label>
+                ))}
+              </div>
+            )}
+            {addableUsers.length > 0 && (
+              <button onClick={addMembers} disabled={adding || !addSelected.length} className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer disabled:opacity-50">
+                {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Add Selected
+              </button>
+            )}
+          </div>
+        )}
+
         {!participants ? (
           <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
         ) : (
           <div className="space-y-1 mb-4">
             {participants.map((p) => (
-              <div key={p.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted">
+              <div key={p.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted group">
                 <Avatar name={p.name} />
-                <div className="min-w-0">
-                  <p className="text-foreground text-sm truncate">{p.name}{p.id === currentUserId ? " (You)" : ""}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-foreground text-sm truncate">
+                    {p.name}{p.id === currentUserId ? " (You)" : ""}{p.id === conversation.created_by ? " · Admin" : ""}
+                  </p>
                   <p className="text-muted-foreground text-xs truncate">{p.email}</p>
                 </div>
+                {isAdmin && p.id !== currentUserId && (
+                  <button onClick={() => removeMember(p.id, p.name)} disabled={removingId === p.id} aria-label={`Remove ${p.name}`} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 cursor-pointer disabled:opacity-60 shrink-0 transition-opacity">
+                    {removingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -503,7 +610,10 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
       )}
 
       {showGroupInfo && active?.type === "group" && (
-        <GroupInfoPanel conversation={active} currentUserId={currentUserId} onClose={() => setShowGroupInfo(false)} onLeave={handleLeftGroup} />
+        <GroupInfoPanel
+          conversation={active} currentUserId={currentUserId} messageableUsers={messageableUsers}
+          onClose={() => setShowGroupInfo(false)} onLeave={handleLeftGroup} onUpdated={refreshConversations}
+        />
       )}
     </div>
   );

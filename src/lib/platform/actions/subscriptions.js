@@ -130,12 +130,12 @@ export async function createPlan(data) {
   const withDescription = await hasPlanDescriptionColumn();
   const withTiers = await hasTieredPlansSchema();
   const [result] = await pool.query(
-    `INSERT INTO plans (name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status${withTiers ? ", pricing_model, maintenance_annual_fee, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""})
-     VALUES (?,?${withDescription ? ",?" : ""},?,?,?,?,?,?,?,?,?${withTiers ? ",?,?,?,?,?,?" : ""})`,
+    `INSERT INTO plans (name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status${withTiers ? ", pricing_model, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""})
+     VALUES (?,?${withDescription ? ",?" : ""},?,?,?,?,?,?,?,?,?${withTiers ? ",?,?,?,?,?" : ""})`,
     [
       data.name, slug, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR",
       data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
-      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.maintenanceAnnualFee || null, data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
     ]
   );
   return result.insertId;
@@ -225,11 +225,11 @@ export async function updatePlan(id, data) {
   const clearClauses = [paypalLinkCleared && "paypal_plan_id=NULL", razorpayLinkCleared && "razorpay_plan_id=NULL"].filter(Boolean).map((c) => `, ${c}`).join("");
 
   await pool.query(
-    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${withTiers ? ", pricing_model=?, maintenance_annual_fee=?, registration_label=?, development_cost_label=?, installation_cost_label=?, allow_import_export=?" : ""}${clearClauses} WHERE id=?`,
+    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${withTiers ? ", pricing_model=?, registration_label=?, development_cost_label=?, installation_cost_label=?, allow_import_export=?" : ""}${clearClauses} WHERE id=?`,
     [
       data.name, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
       data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
-      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.maintenanceAnnualFee || null, data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+      ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
       id,
     ]
   );
@@ -296,16 +296,46 @@ export async function renewSubscription(companyId, newEndsAt, operatorId) {
 
 /** New storage limit applies immediately — files are never deleted, only
  * future uploads get gated by enforceStorageLimit reading the new plan. */
+/**
+ * This is the Platform Operator's blunt, force-override tool — unlike a
+ * company's own self-service switch (changeCompanyRazorpayPlan), it does
+ * NOT update the price/plan on an already-authorized Razorpay mandate.
+ * That means if the company currently has a real, live gateway
+ * subscription, leaving it running would keep Razorpay charging the OLD
+ * plan's price forever while our own records show a completely different
+ * (possibly free) plan — exactly the state a company on plan_id=1
+ * "Starter" but still carrying gateway='razorpay' and a real
+ * gateway_subscription_id from before was found in. So any force-change
+ * through this function cancels whatever real gateway subscription(s)
+ * exist first and resets the gateway columns back to 'manual' — the
+ * company (or the operator, on its behalf) then goes through a normal
+ * fresh checkout if the new plan should actually be billed automatically.
+ */
 export async function changeSubscriptionPlan(companyId, newPlanId, operatorId) {
   const sub = await getSubscriptionForCompany(companyId);
   if (!sub) { const e = new Error("This company has no subscription."); e.status = 404; throw e; }
   const [[newPlan]] = await pool.query(`SELECT id, name, max_storage_mb FROM plans WHERE id=? AND status='active'`, [newPlanId]);
   if (!newPlan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
 
+  if (sub.gateway === "razorpay" && sub.gateway_subscription_id) {
+    await cancelRazorpaySubscription(sub.gateway_subscription_id, false).catch((err) => {
+      console.error("Razorpay subscription cancellation not completed during admin plan change:", err.message);
+    });
+  }
+  if (sub.gateway === "razorpay" && sub.maintenance_gateway_subscription_id) {
+    await cancelRazorpaySubscription(sub.maintenance_gateway_subscription_id, false).catch((err) => {
+      console.error("Razorpay maintenance subscription cancellation not completed during admin plan change:", err.message);
+    });
+  }
+  const tieredReady = await hasTieredPlansSchema();
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await conn.query(`UPDATE company_subscriptions SET plan_id=? WHERE id=?`, [newPlanId, sub.id]);
+    await conn.query(
+      `UPDATE company_subscriptions SET plan_id=?, gateway='manual', gateway_subscription_id=NULL${tieredReady ? ", maintenance_gateway_subscription_id=NULL" : ""} WHERE id=?`,
+      [newPlanId, sub.id]
+    );
     await recordHistory(conn, sub.id, "plan_changed", sub.plan_id, newPlanId, operatorId);
     await syncCompanyModulesToPlan(conn, companyId, newPlanId, operatorId);
     await conn.commit();

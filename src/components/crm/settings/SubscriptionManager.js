@@ -39,6 +39,9 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const router = useRouter();
   const [checkingOut, setCheckingOut] = useState(null); // plan id currently starting checkout, or "planId:now"/"planId:cycle_end" while switching in place
   const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null); // { code, discountType, discountValue }
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState("");
   const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
   const [durationByPlan, setDurationByPlan] = useState({}); // plan.id -> chosen commitment length in months, default 1
   const getDuration = (plan) => durationByPlan[plan.id] || 1;
@@ -87,44 +90,6 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  /** Opens the SECOND Checkout overlay for the annual maintenance fee, once
-   * the main subscription's payment has already succeeded — Razorpay bills
-   * one recurring amount per subscription object, so a plan with both a
-   * per-user price and a maintenance fee needs two separate authorizations,
-   * not one combined charge. */
-  async function payMaintenanceThenFinish(data) {
-    await loadRazorpayScript();
-    return new Promise((resolve) => {
-      const rzp = new window.Razorpay({
-        key: data.razorpayKeyId,
-        subscription_id: data.maintenanceRazorpaySubscriptionId,
-        name: "KaizenBMS Platform",
-        description: `${data.planName} — annual maintenance`,
-        theme: { color: "#4f46e5" },
-        handler: async (response) => {
-          try {
-            const verifyRes = await apiFetch("/api/core/subscription/razorpay/verify-maintenance", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpaySubscriptionId: response.razorpay_subscription_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              }),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) throw new Error(verifyData.error || "Maintenance payment verification failed. Please contact support.");
-            toast.success("Subscription activated.");
-          } catch (err) {
-            toast.error(`${err.message} — your plan is active, but the maintenance fee still needs payment (contact support).`);
-          } finally { resolve(); }
-        },
-        modal: { ondismiss: () => { toast.warning("Plan activated, but the maintenance fee wasn't paid — you'll be asked again on Settings > Subscription."); resolve(); } },
-      });
-      rzp.on("payment.failed", () => { toast.error("Maintenance payment could not be completed. Please try again from Settings > Subscription."); resolve(); });
-      rzp.open();
-    });
-  }
-
   async function payWithRazorpayThenFinish(data) {
     try {
       await loadRazorpayScript();
@@ -146,11 +111,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             });
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed. Please contact support.");
-            if (data.maintenanceRazorpaySubscriptionId) {
-              await payMaintenanceThenFinish(data);
-            } else {
-              toast.success("Subscription activated.");
-            }
+            toast.success("Subscription activated.");
             onClose();
             router.refresh();
           } catch (err) { toast.error(err.message); }
@@ -161,6 +122,40 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
       rzp.on("payment.failed", () => { toast.error("Payment could not be completed. Please try again."); setCheckingOut(null); });
       rzp.open();
     } catch (err) { toast.error(err.message); setCheckingOut(null); }
+  }
+
+  /** Validates the code against whichever priced plan is on screen, purely
+   * to confirm it's real and learn its discount type/value — the actual
+   * per-plan discounted price shown below is computed client-side from
+   * that (same percent/fixed-capped-at-price formula the server itself
+   * uses), so every priced plan's card reflects it, not just one. Coupons
+   * only ever discount the 1-month price (see checkout's own rule), so
+   * this is deliberately validated against `getDuration(plan) === 1` — the
+   * card just shows no discount at other durations rather than a
+   * misleading number that wouldn't actually apply at checkout. */
+  async function applyCoupon() {
+    const code = couponCode.trim();
+    if (!code) return;
+    const referencePlan = plans.find((p) => Number(p.price) > 0);
+    if (!referencePlan) return;
+    setCouponChecking(true);
+    setCouponError("");
+    try {
+      const res = await apiFetch("/api/core/subscription/coupons/validate", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: referencePlan.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid coupon code.");
+      setAppliedCoupon({ code: data.code, discountType: data.discountType, discountValue: data.discountValue });
+      toast.success(`Coupon "${data.code}" applied.`);
+    } catch (err) { setCouponError(err.message); setAppliedCoupon(null); } finally { setCouponChecking(false); }
+  }
+  function removeCoupon() { setAppliedCoupon(null); setCouponCode(""); setCouponError(""); }
+  function discountFor(plan) {
+    if (!appliedCoupon || getDuration(plan) !== 1 || !(Number(plan.price) > 0)) return 0;
+    const price = Number(plan.price);
+    const raw = appliedCoupon.discountType === "percent" ? (price * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue;
+    return Math.min(Math.round(raw * 100) / 100, price);
   }
 
   async function choosePlan(plan, monthsOverride) {
@@ -205,21 +200,12 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     setCheckingOut(`${plan.id}:${when}`);
     try {
       const res = await apiFetch("/api/core/subscription/razorpay/change-plan", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when, couponCode: appliedCoupon?.code || null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't change plan.");
 
-      // The new plan's maintenance fee is a stream this company wasn't
-      // already paying — Razorpay has no way to start a new recurring
-      // charge without the customer authorizing it through a live Checkout
-      // overlay, so one opens now, same as a brand-new subscribe.
-      if (data.requiresMaintenanceCheckout) {
-        toast.success(`Switched to "${plan.name}" — now authorize its annual maintenance fee.`);
-        await payMaintenanceThenFinish({ ...data, planName: plan.name });
-      } else {
-        toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
-      }
+      toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
       onClose();
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setCheckingOut(null); }
@@ -248,7 +234,22 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
         <div className="px-6 pt-4 flex flex-wrap gap-4">
           <div>
             <label className="block text-muted-foreground text-xs mb-1.5">Coupon Code (optional)</label>
-            <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="e.g. SAVE20" className="w-full sm:w-64 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            {appliedCoupon ? (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {appliedCoupon.code} — {appliedCoupon.discountType === "percent" ? `${appliedCoupon.discountValue}% off` : `₹${appliedCoupon.discountValue} off`}
+                </span>
+                <button onClick={removeCoupon} aria-label="Remove coupon" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }} onKeyDown={(e) => e.key === "Enter" && applyCoupon()} placeholder="e.g. SAVE20" className="w-full sm:w-56 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+                <button onClick={applyCoupon} disabled={couponChecking || !couponCode.trim()} className="px-4 py-2 rounded-lg bg-muted border border-border text-foreground text-sm font-medium cursor-pointer disabled:opacity-50 hover:border-indigo-500/40 transition shrink-0">
+                  {couponChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="text-red-400 text-xs mt-1">{couponError}</p>}
           </div>
           {anyPlanOffersChoice && (
             <div>
@@ -272,17 +273,20 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             const isSamePlan = plan.id === currentPlanId;
             const isCurrent = isSamePlan && !needsPayment;
             const isPaid = Number(plan.price) > 0;
+            const discount = discountFor(plan);
+            const discountedPrice = discount > 0 ? Math.round((Number(plan.price) - discount) * 100) / 100 : null;
             return (
               <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className={`relative rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30 hover:border-indigo-500/20"}`}>
                 {isCurrent && <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
                 <p className="text-foreground font-medium mt-1">{plan.name}</p>
                 {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
-                <p className="text-foreground text-lg font-semibold mt-2">
-                  {isPaid ? `${plan.currency} ${Number(plan.price).toLocaleString()}` : "Free"}
+                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {Number(plan.price).toLocaleString()}</p>}
+                <p className={`text-foreground text-lg font-semibold ${discountedPrice != null ? "" : "mt-2"}`}>
+                  {isPaid ? `${plan.currency} ${(discountedPrice ?? Number(plan.price)).toLocaleString()}` : "Free"}
                   {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
+                  {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
                 </p>
-                {!!plan.maintenance_annual_fee && <p className="text-muted-foreground text-[11px] mt-0.5">+ {plan.currency} {Number(plan.maintenance_annual_fee).toLocaleString()}/yr maintenance</p>}
                 {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
                 <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
                   <li>Registration: {plan.registration_label || "Self"}</li>

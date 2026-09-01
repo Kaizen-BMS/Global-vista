@@ -7,7 +7,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const emptyForm = {
-  name: "", description: "", billingCycle: "monthly", pricingModel: "flat", price: "", maintenanceAnnualFee: "", currency: "INR", trialDays: "",
+  name: "", description: "", billingCycle: "monthly", pricingModel: "flat", price: "", currency: "INR", trialDays: "",
   maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active",
   registrationLabel: "Self", developmentCostLabel: "Free", installationCostLabel: "Free", allowImportExport: true,
 };
@@ -15,7 +15,7 @@ const emptyForm = {
 function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) {
   const [form, setForm] = useState(initial ? {
     name: initial.name, description: initial.description || "", billingCycle: initial.billing_cycle,
-    pricingModel: initial.pricing_model || "flat", price: initial.price || "", maintenanceAnnualFee: initial.maintenance_annual_fee || "",
+    pricingModel: initial.pricing_model || "flat", price: initial.price || "",
     currency: initial.currency || "INR", trialDays: initial.trial_days || "",
     maxUsers: initial.max_users || "", maxLeads: initial.max_leads || "",
     maxStorageMb: initial.max_storage_mb || "", maxApiCallsPerDay: initial.max_api_calls_per_day || "", status: initial.status,
@@ -83,10 +83,6 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
             <input type="number" min="0" step="0.01" placeholder={form.pricingModel === "per_user" ? "Price per user (blank = free)" : "Price (blank = free)"} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} />
             <input placeholder="Currency" maxLength={10} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} className={inputClass} />
           </div>
-          <input type="number" min="0" step="0.01" placeholder="Annual maintenance fee (blank = none)" value={form.maintenanceAnnualFee} onChange={(e) => setForm({ ...form, maintenanceAnnualFee: e.target.value })} className={inputClass} />
-          {form.pricingModel === "per_user" && (
-            <p className="text-muted-foreground text-[11px] -mt-1.5">Billed as a real, separate Razorpay recurring plan alongside the per-user charge — sync both from the plan card once saved.</p>
-          )}
           <input type="number" min="0" placeholder="Trial length in days (blank = no trial)" value={form.trialDays} onChange={(e) => setForm({ ...form, trialDays: e.target.value })} className={inputClass} />
           <input type="number" min="0" placeholder="Max users (blank = unlimited)" value={form.maxUsers} onChange={(e) => setForm({ ...form, maxUsers: e.target.value })} className={inputClass} />
           <input type="number" min="0" placeholder="Max leads (blank = unlimited)" value={form.maxLeads} onChange={(e) => setForm({ ...form, maxLeads: e.target.value })} className={inputClass} />
@@ -146,11 +142,10 @@ function SyncToRazorpayButton({ plan, onSynced }) {
       onSynced();
     } catch (err) { toast.error(err.message); } finally { setBusy(false); }
   }
-  const maintenancePending = Number(plan.maintenance_annual_fee) > 0 && !plan.maintenance_razorpay_plan_id;
-  if (plan.razorpay_plan_id && !maintenancePending) {
-    return <span className="flex items-center gap-1 text-[11px] text-emerald-400"><Check className="h-3 w-3" /> Synced to Razorpay{plan.maintenance_razorpay_plan_id ? " (+ maintenance)" : ""}</span>;
+  if (plan.razorpay_plan_id) {
+    return <span className="flex items-center gap-1 text-[11px] text-emerald-400"><Check className="h-3 w-3" /> Synced to Razorpay</span>;
   }
-  if (!(Number(plan.price) > 0) && !maintenancePending) return null; // free/trial plans are never synced
+  if (!(Number(plan.price) > 0)) return null; // free/trial plans are never synced
   return (
     <button onClick={sync} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
       {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />} Sync to Razorpay
@@ -291,7 +286,6 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
               {p.description && <p className="text-muted-foreground text-xs mb-2">{p.description}</p>}
               <div className="text-xs text-muted-foreground space-y-0.5 mb-2">
                 <p>{p.pricing_model === "per_user" ? "Per user" : "Price"}: {p.price ? `${p.currency} ${p.price}${p.pricing_model === "per_user" ? "/user/mo" : ""}` : "Free"}</p>
-                {!!p.maintenance_annual_fee && <p>Maintenance: {p.currency} {p.maintenance_annual_fee}/yr</p>}
                 {!!p.trial_days && <p>Trial: {p.trial_days} days</p>}
                 <p>Users: {p.max_users || "Unlimited"}</p>
                 <p>Leads: {p.max_leads || "Unlimited"}</p>

@@ -22,6 +22,19 @@ export const NOTIFICATION_CATEGORIES = {
   notify_account: ["user_created", "role_updated", "company_updated", "company_provisioned"],
 };
 
+/** Same wording as each category's toggle on Settings > Organizational
+ * Setting — kept here so the Notifications page's own filter never drifts
+ * from what a Super Admin sees when muting/unmuting that same category. */
+export const CATEGORY_LABELS = {
+  notify_leads: "Leads & Follow-ups",
+  notify_tasks: "Tasks",
+  notify_documents: "Documents",
+  notify_payments: "Payments & Billing",
+  notify_messages: "Messages",
+  notify_support: "Support & Feedback",
+  notify_account: "Account & Team",
+};
+
 const TYPE_TO_SETTING_KEY = Object.fromEntries(
   Object.entries(NOTIFICATION_CATEGORIES).flatMap(([settingKey, types]) => types.map((t) => [t, settingKey]))
 );
@@ -33,4 +46,12 @@ export function isNotificationTypeEnabled(type, settings) {
   const settingKey = TYPE_TO_SETTING_KEY[type];
   if (!settingKey) return true; // uncategorized types are never mutable, always fire
   return (settings?.[settingKey] ?? "true") !== "false";
+}
+
+/** Which category a given notification's `type` belongs to — powers the
+ * Notifications page's own filter. Anything not in the map (uncategorized,
+ * same "always visible" reasoning as isNotificationTypeEnabled above)
+ * falls into "other" rather than being dropped from the list entirely. */
+export function getNotificationCategory(type) {
+  return TYPE_TO_SETTING_KEY[type] || "other";
 }
