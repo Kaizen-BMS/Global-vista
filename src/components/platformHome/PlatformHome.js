@@ -1,25 +1,26 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useInView } from "framer-motion";
+import {
+  Contact2, CalendarClock, Users, MessageSquare, Bell, BarChart3, CreditCard, ShieldCheck,
+  ChevronDown, Sparkles,
+} from "lucide-react";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import { PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_FAINT, BORDER, BORDER_SOFT, ACCENT } from "@/components/platformHome/editorialTheme";
+import { withGst, GST_LABEL } from "@/lib/helpers/gst";
 
 /**
  * Document-style homepage — a printed-sheet look (masthead, thin rules,
- * serif headline, a plain feature matrix) rather than the previous
- * cinematic dark hero. Built from two supplied mockups in sequence — a
- * plain PDF first, then a more refined "v2" HTML mockup (two-column hero,
- * numbered modules list, an elevated "most chosen" pricing card, a
- * collapsible feature matrix) — this file matches the v2 structure.
- * Every number/word inside it is real, live data throughout: no plan
- * name, price, limit, or module count here is invented to match either
- * mockup's placeholder numbers. The v2 mockup's own product-screenshot
- * section is deliberately NOT included — the only image available for it
- * was a generic stock CRM template (wrong nav items, wrong entities, not
- * actually KaizenBMS), and shipping a fake screenshot of the product
- * would be actively misleading. Swap in real screenshots here once
- * they exist as actual image files.
+ * serif headline) carried over from the earlier v2-mockup rewrite, now
+ * built out into a full Zoho/Odoo-style marketing page: a hero "connected
+ * products" graphic, a proper feature grid, the real product walkthrough
+ * video, a permanently-visible pricing + comparison pair (never collapsed
+ * behind a toggle), a factual "why teams choose us" section, and an FAQ.
+ * Every module/feature listed here is something this app actually has —
+ * nothing invented to pad the page out — and nothing here fabricates
+ * customer counts, logos, or quoted testimonials, which this project
+ * doesn't have real ones for yet.
  */
 const SERIF = "font-[family-name:var(--font-source-serif)]";
 // Written as their own complete, literal class strings (not derived via
@@ -28,15 +29,15 @@ const SERIF = "font-[family-name:var(--font-source-serif)]";
 // somewhere in the source, so a runtime-computed string never produces
 // real styles no matter how correct the resulting string looks.
 const HOVER_PRIMARY = "hover:text-[#0B0E14] dark:hover:text-[#F4F3EF]";
-const HOVER_ACCENT = "hover:text-indigo-600 dark:hover:text-indigo-400";
 
-function Fade({ children, className = "", delay = 0, id }) {
+function Fade({ children, className = "", delay = 0, id, style }) {
   return (
     <motion.div
       id={id}
       initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }}
       transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
       className={className}
+      style={style}
     >
       {children}
     </motion.div>
@@ -47,9 +48,8 @@ function MicroLabel({ children, className = "" }) {
   return <p className={`text-[10px] font-medium uppercase tracking-[0.16em] ${TEXT_FAINT} ${className}`}>{children}</p>;
 }
 
-/** Shared with the footer's own Services column — one list, two
- * presentations, kept from the previous version of this page for the
- * same "never lets the two drift apart" reason. */
+/** Compact list kept for the footer's own Services column (short labels,
+ * no room for the full descriptions the feature grid below uses). */
 const SERVICES = [
   { label: "CRM & Leads" },
   { label: "Customization" },
@@ -59,8 +59,52 @@ const SERVICES = [
   { label: "Payments" },
   { label: "Security" },
 ];
-const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
-const PACK_WORDS = ["ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX"];
+
+/** The real feature set — one entry per major module this app actually
+ * ships, described accurately rather than in marketing-generic terms
+ * (e.g. "personal + company-wide notification preferences" is a real,
+ * specific thing this platform has, not a filler bullet). Grouped into two
+ * real categories (customer-facing day-to-day work vs. the business/admin
+ * side) purely for the tree layout below — same 8 features either way,
+ * just organized for a branching diagram instead of a flat grid. */
+const FEATURE_GROUPS = [
+  {
+    label: "Sales & Engagement",
+    items: [
+      { icon: Contact2, title: "CRM & Lead Management", description: "Pipeline, Kanban and calendar views, lead scoring, duplicate detection, and assignment/release — all in one workspace.", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" },
+      { icon: CalendarClock, title: "Follow-ups & Calendar", description: "Every scheduled follow-up in one place, overdue and today's calls surfaced automatically, no lead left waiting.", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+      { icon: MessageSquare, title: "Team Messaging", description: "Direct messages and admin-managed group chats — rename, add, or remove members right from the conversation.", color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+      { icon: Bell, title: "Smart Notifications", description: "Real-time alerts with both company-wide and per-employee category preferences — control exactly what reaches you.", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400" },
+    ],
+  },
+  {
+    label: "Operations & Business",
+    items: [
+      { icon: Users, title: "Employees & Roles", description: "Employees, departments, and branches with fine-grained, role-based permissions across every module.", color: "bg-sky-500/10 text-sky-600 dark:text-sky-400" },
+      { icon: BarChart3, title: "Reports & Analytics", description: "Live dashboards for pipeline health and source performance, with exportable reports across leads, users, and tasks.", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+      { icon: CreditCard, title: "Payments & Subscriptions", description: "GST-inclusive pricing, coupon codes, flexible commitment terms, and a built-in partner/affiliate program.", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400" },
+      { icon: ShieldCheck, title: "Security & Permissions", description: "Every tenant fully isolated, every module gated by role-based permissions, with an activity log that traces who changed what.", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
+    ],
+  },
+];
+const ALL_FEATURES = FEATURE_GROUPS.flatMap((g) => g.items);
+
+/** Factual differentiators — no invented customer counts, logos, or
+ * quoted testimonials attributed to people who don't exist. */
+const WHY_US = [
+  { title: "Multi-tenant from day one", description: "Your company's data, users, and branding are isolated at the database layer — never shared, never crossed with another tenant." },
+  { title: "Transparent, GST-inclusive pricing", description: "The price shown on every plan is the price you actually pay — tax included, coupon codes applied before you ever reach checkout." },
+  { title: "A partner program built in", description: "Turn a coupon code into a trackable affiliate link — every signup and payment it drives is attributed automatically." },
+  { title: "Your own branding, not ours", description: "Logo, favicon, and color scheme are configurable per company and apply across the sidebar, reports, and outgoing email." },
+];
+
+const FAQS = [
+  { q: "Is this a multi-tenant platform?", a: "Yes. Every company gets its own isolated workspace — data, users, roles, and branding are scoped per tenant and never cross over." },
+  { q: "Can we use our own branding?", a: "Yes. Logo, favicon, and color scheme are configurable per company from Settings, and apply across the sidebar, reports, and outgoing email." },
+  { q: "What does the pricing above actually include?", a: "The price on every plan card already includes GST — nothing added at checkout beyond a coupon discount you choose to apply. Longer commitment terms cost less per month." },
+  { q: "What payment methods are supported?", a: "Checkout runs through Razorpay — cards, UPI, and net banking are all supported there." },
+  { q: "Can I change plans later?", a: "Yes — upgrade, downgrade, or change your commitment term anytime from Settings → Subscription, effective immediately or at your next renewal." },
+];
 
 const DURATION_LABELS = { 1: "1 month", 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
 function durationLabel(m) { return DURATION_LABELS[m] || `${m} months`; }
@@ -81,10 +125,8 @@ function planTheme(name) {
   return key ? PLAN_THEMES[key] : null;
 }
 
-/** The scrolling offers ticker from the previous version of this page —
- * dropped by mistake in the document-style rewrite, restored here as a
- * thin strip under the masthead rather than the old fixed-dark bar, so it
- * fits the lighter theme instead of clashing with it. */
+/** The scrolling offers ticker — a thin strip under the masthead so it
+ * fits the lighter editorial theme instead of a fixed dark bar. */
 function OffersMarquee({ offers }) {
   if (!offers.length) return null;
   const repeatCount = Math.max(2, Math.ceil(16 / Math.max(offers.length, 1)));
@@ -104,119 +146,309 @@ function OffersMarquee({ offers }) {
   );
 }
 
-/**
- * A compact, looping recreation of the product walkthrough — built from
- * verified real screens of the actual app (dashboard stats, leads table,
- * lead detail with lead score, notifications), using entirely fictional
- * demo data. The design file's own walkthrough imports two external JSX
- * animation components (animations-v3.jsx / crm-walkthrough.jsx) that
- * only exist inside that Claude Design project, not in this codebase, so
- * it can't be embedded directly — this reproduces its scene list
- * (Dashboard → Leads → Detail → Follow-up) as a self-contained
- * cross-fading sequence instead.
- */
-const WALKTHROUGH_SCENES = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "leads", label: "Leads" },
-  { key: "detail", label: "Lead Detail" },
-  { key: "followup", label: "Follow-up" },
-];
-const DEMO_LEADS = [
-  { name: "Aarav Mehta", stage: "New Lead", priority: "Medium" },
-  { name: "Priya Sharma", stage: "Contacted", priority: "High" },
-  { name: "Rohan Gupta", stage: "Qualified", priority: "Medium" },
-];
-function ProductWalkthrough() {
-  const [scene, setScene] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setScene((s) => (s + 1) % WALKTHROUGH_SCENES.length), 3800);
-    return () => clearInterval(id);
-  }, []);
-
+function FeatureCard({ icon: Icon, title, description, color, delay }) {
   return (
-    <div className={`rounded-lg border ${BORDER} shadow-lg overflow-hidden bg-[#0B0E14]`}>
-      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/10">
-        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-        <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
-        <span className="ml-3 text-[10px] uppercase tracking-[0.15em] text-white/40">KaizenBMS Workspace</span>
+    <Fade delay={delay} className={`rounded-lg border ${BORDER} p-5 hover:border-indigo-500/30 dark:hover:border-indigo-400/30 transition-colors`}>
+      <span className={`inline-flex items-center justify-center h-9 w-9 rounded-md mb-3 ${color || `bg-indigo-500/10 ${ACCENT}`}`}>
+        <Icon className="h-4.5 w-4.5" />
+      </span>
+      <p className={`font-medium ${TEXT_PRIMARY}`}>{title}</p>
+      <p className={`text-sm mt-1.5 leading-relaxed ${TEXT_SECONDARY}`}>{description}</p>
+    </Fade>
+  );
+}
+
+/**
+ * The feature grid's replacement — a compact, vertical, animated org
+ * chart: one root (this app) branches down into the two real feature
+ * groups, each branching down again into its 4 real features, in a single
+ * row of small colored icon nodes (heading only — no description; this is
+ * a diagram, not a card grid, and each feature's full description is
+ * still one click away in the FAQ/feature grid on smaller screens).
+ * Every connecting line draws itself in and every node cascades in right
+ * after its own line finishes, and — since the whole thing is only ~300px
+ * tall now — it all plays as one cohesive reveal the moment it scrolls
+ * into view, not a slow trickle. Desktop-only (a diagram like this has no
+ * legible mobile form) — small screens get FeatureCard's plain grid
+ * instead, same content (with its own description), no tree.
+ */
+const TREE_V = {
+  rootX: 50, rootY: 14,
+  elbow1Y: 30, midY: 46, elbow2Y: 64,
+  groupX: [25, 75], leafY: 86,
+};
+function treeLeafX(i) { return ((i + 0.5) / ALL_FEATURES.length) * 100; }
+function elbowPathV(x1, y1, yMid, y2, x2) { return `M ${x1} ${y1} V ${yMid} H ${x2} V ${y2}`; }
+
+// A literal `text-*` twin of BORDER_SOFT's own color (never derived via
+// .replace() on the border- string at runtime — same reasoning as
+// HOVER_PRIMARY/HOVER_ACCENT above: Tailwind only ever generates CSS for a
+// class name it can find as literal text in source).
+const TREE_LINE_COLOR = "text-[#E4E3DE] dark:text-white/10";
+
+function TreeConnector({ d, delay }) {
+  return (
+    <motion.path
+      d={d} fill="none" strokeWidth={1.5} vectorEffect="non-scaling-stroke"
+      className={`stroke-current ${TREE_LINE_COLOR}`}
+      initial={{ pathLength: 0, opacity: 0 }}
+      whileInView={{ pathLength: 1, opacity: 1 }} viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.5, delay, ease: "easeInOut" }}
+    />
+  );
+}
+
+function TreeLeaf({ icon: Icon, title, color, x, delay }) {
+  return (
+    <Fade
+      delay={delay}
+      className="absolute flex flex-col items-center gap-1.5 text-center"
+      style={{ left: `${x}%`, top: `${TREE_V.leafY}%`, width: "12%", transform: "translate(-50%, -50%)" }}
+    >
+      <span className={`inline-flex items-center justify-center h-9 w-9 rounded-full shrink-0 ${color}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <p className={`text-[11px] font-medium leading-tight ${TEXT_PRIMARY}`}>{title}</p>
+    </Fade>
+  );
+}
+
+function FeatureTree() {
+  return (
+    <div className="relative hidden lg:block h-[300px] mt-10">
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {FEATURE_GROUPS.map((group, gi) => (
+          <TreeConnector key={`root-${gi}`} d={elbowPathV(TREE_V.rootX, TREE_V.rootY, TREE_V.elbow1Y, TREE_V.midY, TREE_V.groupX[gi])} delay={0.1} />
+        ))}
+        {ALL_FEATURES.map((_, i) => (
+          <TreeConnector key={`mid-${i}`} d={elbowPathV(TREE_V.groupX[Math.floor(i / 4)], TREE_V.midY, TREE_V.elbow2Y, TREE_V.leafY, treeLeafX(i))} delay={0.45 + (i % 4) * 0.06} />
+        ))}
+      </svg>
+
+      {/* Root — this app */}
+      <Fade className="absolute flex flex-col items-center gap-1.5" style={{ left: `${TREE_V.rootX}%`, top: `${TREE_V.rootY}%`, transform: "translate(-50%, -50%)" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/KaizenBMS%20infinity%20logo.png" alt="" className="h-9 w-9 object-contain" />
+        <span className={`text-xs font-medium whitespace-nowrap ${TEXT_PRIMARY}`}>Your Workspace</span>
+      </Fade>
+
+      {/* Mid nodes — the two real feature groups */}
+      {FEATURE_GROUPS.map((group, gi) => (
+        <Fade
+          key={group.label} delay={0.35}
+          className={`absolute whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border ${BORDER} bg-white/80 dark:bg-white/5 backdrop-blur-sm shadow-sm ${TEXT_PRIMARY}`}
+          style={{ left: `${TREE_V.groupX[gi]}%`, top: `${TREE_V.midY}%`, transform: "translate(-50%, -50%)" }}
+        >
+          {group.label}
+        </Fade>
+      ))}
+
+      {/* Leaves — the 8 real features */}
+      {ALL_FEATURES.map((f, i) => (
+        <TreeLeaf key={f.title} {...f} x={treeLeafX(i)} delay={0.5 + (i % 4) * 0.06} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The hero's "connected products" graphic — a chain of real module chips
+ * (each one a feature this app actually has, not a Zoho CRMPlus product
+ * like live chat or visitor tracking, which this platform doesn't) linked
+ * by dashed connectors, each opening into a small honest preview card.
+ * Decorative background circles are plain blurred color, never real or
+ * implied customer photos. Desktop-only (hidden below `lg`) — the layout
+ * has no legible mobile form, so small screens just get the headline.
+ */
+const MODULE_NODES = [
+  {
+    key: "leads", label: "CRM & Leads", icon: Contact2, chip: "bg-indigo-50 text-indigo-600 border-indigo-200",
+    preview: (
+      <div>
+        <p className="text-gray-800 font-medium">Aarav Mehta</p>
+        <p className="text-indigo-600 mt-0.5">New Lead · Follow-up today</p>
       </div>
-      <div className="relative h-72 sm:h-80">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={WALKTHROUGH_SCENES[scene].key}
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
-            className="absolute inset-0 p-5 sm:p-6"
-          >
-            {scene === 0 && (
-              <div>
-                <p className="text-white text-sm font-medium mb-4">Welcome back — here&apos;s today at a glance.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {[["Total Leads", "128"], ["Assigned to Me", "12"], ["Unassigned", "4"], ["Today's Follow-ups", "6"], ["Conversion Rate", "24%"]].map(([label, value]) => (
-                    <div key={label} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                      <p className="text-white/50 text-[10px]">{label}</p>
-                      <p className="text-white text-lg font-semibold mt-1">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 h-16 rounded-lg border border-white/10 bg-white/5 flex items-end gap-1.5 p-2">
-                  {[40, 65, 50, 80, 60, 90, 70].map((h, i) => <span key={i} className="flex-1 rounded-sm bg-indigo-400/70" style={{ height: `${h}%` }} />)}
-                </div>
-              </div>
-            )}
-            {scene === 1 && (
-              <div>
-                <p className="text-white text-sm font-medium mb-4">Leads (128)</p>
-                <div className="rounded-lg border border-white/10 overflow-hidden text-xs">
-                  <div className="grid grid-cols-3 bg-white/5 text-white/50 px-3 py-2">
-                    <span>Name</span><span>Stage</span><span>Priority</span>
-                  </div>
-                  {DEMO_LEADS.map((l) => (
-                    <div key={l.name} className="grid grid-cols-3 px-3 py-2.5 border-t border-white/5 text-white/80">
-                      <span>{l.name}</span>
-                      <span className="text-indigo-300">{l.stage}</span>
-                      <span>{l.priority}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {scene === 2 && (
-              <div>
-                <p className="text-white text-sm font-medium mb-1">Aarav Mehta <span className="text-white/40 font-normal">· New Lead</span></p>
-                <p className="text-white/40 text-[11px] mb-4">Lead Score</p>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-1">
-                  <div className="h-full bg-gradient-to-r from-emerald-400 to-amber-400" style={{ width: "72%" }} />
-                </div>
-                <p className="text-white/60 text-[11px] mb-4">72 / 100</p>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {[["Phone", "+91 90000 00000"], ["Email", "aarav.m@example.com"], ["Source", "Website"], ["Owner", "You"]].map(([label, value]) => (
-                    <div key={label}>
-                      <p className="text-white/40 text-[10px]">{label}</p>
-                      <p className="text-white/85 mt-0.5">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {scene === 3 && (
-              <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
-                <span className="h-11 w-11 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-lg">✓</span>
-                <p className="text-white text-sm font-medium">Follow-up completed</p>
-                <p className="text-white/50 text-xs">Aarav Mehta &middot; notification sent</p>
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+    ),
+  },
+  {
+    key: "messaging", label: "Team Messaging", icon: MessageSquare, chip: "bg-emerald-50 text-emerald-600 border-emerald-200",
+    preview: (
+      <div>
+        <p className="text-gray-400">Ravjeet Kour</p>
+        <p className="text-gray-800 mt-0.5">"Following up with the client now 👍"</p>
       </div>
-      <div className="flex items-center justify-center gap-1.5 py-3 border-t border-white/10">
-        {WALKTHROUGH_SCENES.map((s, i) => (
-          <button
-            key={s.key} type="button" onClick={() => setScene(i)} aria-label={s.label}
-            className={`h-1.5 rounded-full transition-all cursor-pointer ${i === scene ? "w-5 bg-indigo-400" : "w-1.5 bg-white/20"}`}
-          />
+    ),
+  },
+  {
+    key: "notifications", label: "Notifications", icon: Bell, chip: "bg-amber-50 text-amber-600 border-amber-200",
+    preview: (
+      <div>
+        <p className="text-gray-800 font-medium">Payment received</p>
+        <p className="text-gray-400 mt-0.5">INR 12,500 · 2m ago</p>
+      </div>
+    ),
+  },
+  {
+    key: "payments", label: "Payments", icon: CreditCard, chip: "bg-sky-50 text-sky-600 border-sky-200",
+    preview: (
+      <div>
+        <p className="text-gray-800 font-medium">Silver Plan</p>
+        <p className="text-gray-400 mt-0.5">INR 470.82 · incl. GST</p>
+      </div>
+    ),
+  },
+  {
+    key: "reports", label: "Reports", icon: BarChart3, chip: "bg-violet-50 text-violet-600 border-violet-200",
+    preview: (
+      <div>
+        <div className="flex items-end gap-1 h-6 mb-1.5">
+          {[40, 70, 55, 85, 60].map((h, i) => <span key={i} className="flex-1 rounded-sm bg-violet-400" style={{ height: `${h}%` }} />)}
+        </div>
+        <p className="text-gray-400">Conversion 24%</p>
+      </div>
+    ),
+  },
+];
+const DECOR_BLOBS = [
+  { className: "bg-indigo-200/50 dark:bg-indigo-400/10", style: { left: "4%", top: "-10%", width: 90, height: 90 } },
+  { className: "bg-amber-200/40 dark:bg-amber-400/10", style: { left: "22%", top: "60%", width: 70, height: 70 } },
+  { className: "bg-emerald-200/40 dark:bg-emerald-400/10", style: { left: "48%", top: "-20%", width: 60, height: 60 } },
+  { className: "bg-sky-200/50 dark:bg-sky-400/10", style: { left: "68%", top: "55%", width: 80, height: 80 } },
+  { className: "bg-violet-200/40 dark:bg-violet-400/10", style: { left: "90%", top: "-8%", width: 70, height: 70 } },
+];
+function HeroNetwork() {
+  return (
+    <div className="relative hidden lg:block">
+      {DECOR_BLOBS.map((b, i) => (
+        <div key={i} aria-hidden="true" className={`absolute rounded-full blur-2xl pointer-events-none ${b.className}`} style={b.style} />
+      ))}
+      <div className="relative flex items-center">
+        <Sparkles className="h-4 w-4 text-indigo-400 shrink-0 mr-3" />
+        {MODULE_NODES.map((n, i) => (
+          <div key={n.key} className="flex items-center flex-1">
+            {i > 0 && <span className={`flex-1 border-t-2 border-dashed ${BORDER} mx-1`} />}
+            <span className={`shrink-0 inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-full border whitespace-nowrap ${n.chip}`}>
+              <n.icon className="h-3.5 w-3.5" /> {n.label}
+            </span>
+          </div>
+        ))}
+        <Sparkles className="h-4 w-4 text-indigo-400 shrink-0 ml-3" />
+      </div>
+      <div className="relative grid grid-cols-5 gap-3 mt-4">
+        {MODULE_NODES.map((n, i) => (
+          <Fade key={n.key} delay={i * 0.08} className={`rounded-lg border ${BORDER} bg-white dark:bg-white/[0.03] p-3 shadow-sm text-[11px] leading-relaxed ${i % 2 === 1 ? "mt-6" : ""}`}>
+            {n.preview}
+          </Fade>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Cycles through short, factual value props — same wording used
+ * elsewhere on this page (WHY_US/FEATURES), never a new unverified claim
+ * invented just for this strip. */
+const HERO_CAPTIONS = [
+  "CRM, messaging, and billing — one workspace.",
+  "GST-inclusive pricing on every plan, no surprises at checkout.",
+  "Role-based access for every team, every branch.",
+  "Real-time notifications, tuned per employee.",
+];
+function CyclingCaption() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((v) => (v + 1) % HERO_CAPTIONS.length), 2800);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="inline-flex items-center h-8 px-4 rounded-full bg-[#0B0E14] text-white/90 text-xs overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.span key={i} initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -10, opacity: 0 }} transition={{ duration: 0.35 }}>
+          {HERO_CAPTIONS[i]}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ScrollCue() {
+  return (
+    <div className={`relative h-6 w-4 rounded-full border-2 ${TEXT_FAINT} border-current shrink-0`} aria-hidden="true">
+      <motion.span
+        className="absolute left-1/2 top-1 h-1 w-1 -translate-x-1/2 rounded-full bg-current"
+        animate={{ y: [0, 6, 0], opacity: [1, 0, 1] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The recording has plain black pillarboxing down both sides (the capture
+ * canvas was wider than the actual browser content) — this crops that out
+ * rather than showing it. `CROP_FRACTION` is how much of the raw frame's
+ * width is real content (eyeballed against the recording, ~3/4); it's
+ * applied by giving the wrapper an `aspect-ratio` narrower than the
+ * video's own, computed from the video's REAL measured resolution (via
+ * `loadedmetadata`, not a guessed/hardcoded one), then letting
+ * `object-fit: cover` crop in from both sides equally — never stretches
+ * or distorts the picture the way scaling the element itself would.
+ */
+const CROP_FRACTION = 0.75;
+
+/**
+ * The real product walkthrough — an actual screen recording
+ * (`/videos/Kaizen BMS Walkthrough.mp4`), not a recreated animation.
+ * Deliberately shown WITHOUT player controls — no scrubber, no play
+ * button — so it reads as a self-running automated demo (like a looping
+ * GIF) rather than "a video someone has to click play on": it starts the
+ * moment it scrolls into view, loops forever, and pauses again once
+ * scrolled out of view.
+ */
+function WalkthroughVideo() {
+  const ref = useRef(null);
+  const videoRef = useRef(null);
+  const inView = useInView(ref, { amount: 0.5 });
+  const [aspect, setAspect] = useState(16 / 9); // replaced the instant the real video metadata loads
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (inView) el.play().catch(() => {}); // muted autoplay is allowed everywhere; no controls to fall back on if a browser ever blocks it
+    else el.pause();
+  }, [inView]);
+
+  return (
+    <div ref={ref} className="mx-auto" style={{ maxWidth: 900 }}>
+      {/* Monitor bezel — plain hardware grays regardless of site theme
+          (a device frame, like Apple's own mockups, isn't something that
+          should flip with light/dark mode). */}
+      <div className="rounded-xl bg-gradient-to-b from-gray-800 to-gray-900 p-2.5 sm:p-3.5 shadow-[0_35px_60px_-25px_rgba(0,0,0,0.5)] border border-gray-700/60">
+        <div className="rounded-md overflow-hidden bg-black" style={{ aspectRatio: aspect }}>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video
+            ref={videoRef}
+            src="/videos/Kaizen%20BMS%20Walkthrough.mp4"
+            className="w-full h-full object-cover"
+            autoPlay
+            muted
+            loop
+            playsInline
+            disablePictureInPicture
+            preload="auto"
+            onLoadedMetadata={(e) => {
+              const { videoWidth, videoHeight } = e.currentTarget;
+              if (videoWidth && videoHeight) setAspect((videoWidth * CROP_FRACTION) / videoHeight);
+            }}
+          />
+        </div>
+        {/* webcam notch */}
+        <div className="mx-auto mt-2 sm:mt-2.5 h-1 w-8 rounded-full bg-gray-700" />
+      </div>
+      {/* stand neck */}
+      <div className="mx-auto h-5 sm:h-7 w-4 sm:w-5 bg-gradient-to-b from-gray-700 to-gray-800" style={{ clipPath: "polygon(35% 0, 65% 0, 100% 100%, 0% 100%)" }} />
+      {/* base */}
+      <div className="mx-auto h-2.5 w-32 sm:w-44 rounded-full bg-gradient-to-b from-gray-700 to-gray-900 shadow-lg" />
     </div>
   );
 }
@@ -232,7 +464,6 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
     return [...months].sort((a, b) => a - b);
   }, [displayPlans]);
   const [months, setMonths] = useState(1);
-  const [showMatrix, setShowMatrix] = useState(false);
 
   function tierFor(plan) {
     if (months === 1) return { months: 1, price: plan.price };
@@ -262,7 +493,7 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
     { label: "Registration", get: (p) => p.registration_label || "Self" },
     { label: "Development cost", get: (p) => p.development_cost_label || "Free" },
     { label: "Installation cost", get: (p) => p.installation_cost_label || "Free" },
-    { label: `Price (${months === 1 ? "1mo" : `${months}mo`})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${tierFor(p).price}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
+    { label: `Price (${months === 1 ? "1mo" : `${months}mo`}, incl. GST)`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${withGst(tierFor(p).price)}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
     { label: "Employees", get: (p) => p.max_users || "Unlimited" },
     { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
     { label: "Storage", get: (p) => (p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`}` : "Unlimited") },
@@ -272,10 +503,8 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
 
   return (
     <div className={`${PAGE_BG} ${TEXT_PRIMARY} min-h-screen antialiased relative overflow-hidden`}>
-      {/* Decorative radial wash, top-right — straight from the design file
-          (kb-wash), not something Framer Motion's whileInView can express
-          since it's a one-time page-load reveal of a fixed background
-          shape, not tied to any content scrolling into view. */}
+      {/* Decorative radial wash, top-right — a one-time page-load reveal of
+          a fixed background shape, not tied to scroll position. */}
       <div
         aria-hidden="true"
         className="animate-kb-wash absolute top-0 -right-35 w-130 h-130 rounded-full pointer-events-none"
@@ -286,7 +515,11 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
           <OffersMarquee offers={offers} />
         </div>
       )}
-      <div className="max-w-[1280px] mx-auto px-6 sm:px-10 py-10 sm:py-14 relative">
+      {/* Top padding is deliberately minimal — the page should start near
+          the very top of the viewport, and only sit lower when the offers
+          marquee above is actually rendered (its own height does that
+          naturally); it shouldn't reserve a big empty gap for itself. */}
+      <div className="max-w-[1280px] mx-auto px-6 sm:px-10 pt-4 sm:pt-6 pb-10 sm:pb-14 relative">
 
         {/* ============================================================
             MASTHEAD
@@ -300,15 +533,19 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
                 Kaizen <span className={ACCENT}>BMS</span>
               </p>
             </div>
-            <div className="flex items-center gap-5 flex-wrap">
-              <a href="#modules" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Modules</a>
-              <a href="#pricing" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Packs</a>
-              <a href="#compare" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Compare</a>
-              <Link href="/login" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors`}>Log in</Link>
-              <Link href="/register" className={`text-sm font-medium border-b border-current ${TEXT_PRIMARY} pb-0.5`}>Start Free</Link>
+            {/* Glassmorphic nav pill — one translucent, blurred bar holding
+                every link, with "Start Free" as a solid accent pill inside
+                it rather than a separate plain-text link. */}
+            <div className={`flex items-center gap-1 flex-wrap rounded-full border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/[0.04] backdrop-blur-md shadow-sm px-2 py-1.5`}>
+              <a href="#modules" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Modules</a>
+              <a href="#pricing" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Packs</a>
+              <a href="#compare" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Compare</a>
+              <a href="#faq" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>FAQ</a>
+              <Link href="/login" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Log in</Link>
+              <Link href="/register" className="text-sm font-medium px-4 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-colors">Start Free</Link>
             </div>
           </div>
-          {/* kb-rule — draws in left-to-right on load, exactly as specified */}
+          {/* kb-rule — draws in left-to-right on load */}
           <div className={`animate-kb-rule border-t-2 ${BORDER}`} />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 py-3">
             <MicroLabel>CRM · ERP · Automation</MicroLabel>
@@ -319,56 +556,85 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
         </header>
 
         {/* ============================================================
-            HERO — kb-rise on load (not scroll-triggered): the design
-            file only ever animates what's already in the first viewport
-            (this wash blob + this hero), nothing further down the page.
+            HERO — kb-rise on load (not scroll-triggered): this is the
+            first thing in the viewport, so it animates in immediately
+            rather than waiting for a scroll event that hasn't happened.
             ============================================================ */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-10 lg:gap-14 items-end pt-12 sm:pt-16 pb-10">
-          <div className="animate-kb-rise">
-            <MicroLabel className="mb-4">Business management system</MicroLabel>
-            <h1 className={`${SERIF} font-bold tracking-tight leading-[0.98] text-4xl sm:text-6xl`}>
-              Win the customer. Then <span className={`italic ${ACCENT}`}>run</span> the whole business.
-            </h1>
-            <p className={`mt-6 max-w-lg text-lg leading-relaxed ${TEXT_SECONDARY}`}>
-              Customers, money, documents, people and payments in one system. Start with CRM, switch on the rest when you need it.
-            </p>
-            <div className="mt-7 flex items-center gap-5 flex-wrap">
-              <Link href="/register" className={`inline-flex items-center gap-1.5 text-sm font-medium px-5 py-2.5 rounded-md border ${TEXT_PRIMARY} border-current hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>
-                Start Free →
-              </Link>
-              <a href="#compare" className={`text-sm border-b ${BORDER} ${TEXT_SECONDARY} pb-0.5`}>Compare the packs</a>
-              <span className={`text-sm ${TEXT_FAINT}`}>30-day trial, no card</span>
+        <div className="pt-8 sm:pt-10 pb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-10 lg:gap-14 items-center">
+            <div className="animate-kb-rise">
+              <MicroLabel className="mb-4">Business management system</MicroLabel>
+              <h1 className={`${SERIF} font-bold tracking-tight leading-[0.98] text-4xl sm:text-6xl`}>
+                One workspace. Every part of your business, <span className={`italic ${ACCENT}`}>connected</span>.
+              </h1>
+              <p className={`mt-6 max-w-lg text-lg leading-relaxed ${TEXT_SECONDARY}`}>
+                CRM, messaging, notifications, and billing — under one login. Start with leads, switch on the rest when you're ready.
+              </p>
+              <div className="mt-7 flex items-center gap-4 flex-wrap">
+                <Link href="/register" className={`inline-flex items-center gap-1.5 text-sm font-medium px-5 py-2.5 rounded-md border ${TEXT_PRIMARY} border-current hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>
+                  Start Free →
+                </Link>
+                <span className={`text-sm ${TEXT_FAINT}`}>30-day trial, no card</span>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {["Multi-tenant", "Role-based access", "GST-ready billing"].map((t) => (
+                  <span key={t} className={`text-[11px] px-2.5 py-1 rounded-full border ${BORDER_SOFT} ${TEXT_FAINT}`}>{t}</span>
+                ))}
+              </div>
+            </div>
+            <div className="animate-kb-rise" style={{ animationDelay: "0.18s" }}>
+              <div className={`relative rounded-xl border ${BORDER} overflow-hidden aspect-[4/3] bg-gradient-to-br from-indigo-500/[0.06] to-transparent`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/images/platform-hero-illustration.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+              </div>
             </div>
           </div>
-          <div id="modules" className="animate-kb-rise" style={{ animationDelay: "0.18s" }}>
-            <MicroLabel className="mb-4">What&apos;s inside</MicroLabel>
-            <ol className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-              {SERVICES.map((s, i) => (
-                <li key={s.label} className="flex items-baseline gap-2.5">
-                  <span className={`text-[11px] tabular-nums ${ACCENT}`}>{String(i + 1).padStart(2, "0")}</span>
-                  <span>{s.label}</span>
-                </li>
-              ))}
-            </ol>
+
+          <div className="mt-14 animate-kb-rise" style={{ animationDelay: "0.3s" }}>
+            <HeroNetwork />
+            <div className="hidden lg:flex items-center justify-between mt-6">
+              <CyclingCaption />
+              <ScrollCue />
+            </div>
           </div>
         </div>
 
         {/* ============================================================
-            PRODUCT WALKTHROUGH — see ProductWalkthrough's own doc comment
-            for why this is a recreation rather than the design file's own
-            embedded animation.
+            FEATURES — an animated horizontal tree on desktop (see
+            FeatureTree's own doc comment), a plain grid on smaller screens
+            where a branching diagram this wide has no legible form. Same
+            8 real features, same real copy, either way.
             ============================================================ */}
-        <Fade className="pb-10">
-          <ProductWalkthrough />
-        </Fade>
+        <section id="modules" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-2`}>
+          <MicroLabel className="mb-2">What&apos;s inside</MicroLabel>
+          <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Everything a growing team needs, one workspace.</h2>
+          <FeatureTree />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-4 mt-8">
+            {ALL_FEATURES.map((f, i) => <FeatureCard key={f.title} {...f} delay={(i % 4) * 0.05} />)}
+          </div>
+        </section>
 
         {/* ============================================================
-            PRICING
+            PRODUCT WALKTHROUGH — the real screen recording, see
+            WalkthroughVideo's own doc comment.
             ============================================================ */}
-        <section id="pricing" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-6`}>
+        <section id="walkthrough" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12 scroll-mt-6`}>
+          <Fade className="mb-6">
+            <MicroLabel className="mb-2">See it in action</MicroLabel>
+            <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>A tour of your new workspace.</h2>
+          </Fade>
+          <Fade delay={0.05}>
+            <WalkthroughVideo />
+          </Fade>
+        </section>
+
+        {/* ============================================================
+            PRICING — permanent, never hidden behind a toggle.
+            ============================================================ */}
+        <section id="pricing" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
           <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
             <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Plans</h2>
-            <p className={`text-xs ${TEXT_FAINT}`}>Per company, per month. Longer terms cost less.</p>
+            <p className={`text-xs ${TEXT_FAINT}`}>Per company, per month, incl. {GST_LABEL}. Longer terms cost less.</p>
           </div>
 
           {pricingBanner && (
@@ -430,12 +696,16 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
                         <span className="text-2xl font-semibold tabular-nums">Free</span>
                       ) : (
                         <>
-                          <span className="text-2xl font-semibold tabular-nums">{p.currency} {tier.price}</span>
+                          <span className="text-2xl font-semibold tabular-nums">{p.currency} {withGst(tier.price)}</span>
                           <span className={`text-xs ${TEXT_FAINT}`}>/{p.pricing_model === "per_user" ? "user/mo" : "mo"}</span>
                         </>
                       )}
                     </p>
-                    <p className={`text-xs ${TEXT_FAINT} mt-1`}>{isFree ? (p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started.") : p.description || "Billed monthly."}</p>
+                    <p className={`text-xs ${TEXT_FAINT} mt-1`}>
+                      {isFree
+                        ? (p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started.")
+                        : `${p.description ? `${p.description} · ` : ""}Incl. ${GST_LABEL} (${p.currency} ${tier.price} + GST)`}
+                    </p>
 
                     <div className={`mt-4 pt-4 border-t ${BORDER_SOFT} space-y-1.5 text-sm ${TEXT_SECONDARY} flex-1`}>
                       <p>{p.max_users ? `${p.max_users} users` : "Unlimited users"}</p>
@@ -466,46 +736,75 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
         </section>
 
         {/* ============================================================
-            FEATURE MATRIX — collapsed by default, matching the v2 mockup's
-            own "+ Show / − Hide the full feature matrix" toggle.
+            FEATURE / PLAN COMPARISON — permanent, always rendered (no
+            "show/hide" toggle) since this is the second thing the user
+            asked to always keep visible alongside pricing itself.
             ============================================================ */}
         {displayPlans.length > 0 && (
           <section id="compare" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
-            <button
-              type="button" onClick={() => setShowMatrix((s) => !s)}
-              className={`text-lg font-medium ${TEXT_PRIMARY} cursor-pointer`}
-            >
-              {showMatrix ? "−  Hide" : "+  Show"} the full feature matrix
-            </button>
-            {showMatrix && (
-              <Fade className="overflow-x-auto mt-6">
-                <table className="w-full min-w-140 text-sm">
-                  <thead>
-                    <tr className={`border-b ${BORDER} text-left`}>
-                      <th className={`py-2.5 pr-4 font-medium ${TEXT_FAINT} text-xs uppercase tracking-wide`}>Feature</th>
-                      {displayPlans.map((p) => <th key={p.id} className={`py-2.5 px-4 font-medium ${planTheme(p.name)?.text || ""}`}>{p.name}</th>)}
+            <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight mb-6`}>Compare every plan</h2>
+            <Fade className="overflow-x-auto">
+              <table className="w-full min-w-140 text-sm">
+                <thead>
+                  <tr className={`border-b ${BORDER} text-left`}>
+                    <th className={`py-2.5 pr-4 font-medium ${TEXT_FAINT} text-xs uppercase tracking-wide`}>Feature</th>
+                    {displayPlans.map((p) => <th key={p.id} className={`py-2.5 px-4 font-medium ${planTheme(p.name)?.text || ""}`}>{p.name}</th>)}
+                  </tr>
+                </thead>
+                <tbody className={`divide-y ${BORDER_SOFT}`}>
+                  {comparisonRows.map((row) => (
+                    <tr key={row.label}>
+                      <td className={`py-2.5 pr-4 ${TEXT_SECONDARY}`}>{row.label}</td>
+                      {displayPlans.map((p) => {
+                        const value = row.get(p);
+                        return (
+                          <td key={p.id} className="py-2.5 px-4">
+                            {typeof value === "boolean" ? <span className={TEXT_FAINT}>{value ? "•" : "—"}</span> : value}
+                          </td>
+                        );
+                      })}
                     </tr>
-                  </thead>
-                  <tbody className={`divide-y ${BORDER_SOFT}`}>
-                    {comparisonRows.map((row) => (
-                      <tr key={row.label}>
-                        <td className={`py-2.5 pr-4 ${TEXT_SECONDARY}`}>{row.label}</td>
-                        {displayPlans.map((p) => {
-                          const value = row.get(p);
-                          return (
-                            <td key={p.id} className="py-2.5 px-4">
-                              {typeof value === "boolean" ? <span className={TEXT_FAINT}>{value ? "•" : "—"}</span> : value}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Fade>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </Fade>
           </section>
         )}
+
+        {/* ============================================================
+            WHY US — factual differentiators, deliberately no invented
+            customer counts, logos, or attributed quotes.
+            ============================================================ */}
+        <section id="why" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
+          <MicroLabel className="mb-2">Why teams choose us</MicroLabel>
+          <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Built for how growing teams actually work.</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 mt-8">
+            {WHY_US.map((w, i) => (
+              <Fade key={w.title} delay={i * 0.05} className={`pb-6 border-b ${BORDER_SOFT}`}>
+                <p className={`font-medium ${TEXT_PRIMARY}`}>{w.title}</p>
+                <p className={`text-sm mt-1.5 leading-relaxed ${TEXT_SECONDARY}`}>{w.description}</p>
+              </Fade>
+            ))}
+          </div>
+        </section>
+
+        {/* ============================================================
+            FAQ
+            ============================================================ */}
+        <section id="faq" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
+          <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight mb-6`}>Frequently asked questions</h2>
+          <Fade className={`divide-y ${BORDER_SOFT} max-w-2xl`}>
+            {FAQS.map((f) => (
+              <details key={f.q} className="group py-4 [&::-webkit-details-marker]:hidden [&::marker]:hidden">
+                <summary className="flex items-center justify-between gap-4 cursor-pointer list-none">
+                  <span className={`text-sm font-medium ${TEXT_PRIMARY}`}>{f.q}</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform group-open:rotate-180 ${TEXT_FAINT}`} />
+                </summary>
+                <p className={`text-sm mt-2.5 leading-relaxed ${TEXT_SECONDARY}`}>{f.a}</p>
+              </details>
+            ))}
+          </Fade>
+        </section>
 
         {/* ============================================================
             CTA
@@ -533,8 +832,8 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
             FOOTER
             ============================================================ */}
         <footer className={`border-t ${BORDER} mt-14 pt-8`}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 pb-8">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-8 pb-8">
+            <div className="sm:col-span-2 sm:pr-8">
               <div className="flex items-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/images/KaizenBMS%20infinity%20logo.png" alt="" className="h-10 w-auto object-contain" />
@@ -553,6 +852,8 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
               <div className="flex flex-col gap-1.5">
                 <Link href="/register" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Start Free</Link>
                 <Link href="/login" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Sign In</Link>
+                <a href="#compare" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Compare Plans</a>
+                <a href="#faq" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>FAQ</a>
                 <Link href="/blog" className={`text-sm ${TEXT_SECONDARY} ${HOVER_PRIMARY} transition-colors w-fit`}>Blog</Link>
               </div>
             </div>

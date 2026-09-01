@@ -4,10 +4,11 @@ import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
-import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, updateRazorpaySubscriptionQuantity, cancelRazorpaySubscription, razorpayPeriodForMonths } from "@/lib/payments/razorpaySubscriptions";
+import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription, verifyRazorpaySubscriptionSignature, updateRazorpaySubscription, updateRazorpaySubscriptionQuantity, cancelRazorpaySubscription, razorpayPeriodForMonths, billingCyclePeriod } from "@/lib/payments/razorpaySubscriptions";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
 import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn, hasTieredPlansSchema, hasDurationPricingSchema, hasCommitmentMonthsColumn } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
+import { withGst } from "@/lib/helpers/gst";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
@@ -93,14 +94,39 @@ async function ensureDurationRazorpayPlanId(plan, tier) {
   return razorpayPlanId;
 }
 
-export async function syncPlanToRazorpay(planId, operatorId) {
+/**
+ * `force` re-creates a brand-new Razorpay Plan (a new plan_XXXX id) even
+ * though one is already cached, instead of the normal idempotent no-op —
+ * the ONLY way to pick up a change to how createRazorpayPlan computes its
+ * amount (e.g. the GST rate) for a plan that was already synced before
+ * that change shipped. This never touches or cancels any subscription
+ * already billing against the old Razorpay plan_id — Razorpay has no
+ * "edit a plan's amount" API, so existing subscribers keep renewing at
+ * their original (pre-change) amount until they separately switch plans;
+ * `force` only affects what NEW checkouts/plan-switches get quoted. Also
+ * re-syncs every configured commitment tier (plan_duration_prices) for
+ * the same reason, since those go through the same createRazorpayPlan.
+ */
+export async function syncPlanToRazorpay(planId, operatorId, { force = false } = {}) {
   if (!(await hasPlanRazorpayColumns())) assertBillingSchemaReady();
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ?`, [planId]);
   if (!plan) { const e = new Error("Plan not found."); e.status = 404; throw e; }
 
+  if (force && plan.razorpay_plan_id) {
+    await pool.query(`UPDATE plans SET razorpay_plan_id = NULL WHERE id = ?`, [planId]);
+    plan.razorpay_plan_id = null;
+  }
   const razorpayPlanId = await ensureRazorpayPlanId(plan);
 
-  await logActivity({ userId: operatorId, module: "platform", action: "plan_synced_to_razorpay", entityType: "plan", entityId: planId, description: `Synced plan "${plan.name}" to Razorpay (plan=${razorpayPlanId})` }).catch(() => {});
+  if (force && (await hasDurationPricingSchema())) {
+    const [tiers] = await pool.query(`SELECT * FROM plan_duration_prices WHERE plan_id = ? AND status = 'active'`, [planId]);
+    for (const tier of tiers) {
+      if (tier.razorpay_plan_id) await pool.query(`UPDATE plan_duration_prices SET razorpay_plan_id = NULL WHERE id = ?`, [tier.id]);
+      await ensureDurationRazorpayPlanId(plan, { ...tier, razorpay_plan_id: null });
+    }
+  }
+
+  await logActivity({ userId: operatorId, module: "platform", action: "plan_synced_to_razorpay", entityType: "plan", entityId: planId, description: `${force ? "Re-synced" : "Synced"} plan "${plan.name}" to Razorpay (plan=${razorpayPlanId})` }).catch(() => {});
   return { razorpayPlanId };
 }
 
@@ -215,9 +241,18 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
     seatQuantity = Math.max(1, userCount);
   }
 
+  // A commitment tier's real period/interval (e.g. 36 months ->
+  // period="yearly", interval=3) is NOT the same thing as the plan's own
+  // billing_cycle label — passing billing_cycle straight through here for
+  // a tiered checkout used to leave total_count keyed off nothing (falling
+  // back to a flat, wrong default) exactly what caused Razorpay to reject
+  // any commitment longer than a year with "Exceeds the maximum
+  // total_count". Always compute the ACTUAL period/interval this specific
+  // checkout bills against, whichever of the two paths it took.
+  const { period, interval } = tier ? razorpayPeriodForMonths(months) : billingCyclePeriod(plan.billing_cycle);
   const { razorpaySubscriptionId } = await createRazorpaySubscription({
     razorpayPlanId: razorpayPlanIdForCheckout,
-    billingCycle: tier ? undefined : plan.billing_cycle,
+    period, interval,
     quantity: seatQuantity,
     customerEmail: subscriberEmail,
     customerName: subscriberName,
@@ -509,7 +544,7 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paym
     if (!wasAlreadyActive) {
       const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [planId]);
       if (paymentId && plan?.price) {
-        const chargedAmount = Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0));
+        const chargedAmount = withGst(Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0)));
         await recordSubscriptionPayment({
           companyId: row.company_id, subscriptionId: row.id, planId, gateway: "razorpay",
           amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",

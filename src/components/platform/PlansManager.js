@@ -132,22 +132,30 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
 
 function SyncToRazorpayButton({ plan, onSynced }) {
   const [busy, setBusy] = useState(false);
-  async function sync() {
+  async function sync(force) {
+    if (force && !confirm(`Re-sync "${plan.name}" to Razorpay? This mints a new Razorpay plan reflecting the current price (e.g. after a GST rate change) for NEW checkouts and plan-switches — subscribers already billing on the old plan keep renewing at their existing amount until they switch.`)) return;
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/platform/plans/${plan.id}/razorpay-sync`, { method: "POST" });
+      const res = await apiFetch(`/api/platform/plans/${plan.id}/razorpay-sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to sync.");
-      toast.success(`"${plan.name}" synced to Razorpay.`);
+      toast.success(`"${plan.name}" ${force ? "re-synced" : "synced"} to Razorpay.`);
       onSynced();
     } catch (err) { toast.error(err.message); } finally { setBusy(false); }
   }
   if (plan.razorpay_plan_id) {
-    return <span className="flex items-center gap-1 text-[11px] text-emerald-400"><Check className="h-3 w-3" /> Synced to Razorpay</span>;
+    return (
+      <span className="flex items-center gap-2 text-[11px]">
+        <span className="flex items-center gap-1 text-emerald-400"><Check className="h-3 w-3" /> Synced to Razorpay</span>
+        <button onClick={() => sync(true)} disabled={busy} title="Mint a new Razorpay plan reflecting the current price/GST for new checkouts" className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />} Re-sync
+        </button>
+      </span>
+    );
   }
   if (!(Number(plan.price) > 0)) return null; // free/trial plans are never synced
   return (
-    <button onClick={sync} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
+    <button onClick={() => sync(false)} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60 transition">
       {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />} Sync to Razorpay
     </button>
   );

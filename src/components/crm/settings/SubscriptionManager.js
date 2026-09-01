@@ -9,6 +9,8 @@ import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
+import { withGst, GST_LABEL } from "@/lib/helpers/gst";
+import InvoicePreview from "@/components/billing/InvoicePreview";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 
@@ -45,6 +47,12 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
   const [durationByPlan, setDurationByPlan] = useState({}); // plan.id -> chosen commitment length in months, default 1
   const getDuration = (plan) => durationByPlan[plan.id] || 1;
+  // Set the moment "Subscribe"/"Switch Now"/"At Renewal" is clicked — shows
+  // an invoice preview (see InvoicePreview) in place of the plan grid,
+  // requiring an explicit "Proceed to Pay" before the real checkout/
+  // plan-change actually fires. `when` mirrors changePlanInPlace's own
+  // values ("now"/"cycle_end"), or null for a fresh-checkout Subscribe.
+  const [pendingInvoice, setPendingInvoice] = useState(null); // { plan, when }
 
   // A company already on an active Razorpay subscription switches plans in
   // place (changeCompanyRazorpayPlan) instead of starting a whole new
@@ -64,23 +72,21 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const anyPlanOffersChoice = plans.some((p) => p.hasBillDesk && p.hasRazorpay);
 
   // Arriving here via the public pricing page's CTA (?checkoutPlan=X — see
-  // platform-home/page.js and SubscriptionSettingsPage) — the whole point
-  // of that flow is "go straight to payment", so this fires the real
-  // checkout itself rather than making the visitor click the plan again.
-  // Only auto-fires for a plan billed purely through Razorpay (never
-  // ambiguous about which gateway) and never twice, even if this effect
-  // re-runs for an unrelated reason.
+  // platform-home/page.js and SubscriptionSettingsPage) skips having to
+  // find and click the plan again, but still goes through the same invoice
+  // preview as clicking it here directly would — "choosing" a plan always
+  // shows the breakdown before anything is actually charged. Only
+  // auto-fires for a plan billed purely through Razorpay (never ambiguous
+  // about which gateway) and never twice, even if this effect re-runs for
+  // an unrelated reason.
   const autoFiredRef = useRef(false);
   useEffect(() => {
     if (!autoCheckout || autoFiredRef.current) return;
     const plan = plans.find((p) => p.id === autoCheckout.planId);
     if (!plan || plan.id === currentPlanId || !plan.hasRazorpay || plan.hasBillDesk) return;
     autoFiredRef.current = true;
-    if (canSwitchInPlace) {
-      changePlanInPlace(plan, "now"); // duration tiers aren't supported on the in-place switch path yet — see its own doc comment
-    } else {
-      choosePlan(plan, autoCheckout.months || 1);
-    }
+    if (!canSwitchInPlace) setDurationByPlan((d) => ({ ...d, [plan.id]: autoCheckout.months || 1 }));
+    setPendingInvoice({ plan, when: canSwitchInPlace ? "now" : null }); // duration tiers aren't supported on the in-place switch path yet — see its own doc comment
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoCheckout, plans, currentPlanId, canSwitchInPlace]);
 
@@ -224,6 +230,24 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
+        {pendingInvoice ? (
+          <InvoiceStep
+            pendingInvoice={pendingInvoice}
+            getDuration={getDuration}
+            discountFor={discountFor}
+            appliedCoupon={appliedCoupon}
+            gateway={gateway}
+            checkingOut={checkingOut}
+            onBack={() => setPendingInvoice(null)}
+            onProceed={() => {
+              const { plan, when } = pendingInvoice;
+              setPendingInvoice(null);
+              if (when) changePlanInPlace(plan, when);
+              else choosePlan(plan);
+            }}
+          />
+        ) : (
+        <>
         {!anyGatewayAvailable && (
           <div className="mx-6 mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -281,12 +305,13 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                 {isCurrent && <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
                 <p className="text-foreground font-medium mt-1">{plan.name}</p>
                 {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
-                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {Number(plan.price).toLocaleString()}</p>}
+                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {withGst(Number(plan.price)).toLocaleString()}</p>}
                 <p className={`text-foreground text-lg font-semibold ${discountedPrice != null ? "" : "mt-2"}`}>
-                  {isPaid ? `${plan.currency} ${(discountedPrice ?? Number(plan.price)).toLocaleString()}` : "Free"}
+                  {isPaid ? `${plan.currency} ${withGst(discountedPrice ?? Number(plan.price)).toLocaleString()}` : "Free"}
                   {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
                   {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
                 </p>
+                {isPaid && <p className="text-muted-foreground text-[10px] mt-0.5">Incl. {GST_LABEL} (base {plan.currency} {(discountedPrice ?? Number(plan.price)).toLocaleString()})</p>}
                 {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
                 <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
                   <li>Registration: {plan.registration_label || "Self"}</li>
@@ -306,7 +331,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                           key={opt.durationMonths} type="button" onClick={() => setDurationByPlan((d) => ({ ...d, [plan.id]: opt.durationMonths }))}
                           className={`px-2 py-1 rounded-md border text-[10px] cursor-pointer transition ${getDuration(plan) === opt.durationMonths ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
                         >
-                          {opt.durationMonths}mo · {plan.currency}{opt.price}/mo
+                          {opt.durationMonths}mo · {plan.currency}{withGst(opt.price)}/mo
                         </button>
                       ))}
                     </div>
@@ -315,14 +340,14 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                 {!isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay ? (
                   <div className="mt-3 flex gap-2">
                     <button
-                      onClick={() => changePlanInPlace(plan, "now")}
+                      onClick={() => setPendingInvoice({ plan, when: "now" })}
                       disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
                       className="btn-brand flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium disabled:opacity-50 cursor-pointer"
                     >
                       {checkingOut === `${plan.id}:now` && <Loader2 className="h-3 w-3 animate-spin" />} Switch Now
                     </button>
                     <button
-                      onClick={() => changePlanInPlace(plan, "cycle_end")}
+                      onClick={() => setPendingInvoice({ plan, when: "cycle_end" })}
                       disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
                       title={currentEndsAt ? `Effective ${formatDate(currentEndsAt, timezone)}` : undefined}
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-xs font-medium disabled:opacity-50 cursor-pointer hover:border-indigo-500/30"
@@ -332,7 +357,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                   </div>
                 ) : (
                 <button
-                  onClick={() => choosePlan(plan)}
+                  onClick={() => (isPaid ? setPendingInvoice({ plan, when: null }) : choosePlan(plan))}
                   disabled={isCurrent || checkingOut === plan.id || (isPaid && !plan.hasBillDesk && !plan.hasRazorpay)}
                   className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
                 >
@@ -345,8 +370,41 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             );
           })}
         </div>
+        </>
+        )}
       </motion.div>
       </ModalFocusTrap>
+    </div>
+  );
+}
+
+/** The invoice-preview panel shown between choosing a plan and actually
+ * firing the checkout/plan-change — same InvoicePreview component
+ * RegisterFlow.js uses, fed from whichever button (Subscribe / Switch Now
+ * / At Renewal) set `pendingInvoice`. */
+function InvoiceStep({ pendingInvoice, getDuration, discountFor, appliedCoupon, gateway, checkingOut, onBack, onProceed }) {
+  const { plan, when } = pendingInvoice;
+  const months = when ? 1 : getDuration(plan); // in-place switching doesn't support commitment tiers yet
+  const tier = months > 1 ? plan.durationTiers?.find((t) => t.durationMonths === months) : null;
+  const baseAmount = tier ? Number(tier.price) * months : Number(plan.price);
+  const discount = discountFor(plan);
+  const effectiveGateway = plan.hasBillDesk && plan.hasRazorpay ? gateway : plan.hasBillDesk ? "billdesk" : "razorpay";
+  const busyKey = when ? `${plan.id}:${when}` : plan.id;
+  return (
+    <div className="p-6">
+      <InvoicePreview
+        planName={plan.name}
+        billingLabel={months > 1 ? `Every ${months} months` : "Every 1 month"}
+        currency={plan.currency}
+        baseAmount={baseAmount}
+        discountAmount={discount}
+        discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
+        gatewayLabel={GATEWAY_LABEL[effectiveGateway]}
+        proceedLabel={when === "cycle_end" ? "Confirm — Switch at Renewal" : "Proceed to Pay"}
+        onProceed={onProceed}
+        onBack={onBack}
+        busy={checkingOut === busyKey}
+      />
     </div>
   );
 }

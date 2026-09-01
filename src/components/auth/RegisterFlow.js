@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
+import { withGst, GST_LABEL } from "@/lib/helpers/gst";
+import InvoicePreview from "@/components/billing/InvoicePreview";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 const STEPS = ["Company", "Admin", "Plan", "Confirm"];
@@ -245,18 +247,8 @@ export default function RegisterFlow() {
           {step === 0 && (
             <>
               <p className="flex items-center gap-2 text-white/70 text-xs uppercase tracking-wide mb-1"><Building2 className="h-3.5 w-3.5" /> Company Information</p>
-              <Field label="Company Name *"><input required value={form.companyName} onChange={(e) => set("companyName", e.target.value)} className={inputClass} /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Company Email"><input type="email" value={form.companyEmail} onChange={(e) => set("companyEmail", e.target.value)} className={inputClass} /></Field>
-                <Field label="Company Phone"><input value={form.companyPhone} onChange={(e) => set("companyPhone", e.target.value)} className={inputClass} /></Field>
-              </div>
-              <Field label="Website"><input value={form.companyWebsite} onChange={(e) => set("companyWebsite", e.target.value)} placeholder="https://" className={inputClass} /></Field>
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Country"><input value={form.companyCountry} onChange={(e) => set("companyCountry", e.target.value)} className={inputClass} /></Field>
-                <Field label="State"><input value={form.companyState} onChange={(e) => set("companyState", e.target.value)} className={inputClass} /></Field>
-                <Field label="City"><input value={form.companyCity} onChange={(e) => set("companyCity", e.target.value)} className={inputClass} /></Field>
-              </div>
-              <Field label="Address"><input value={form.companyAddress} onChange={(e) => set("companyAddress", e.target.value)} className={inputClass} /></Field>
+              <Field label="Company Name *"><input required autoFocus value={form.companyName} onChange={(e) => set("companyName", e.target.value)} className={inputClass} /></Field>
+              <p className="text-white/30 text-xs">That's all we need to get started — email, phone, address and the rest can be filled in later from Settings once you're inside your workspace.</p>
             </>
           )}
 
@@ -291,12 +283,13 @@ export default function RegisterFlow() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className="text-white text-sm font-medium">{p.name}</p>
-                          <p className="text-white text-sm">{p.price ? `${p.currency} ${p.price}${p.pricing_model === "per_user" ? "/user/mo" : `/${p.billing_cycle === "yearly" ? "yr" : "mo"}`}` : "Free"}</p>
+                          <p className="text-white text-sm">{p.price ? `${p.currency} ${withGst(p.price)}${p.pricing_model === "per_user" ? "/user/mo" : `/${p.billing_cycle === "yearly" ? "yr" : "mo"}`}` : "Free"}</p>
                         </div>
                         {p.description && <p className="text-white/50 text-xs mt-0.5">{p.description}</p>}
                         <p className="text-white/40 text-xs mt-0.5">
                           {p.trial_days ? `${p.trial_days}-day free trial · ` : ""}
                           {p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
+                          {p.price ? ` · incl. ${GST_LABEL}` : ""}
                         </p>
                       </div>
                     </label>
@@ -314,13 +307,13 @@ export default function RegisterFlow() {
                         className={`px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition text-center ${form.durationMonths === opt.months ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"}`}
                       >
                         <p className="font-medium">{opt.months} {opt.months === 1 ? "month" : "months"}</p>
-                        <p className="text-white/40">{selectedPlan.currency} {opt.price}/mo</p>
+                        <p className="text-white/40">{selectedPlan.currency} {withGst(opt.price)}/mo</p>
                       </button>
                     ))}
                   </div>
                   {selectedDurationOption && selectedDurationOption.months > 1 && (
                     <p className="text-white/40 text-xs mt-1.5">
-                      Billed {selectedPlan.currency} {(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} every {selectedDurationOption.months} months{selectedPlan.pricing_model === "per_user" ? ", per user" : ""}.
+                      Billed {selectedPlan.currency} {withGst(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} every {selectedDurationOption.months} months{selectedPlan.pricing_model === "per_user" ? ", per user" : ""} (incl. {GST_LABEL}).
                     </p>
                   )}
                 </div>
@@ -375,20 +368,25 @@ export default function RegisterFlow() {
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm space-y-2">
                 <div className="flex justify-between"><span className="text-white/40">Company</span><span className="text-white">{form.companyName}</span></div>
                 <div className="flex justify-between"><span className="text-white/40">Admin</span><span className="text-white">{form.adminName} ({form.adminEmail})</span></div>
-                <div className="flex justify-between"><span className="text-white/40">Plan</span><span className="text-white">{selectedPlan?.name}</span></div>
                 {selectedPlan?.trial_days ? (
                   <div className="flex justify-between"><span className="text-white/40">Trial</span><span className="text-white">{selectedPlan.trial_days} days, starting today</span></div>
                 ) : null}
-                {planRequiresPayment && appliedCoupon && (
-                  <div className="flex justify-between"><span className="text-white/40">Coupon</span><span className="text-emerald-400">{appliedCoupon.code} (-{couponDiscount > 0 ? `${selectedPlan.currency} ${couponDiscount.toLocaleString()}` : `${appliedCoupon.discountValue}%`})</span></div>
-                )}
               </div>
               {planRequiresPayment ? (
-                <p className="text-indigo-300 text-xs bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3">
-                  This plan requires payment. Submitting creates your account, then sends you to {GATEWAY_LABEL[effectiveGateway] || "your chosen payment method"} to complete a secure {selectedPlan?.currency} {selectedDurationOption && selectedDurationOption.months > 1
-                    ? `${(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} charge, billed every ${selectedDurationOption.months} months`
-                    : `${(Number(selectedPlan?.price) - couponDiscount).toLocaleString()} / ${selectedPlan?.billing_cycle}`} subscription. Your plan activates automatically once payment is confirmed.
-                </p>
+                <InvoicePreview
+                  dark
+                  planName={selectedPlan?.name}
+                  billingLabel={selectedDurationOption && selectedDurationOption.months > 1 ? `Every ${selectedDurationOption.months} months` : `Every 1 month`}
+                  currency={selectedPlan?.currency}
+                  baseAmount={selectedDurationOption && selectedDurationOption.months > 1 ? Number(selectedDurationOption.price) * selectedDurationOption.months : Number(selectedPlan?.price)}
+                  discountAmount={couponDiscount}
+                  discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
+                  gatewayLabel={GATEWAY_LABEL[effectiveGateway]}
+                  proceedLabel="Proceed to Pay"
+                  onProceed={submit}
+                  onBack={back}
+                  busy={submitting}
+                />
               ) : (
                 <p className="text-white/30 text-xs">No payment required — your trial starts immediately after you submit.</p>
               )}
@@ -397,20 +395,25 @@ export default function RegisterFlow() {
         </motion.div>
       </AnimatePresence>
 
-      <div className="flex items-center justify-between mt-7">
-        {step > 0 ? (
-          <button type="button" onClick={back} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm cursor-pointer transition"><ArrowLeft className="h-4 w-4" /> Back</button>
-        ) : <span />}
-        {step < STEPS.length - 1 ? (
-          <button type="button" onClick={next} className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 transition">
-            Continue <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </button>
-        ) : (
-          <button type="button" onClick={submit} disabled={submitting} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />} {planRequiresPayment ? `Continue to ${GATEWAY_LABEL[effectiveGateway] || "Payment"}` : "Create Company"}
-          </button>
-        )}
-      </div>
+      {/* Step 3's own InvoicePreview supplies its own Back/Proceed-to-Pay
+          buttons when payment is required, so this shared nav row only
+          renders for the free-trial confirm case (and every earlier step). */}
+      {!(step === STEPS.length - 1 && planRequiresPayment) && (
+        <div className="flex items-center justify-between mt-7">
+          {step > 0 ? (
+            <button type="button" onClick={back} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm cursor-pointer transition"><ArrowLeft className="h-4 w-4" /> Back</button>
+          ) : <span />}
+          {step < STEPS.length - 1 ? (
+            <button type="button" onClick={next} className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 transition">
+              Continue <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          ) : (
+            <button type="button" onClick={submit} disabled={submitting} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium cursor-pointer bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Create Company
+            </button>
+          )}
+        </div>
+      )}
 
       <p className="text-center text-white/35 text-xs mt-8">
         Already have an account? <Link href="/login" className="text-white/60 hover:text-white">Log in</Link>

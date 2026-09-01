@@ -10,6 +10,7 @@ export const POST = withCsrf(withErrorHandling(async (request, ctx) => {
   assertPlatformOperator(session);
   if (!isRazorpayConfigured()) return badRequest("Razorpay isn't configured on this server (RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET missing).");
   const { id } = await ctx.params;
-  const result = await syncPlanToRazorpay(id, session.id);
+  const body = await request.json().catch(() => ({}));
+  const result = await syncPlanToRazorpay(id, session.id, { force: !!body?.force });
   return ok(result);
 }));

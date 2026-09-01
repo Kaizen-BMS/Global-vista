@@ -8,6 +8,7 @@ import { createBillDeskCheckout, verifyBillDeskTransaction } from "@/lib/payment
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
 import { hasSubscriptionBillingSchema, hasCouponsSchema } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
+import { withGst } from "@/lib/helpers/gst";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
@@ -69,8 +70,11 @@ export async function createBillDeskCheckoutForCompany({ companyId, planId, subs
   // charged. orderReference ties the eventual BillDesk transaction back to
   // this specific checkout attempt.
   const orderReference = `sub-${companyId}-${Date.now()}`;
+  // GST goes on top of the (possibly coupon-discounted) amount — this is
+  // the actual real-money charge BillDesk is told to collect, so it has to
+  // use the exact same withGst() the checkout UI's price breakdown does.
   const { checkoutUrl, gatewayOrderId } = await createBillDeskCheckout({
-    companyId, planId, amount: chargeAmount, currency: plan.currency,
+    companyId, planId, amount: withGst(chargeAmount), currency: plan.currency,
     customerEmail: subscriberEmail, customerName: subscriberName, returnUrl, orderReference,
   });
 
@@ -147,7 +151,7 @@ export async function confirmCompanySubscriptionFromBillDesk(gatewayOrderId) {
       // billdeskClient.js) — not guessed at, just consistently named with
       // the customerId/nextBillingAt fields already read above.
       if (transaction.transactionId && plan?.price) {
-        const chargedAmount = Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0));
+        const chargedAmount = withGst(Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0)));
         await recordSubscriptionPayment({
           companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "billdesk",
           amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
