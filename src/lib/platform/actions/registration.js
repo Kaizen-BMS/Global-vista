@@ -7,6 +7,7 @@ import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
 import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 import { listPublicDurationPrices } from "@/lib/platform/actions/planDurationPricing";
+import { normalizeSeatQuantity, DEFAULT_SEATS } from "@/lib/helpers/seats";
 
 /** Public-safe plan list for the registration/pricing flow — active plans
  * only, no internal-only fields. `description` only selected once the
@@ -88,7 +89,8 @@ export async function registerCompany(input) {
   // but catching a typo here avoids leaving a "pending" company behind for
   // something the user can just fix and resubmit.
   if (requiresPayment && input.couponCode && (await hasCouponsSchema())) {
-    await validateCouponForPlan(input.couponCode, plan);
+    const seats = plan.pricing_model === "per_user" ? normalizeSeatQuantity(input.seatQuantity ?? DEFAULT_SEATS) : 1;
+    await validateCouponForPlan(input.couponCode, plan, Number(plan.price) * seats);
   }
 
   // Paid plan: the company + admin account are created NOW (so the admin
@@ -105,6 +107,7 @@ export async function registerCompany(input) {
       companyAddress: [input.companyAddress, input.companyCity, input.companyState].filter(Boolean).join(", ") || null,
       companyCountry: input.companyCountry || null,
       companyWebsite: input.companyWebsite || null,
+      companyGstin: input.gstin || null,
       adminName: adminName.trim(),
       adminEmail: adminEmail.trim().toLowerCase(),
       adminPhone: input.adminPhone || null,
@@ -124,6 +127,7 @@ export async function registerCompany(input) {
       subscriberName: adminName.trim(),
       returnUrl: `${appUrl}/register/confirm`,
       couponCode: input.couponCode || null,
+      seatQuantity: input.seatQuantity,
     });
     return { companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "billdesk", checkoutUrl };
   }
@@ -136,6 +140,7 @@ export async function registerCompany(input) {
       subscriberName: adminName.trim(),
       couponCode: input.couponCode || null,
       durationMonths: input.durationMonths || 1,
+      seatQuantity: input.seatQuantity,
     });
     return {
       companyId: result.companyId, companyName: companyName.trim(), planName: plan.name, requiresPayment: true, gateway: "razorpay",

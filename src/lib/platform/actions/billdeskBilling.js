@@ -6,9 +6,10 @@ import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { syncCompanyModulesToPlan, getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions";
 import { createBillDeskCheckout, verifyBillDeskTransaction } from "@/lib/payments/billdeskClient";
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
-import { hasSubscriptionBillingSchema, hasCouponsSchema } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCouponsSchema, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
-import { withGst } from "@/lib/helpers/gst";
+import { withGst, gstAmount } from "@/lib/helpers/gst";
+import { normalizeSeatQuantity, DEFAULT_SEATS } from "@/lib/helpers/seats";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
@@ -42,20 +43,27 @@ import {
  * record, not proof of payment; only confirmCompanySubscriptionFromBillDesk
  * (fed by verified BillDesk data) ever flips it to 'active'.
  */
-export async function createBillDeskCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, returnUrl, couponCode = null, actorId = null }) {
+export async function createBillDeskCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, returnUrl, couponCode = null, actorId = null, seatQuantity: requestedSeats }) {
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no payment needed. Use the plan-change flow instead."); e.status = 400; throw e; }
 
+  // Same seat-block rule as Razorpay (see razorpayBilling.js) — a
+  // per_user plan bills price/seat × purchased seats, never raw headcount.
+  const tieredSchemaReady = await hasTieredPlansSchema();
+  const seatQuantity = tieredSchemaReady && plan.pricing_model === "per_user" ? normalizeSeatQuantity(requestedSeats ?? DEFAULT_SEATS) : 1;
+  const baseTotal = Number(plan.price) * seatQuantity;
+
   // A coupon is optional — an invalid/expired/exhausted code fails checkout
   // outright (so the buyer knows their code didn't work) rather than
-  // silently charging full price.
+  // silently charging full price. Discounts the whole seat-multiplied
+  // total once, same as Razorpay's own rule, not once per seat.
   let couponId = null;
   let discountAmount = 0;
-  let chargeAmount = Number(plan.price);
+  let chargeAmount = baseTotal;
   const couponsAvailable = await hasCouponsSchema();
   if (couponCode && couponsAvailable) {
-    const validated = await validateCouponForPlan(couponCode, plan);
+    const validated = await validateCouponForPlan(couponCode, plan, baseTotal);
     couponId = validated.coupon.id;
     discountAmount = validated.discountAmount;
     chargeAmount = validated.finalAmount;
@@ -80,26 +88,26 @@ export async function createBillDeskCheckoutForCompany({ companyId, planId, subs
 
   if (existing) {
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?, gateway='billdesk', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
-      couponsAvailable ? [planId, gatewayOrderId, couponId, couponId ? discountAmount : null, existing.id] : [planId, gatewayOrderId, existing.id]
+      `UPDATE company_subscriptions SET plan_id=?, gateway='billdesk', gateway_subscription_id=?, status='pending'${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""}${tieredSchemaReady ? ", seat_quantity=?" : ""} WHERE id=?`,
+      [planId, gatewayOrderId, ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []), ...(tieredSchemaReady ? [seatQuantity] : []), existing.id]
     );
   } else {
     await pool.query(
-      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""})`,
-      couponsAvailable ? [companyId, planId, "billdesk", gatewayOrderId, "pending", couponId, couponId ? discountAmount : null] : [companyId, planId, "billdesk", gatewayOrderId, "pending"]
+      `INSERT INTO company_subscriptions (company_id, plan_id, gateway, gateway_subscription_id, status, starts_at${couponsAvailable ? ", coupon_id, coupon_discount_amount" : ""}${tieredSchemaReady ? ", seat_quantity" : ""}) VALUES (?,?,?,?,?,CURDATE()${couponsAvailable ? ",?,?" : ""}${tieredSchemaReady ? ",?" : ""})`,
+      [companyId, planId, "billdesk", gatewayOrderId, "pending", ...(couponsAvailable ? [couponId, couponId ? discountAmount : null] : []), ...(tieredSchemaReady ? [seatQuantity] : [])]
     );
   }
 
-  await logActivity({ userId: actorId, module: "platform", action: "billdesk_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started BillDesk checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}` }).catch(() => {});
-  return { checkoutUrl, gatewayOrderId };
+  await logActivity({ userId: actorId, module: "platform", action: "billdesk_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started BillDesk checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}${seatQuantity > 1 ? ` (${seatQuantity} seats)` : ""}` }).catch(() => {});
+  return { checkoutUrl, gatewayOrderId, seatQuantity };
 }
 
 /** Existing-company entry point — never accepts a companyId from the
  * client, always session.company_id, and requires Company Super Admin. */
-export async function startCompanyBillDeskCheckout(session, planId, { returnUrl, couponCode = null }) {
+export async function startCompanyBillDeskCheckout(session, planId, { returnUrl, couponCode = null, seatQuantity } = {}) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
   return createBillDeskCheckoutForCompany({
-    companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, returnUrl, couponCode, actorId: session.id,
+    companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, returnUrl, couponCode, actorId: session.id, seatQuantity,
   });
 }
 
@@ -151,11 +159,14 @@ export async function confirmCompanySubscriptionFromBillDesk(gatewayOrderId) {
       // billdeskClient.js) — not guessed at, just consistently named with
       // the customerId/nextBillingAt fields already read above.
       if (transaction.transactionId && plan?.price) {
-        const chargedAmount = withGst(Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0)));
+        const seats = row.seat_quantity || 1;
+        const subtotal = Math.max(0, Number(plan.price) * seats - Number(row.coupon_discount_amount || 0));
+        const chargedAmount = withGst(subtotal);
         await recordSubscriptionPayment({
           companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "billdesk",
           amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
           gatewayTransactionId: transaction.transactionId, gatewaySubscriptionId: gatewayOrderId, status: "completed",
+          seatQuantity: seats, gstAmount: gstAmount(subtotal),
         }).catch(() => {});
         if (row.coupon_id) {
           await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});

@@ -76,7 +76,7 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
             <label className="block text-muted-foreground text-xs mb-1">Pricing Model</label>
             <select value={form.pricingModel} onChange={(e) => setForm({ ...form, pricingModel: e.target.value })} className={inputClass}>
               <option value="flat">Flat — one price for the whole company</option>
-              <option value="per_user">Per User — price × active employee count</option>
+              <option value="per_user">Per User — price × purchased seat block (5, 10, 15, …)</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-2">

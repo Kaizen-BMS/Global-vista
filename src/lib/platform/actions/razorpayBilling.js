@@ -8,7 +8,8 @@ import { createRazorpayPlan, createRazorpaySubscription, getRazorpaySubscription
 import { sendSubscriptionReceiptEmail, sendSubscriptionPaymentFailedEmail } from "@/lib/helpers/email";
 import { hasSubscriptionBillingSchema, hasCouponsSchema, hasPlanRazorpayColumns, hasPendingPlanIdColumn, hasTieredPlansSchema, hasDurationPricingSchema, hasCommitmentMonthsColumn } from "@/lib/db/schemaFlags";
 import { validateCouponForPlan, redeemCoupon } from "@/lib/platform/actions/coupons";
-import { withGst } from "@/lib/helpers/gst";
+import { withGst, gstAmount, GST_RATE } from "@/lib/helpers/gst";
+import { isValidSeatQuantity, normalizeSeatQuantity, DEFAULT_SEATS, SEAT_STEP } from "@/lib/helpers/seats";
 import {
   assertBillingSchemaReady, recordSubscriptionPayment, notifyPlatformOperators,
   beginWebhookEvent, markWebhookEventProcessed, markWebhookEventFailed,
@@ -131,46 +132,41 @@ export async function syncPlanToRazorpay(planId, operatorId, { force = false } =
 }
 
 // ---------------------------------------------------------------------------
-// Seat-count sync — keeps a per_user subscription's Razorpay quantity
-// matching the company's actual active headcount. Called (best-effort,
-// never throwing into the caller's own success path) from every place an
-// employee is hired, deleted, restored, or has their active/inactive
-// status flipped — see users.js.
+// Seats — a per_user plan bills against a PURCHASED seat block (5, 10, 15,
+// …), never auto-synced to real headcount. Buying more seats is an
+// explicit, buyer-initiated action (this section); enforceUserLimit
+// (tenant.js) is what actually stops a company from hiring past whatever
+// block it has already paid for.
 // ---------------------------------------------------------------------------
 
 /**
- * Recomputes a company's active employee count and pushes it to Razorpay
- * as the subscription's quantity, if (and only if) the company is on an
- * active, per_user-priced, Razorpay-billed plan. A no-op for every other
- * case (flat plans, trial, no subscription, non-Razorpay gateway) — this
- * is meant to be called unconditionally after any headcount change, not
- * only when the caller already knows billing is seat-based.
- *
- * Best-effort by design: a transient Razorpay API failure here must never
- * fail the user create/delete/status-change action that triggered it — the
- * quantity will simply be corrected the next time headcount changes, or on
- * the next successful call.
+ * Changes an ALREADY-ACTIVE per_user Razorpay subscription's purchased
+ * seat count — the only other place seat count changes (initial checkout)
+ * goes through createRazorpayCheckoutForCompany/changeCompanyRazorpayPlan
+ * instead. Only ever increases/decreases the Razorpay `quantity` — the
+ * per-seat amount on the underlying Plan is untouched, so a coupon's
+ * discount (baked into that per-seat amount at signup, if any) is simply
+ * carried across every seat, new or old, at the same rate.
  */
-export async function syncSubscriptionSeatCount(companyId) {
-  if (!(await hasTieredPlansSchema())) return;
+export async function updateCompanySeatQuantity(session, seatQuantity) {
+  if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the number of seats."); e.status = 403; throw e; }
+  if (!isValidSeatQuantity(seatQuantity)) { const e = new Error(`Seats must be a multiple of ${SEAT_STEP}.`); e.status = 400; throw e; }
+  if (!(await hasTieredPlansSchema())) { const e = new Error("Seat-based billing isn't available yet."); e.status = 503; throw e; }
+
   const [[sub]] = await pool.query(
-    `SELECT cs.id, cs.gateway, cs.gateway_subscription_id, cs.status, cs.seat_quantity, p.pricing_model
+    `SELECT cs.id, cs.gateway, cs.gateway_subscription_id, cs.status, cs.seat_quantity, p.name AS plan_name, p.pricing_model
      FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
      WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
-    [companyId]
+    [session.company_id]
   );
-  if (!sub || sub.gateway !== "razorpay" || sub.status !== "active" || sub.pricing_model !== "per_user" || !sub.gateway_subscription_id) return;
+  if (!sub || sub.gateway !== "razorpay" || sub.status !== "active" || !sub.gateway_subscription_id) { const e = new Error("No active Razorpay subscription to update."); e.status = 400; throw e; }
+  if (sub.pricing_model !== "per_user") { const e = new Error("This plan doesn't bill per seat."); e.status = 400; throw e; }
+  if (seatQuantity === sub.seat_quantity) return { seatQuantity };
 
-  const [[{ userCount }]] = await pool.query(`SELECT COUNT(*) AS userCount FROM users WHERE company_id = ? AND is_deleted = 0 AND status = 'active'`, [companyId]);
-  const quantity = Math.max(1, userCount);
-  if (quantity === sub.seat_quantity) return; // already correct — avoid a pointless API call on every unrelated user update
-
-  try {
-    await updateRazorpaySubscriptionQuantity(sub.gateway_subscription_id, quantity);
-    await pool.query(`UPDATE company_subscriptions SET seat_quantity = ? WHERE id = ?`, [quantity, sub.id]);
-  } catch (err) {
-    console.error(`Seat-count sync failed for company ${companyId} (subscription ${sub.gateway_subscription_id}):`, err.message);
-  }
+  await updateRazorpaySubscriptionQuantity(sub.gateway_subscription_id, seatQuantity);
+  await pool.query(`UPDATE company_subscriptions SET seat_quantity = ? WHERE id = ?`, [seatQuantity, sub.id]);
+  await logActivity({ userId: session.id, module: "platform", action: "seat_quantity_changed", entityType: "company_subscription", entityId: sub.id, companyId: session.company_id, description: `${session.name} changed "${sub.plan_name}" seats from ${sub.seat_quantity} to ${seatQuantity}` }).catch(() => {});
+  return { seatQuantity };
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +190,7 @@ export async function syncSubscriptionSeatCount(companyId) {
  * simulated, and nothing here guesses at a Razorpay "offers" API that
  * hasn't been verified against real documentation.
  */
-export async function createRazorpayCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, couponCode = null, actorId = null, durationMonths = 1 }) {
+export async function createRazorpayCheckoutForCompany({ companyId, planId, subscriberEmail, subscriberName, couponCode = null, actorId = null, durationMonths = 1, seatQuantity: requestedSeats }) {
   const [[plan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no payment needed. Use the plan-change flow instead."); e.status = 400; throw e; }
@@ -202,6 +198,13 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
 
   const months = Number(durationMonths) || 1;
   const tier = months > 1 ? await getDurationTier(planId, months) : null;
+
+  // Seat-based plans bill against a purchased block the buyer chooses —
+  // 5, 10, 15, … (the account owner counts as the first seat) — never
+  // auto-synced to real headcount (see updateCompanySeatQuantity for how
+  // an existing subscriber later buys more). A flat plan always bills
+  // quantity=1; Razorpay's own multiplier does the rest.
+  const seatQuantity = plan.pricing_model === "per_user" ? normalizeSeatQuantity(requestedSeats ?? DEFAULT_SEATS) : 1;
 
   let couponId = null;
   let discountAmount = 0;
@@ -214,12 +217,19 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
     // refused rather than silently picking one.
     const e = new Error("Coupons can only be applied to monthly billing, not a multi-month commitment plan."); e.status = 400; throw e;
   } else if (couponCode && couponsAvailable) {
-    const validated = await validateCouponForPlan(couponCode, plan);
+    // The coupon discounts the whole seat-multiplied total ONCE (the
+    // company's own formula: (amount/user × users × months) − discount),
+    // never once per seat — so validate against that total, then divide
+    // the discounted total back down to a per-seat price for Razorpay's
+    // own quantity multiplier to reconstruct it exactly.
+    const baseTotal = Number(plan.price) * seatQuantity;
+    const validated = await validateCouponForPlan(couponCode, plan, baseTotal);
     couponId = validated.coupon.id;
     discountAmount = validated.discountAmount;
+    const perSeatFinal = Math.round((validated.finalAmount / seatQuantity) * 100) / 100;
     // Discounted, one-off Razorpay Plan — never saved back onto the CRM
     // plan row, only used for this specific checkout's subscription.
-    razorpayPlanIdForCheckout = await createRazorpayPlan({ ...plan, price: validated.finalAmount });
+    razorpayPlanIdForCheckout = await createRazorpayPlan({ ...plan, price: perSeatFinal });
   } else if (couponCode && !couponsAvailable) {
     const e = new Error("Coupons aren't available yet."); e.status = 404; throw e;
   } else if (tier) {
@@ -231,15 +241,6 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
   const existing = await getSubscriptionForCompany(companyId);
   const tieredSchemaReady = await hasTieredPlansSchema();
   const commitmentColumnReady = await hasCommitmentMonthsColumn();
-
-  // Seat-based plans bill amount × quantity — quantity is the company's
-  // current active headcount, kept in sync afterward by
-  // syncSubscriptionSeatCount whenever someone is hired/removed.
-  let seatQuantity = 1;
-  if (tieredSchemaReady && plan.pricing_model === "per_user") {
-    const [[{ userCount }]] = await pool.query(`SELECT COUNT(*) AS userCount FROM users WHERE company_id = ? AND is_deleted = 0`, [companyId]);
-    seatQuantity = Math.max(1, userCount);
-  }
 
   // A commitment tier's real period/interval (e.g. 36 months ->
   // period="yearly", interval=3) is NOT the same thing as the plan's own
@@ -303,18 +304,24 @@ export async function createRazorpayCheckoutForCompany({ companyId, planId, subs
     );
   }
 
-  await logActivity({ userId: actorId, module: "platform", action: "razorpay_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started Razorpay checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}${tier ? ` (${months}-month commitment)` : ""}` }).catch(() => {});
-  const perUserAmount = tier ? Number(tier.price) : discountAmount ? Number(plan.price) - discountAmount : plan.price;
+  await logActivity({ userId: actorId, module: "platform", action: "razorpay_checkout_started", entityType: "company_subscription", entityId: companyId, companyId, description: `Started Razorpay checkout for plan "${plan.name}"${couponId ? ` with coupon` : ""}${tier ? ` (${months}-month commitment)` : ""}${seatQuantity > 1 ? ` (${seatQuantity} seats)` : ""}` }).catch(() => {});
+  // Informational only (drives the Razorpay Checkout overlay's own
+  // description text) — GST-exclusive, matching the pre-GST "Subtotal"
+  // line every invoice preview shows; the real charge (subtotal × 1.18)
+  // is computed once, at the single source of truth, inside
+  // createRazorpayPlan.
+  const cycleBase = tier ? Number(tier.price) * tier.duration_months : Number(plan.price);
+  const totalAmount = Math.round((cycleBase * seatQuantity - discountAmount) * 100) / 100;
+  const perUserAmount = Math.round((totalAmount / seatQuantity) * 100) / 100;
   return {
     razorpaySubscriptionId, razorpayKeyId: process.env.RAZORPAY_KEY_ID, planName: plan.name,
-    amount: perUserAmount, seatQuantity, currency: plan.currency,
-    totalAmount: Math.round(perUserAmount * seatQuantity * 100) / 100,
+    amount: perUserAmount, seatQuantity, currency: plan.currency, totalAmount,
   };
 }
 
-export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null, durationMonths = 1 } = {}) {
+export async function startCompanyRazorpayCheckout(session, planId, { couponCode = null, durationMonths = 1, seatQuantity } = {}) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
-  return createRazorpayCheckoutForCompany({ companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, couponCode, actorId: session.id, durationMonths });
+  return createRazorpayCheckoutForCompany({ companyId: session.company_id, planId, subscriberEmail: session.email, subscriberName: session.name, couponCode, actorId: session.id, durationMonths, seatQuantity });
 }
 
 /**
@@ -355,7 +362,7 @@ function rethrowIfUpiPlanChangeRestriction(err) {
   throw err;
 }
 
-export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now", couponCode = null) {
+export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now", couponCode = null, requestedSeats = undefined) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
   if (!["now", "cycle_end"].includes(when)) { const e = new Error('when must be "now" or "cycle_end".'); e.status = 400; throw e; }
 
@@ -372,28 +379,37 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
   const tieredReady = await hasTieredPlansSchema();
   const couponsAvailable = await hasCouponsSchema();
 
+  // Seat quantity for the plan being switched TO — a fresh choice, not
+  // carried over from whatever the old plan's quantity happened to be
+  // (switching from a flat plan has no prior seat count to inherit from).
+  const seatQuantity = newPlan.pricing_model === "per_user" ? normalizeSeatQuantity(requestedSeats ?? DEFAULT_SEATS) : 1;
+
   // Same "mint a one-off discounted Razorpay Plan" mechanism
   // createRazorpayCheckoutForCompany uses for a fresh checkout — a
   // Razorpay Subscription always bills against a real Plan object with a
   // fixed price, so a coupon applied here needs its own discounted Plan
   // too, not just a number changed on our side. This is the in-place
   // "Switch Now"/"Upgrade" path (no duration-tier concept), so the
-  // discount is always against the plain monthly price, same as checkout.
+  // discount is always against the plain monthly price, same as checkout
+  // — and, same as checkout, against the whole seat-multiplied total once
+  // (never once per seat), then divided back to a per-seat Plan price.
   let couponId = null;
   let discountAmount = 0;
   let razorpayPlanId;
   if (couponCode && couponsAvailable) {
-    const validated = await validateCouponForPlan(couponCode, newPlan);
+    const baseTotal = Number(newPlan.price) * seatQuantity;
+    const validated = await validateCouponForPlan(couponCode, newPlan, baseTotal);
     couponId = validated.coupon.id;
     discountAmount = validated.discountAmount;
-    razorpayPlanId = await createRazorpayPlan({ ...newPlan, price: validated.finalAmount });
+    const perSeatFinal = Math.round((validated.finalAmount / seatQuantity) * 100) / 100;
+    razorpayPlanId = await createRazorpayPlan({ ...newPlan, price: perSeatFinal });
   } else if (couponCode && !couponsAvailable) {
     const e = new Error("Coupons aren't available yet."); e.status = 404; throw e;
   } else {
     razorpayPlanId = await ensureRazorpayPlanId(newPlan);
   }
 
-  await updateRazorpaySubscription(existing.gateway_subscription_id, { razorpayPlanId, scheduleChangeAt: when }).catch(rethrowIfUpiPlanChangeRestriction);
+  await updateRazorpaySubscription(existing.gateway_subscription_id, { razorpayPlanId, quantity: seatQuantity, scheduleChangeAt: when }).catch(rethrowIfUpiPlanChangeRestriction);
 
   // Legacy cleanup only — see doc comment above.
   if (tieredReady && existing.maintenance_gateway_subscription_id) {
@@ -407,8 +423,8 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
 
   if (when === "now") {
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""}${tieredReady ? ", maintenance_gateway_subscription_id=NULL" : ""}${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
-      [newPlanId, ...couponColumns, existing.id]
+      `UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""}${tieredReady ? ", maintenance_gateway_subscription_id=NULL, seat_quantity=?" : ""}${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
+      [newPlanId, ...(tieredReady ? [seatQuantity] : []), ...couponColumns, existing.id]
     );
     const conn = await pool.getConnection();
     try { await syncCompanyModulesToPlan(conn, session.company_id, newPlanId, session.id); } finally { conn.release(); }
@@ -544,11 +560,23 @@ export async function confirmRazorpaySubscription(razorpaySubscriptionId, { paym
     if (!wasAlreadyActive) {
       const [[plan]] = await pool.query(`SELECT name, price, currency FROM plans WHERE id=?`, [planId]);
       if (paymentId && plan?.price) {
-        const chargedAmount = withGst(Math.max(0, Number(plan.price) - Number(row.coupon_discount_amount || 0)));
+        const seats = row.seat_quantity || 1;
+        // A multi-month commitment tier bills tier.price × its own
+        // duration_months per cycle, not the plan's plain 1-month price —
+        // reconstruct that same cycle amount here so the recorded/invoiced
+        // amount matches what was actually charged, not just the 1-month rate.
+        let cycleBase = Number(plan.price);
+        if (row.commitment_months > 1) {
+          const [[tier]] = await pool.query(`SELECT price FROM plan_duration_prices WHERE plan_id=? AND duration_months=?`, [planId, row.commitment_months]);
+          if (tier) cycleBase = Number(tier.price) * row.commitment_months;
+        }
+        const subtotal = Math.max(0, cycleBase * seats - Number(row.coupon_discount_amount || 0));
+        const chargedAmount = withGst(subtotal);
         await recordSubscriptionPayment({
           companyId: row.company_id, subscriptionId: row.id, planId, gateway: "razorpay",
           amount: chargedAmount.toFixed(2), currency: plan.currency || "INR",
           gatewayTransactionId: paymentId, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
+          seatQuantity: seats, gstAmount: gstAmount(subtotal),
         }).catch(() => {});
         if (row.coupon_id) {
           await redeemCoupon({ couponId: row.coupon_id, companyId: row.company_id, subscriptionId: row.id, discountAmount: row.coupon_discount_amount }).catch(() => {});
@@ -605,9 +633,15 @@ async function handleRazorpayPaymentCaptured(payload) {
   const row = await findSubscriptionRowByRazorpayId(razorpaySubscriptionId);
   if (!row) return;
 
+  // The amount here is Razorpay's own report of what was actually
+  // captured — the one number in this whole file that's never computed
+  // locally. GST is back-derived from it (total = subtotal × 1.18) purely
+  // for the invoice snapshot; it's not used to decide what to charge.
+  const capturedTotal = (payment.amount || 0) / 100;
   await recordSubscriptionPayment({
     companyId: row.company_id, subscriptionId: row.id, planId: row.plan_id, gateway: "razorpay",
-    amount: (payment.amount || 0) / 100, currency: payment.currency || "INR",
+    amount: capturedTotal, currency: payment.currency || "INR",
+    seatQuantity: row.seat_quantity || null, gstAmount: Math.round((capturedTotal - capturedTotal / (1 + GST_RATE)) * 100) / 100,
     gatewayTransactionId: payment.id, gatewayOrderId: payment.order_id || null, gatewaySubscriptionId: razorpaySubscriptionId, status: "completed",
   });
 

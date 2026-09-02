@@ -100,8 +100,16 @@ export async function listRedemptionsForCoupon(session, couponId) {
 /** Throws on any invalid/inactive/expired/exhausted coupon — callers decide
  * whether that should block checkout entirely or just proceed at full
  * price (see billdeskBilling.js, which treats a bad code as "no coupon"
- * rather than failing the whole checkout). */
-export async function validateCouponForPlan(code, plan) {
+ * rather than failing the whole checkout).
+ *
+ * `baseAmount` is the amount the coupon actually discounts — for a plain
+ * flat plan that's just `plan.price`, but for a per-user plan it's
+ * `plan.price × seatQuantity` (the company's real formula: discount is
+ * subtracted once from the whole seat-multiplied total, not re-applied
+ * per seat — a ₹50-off coupon takes ₹50 off the bill, not ₹50 off each of
+ * 5 seats). Defaults to `Number(plan.price)` so every existing flat-plan
+ * caller is unaffected. */
+export async function validateCouponForPlan(code, plan, baseAmount = Number(plan.price)) {
   if (!(await hasCouponsSchema())) { const e = new Error("Coupons aren't available yet."); e.status = 404; throw e; }
   const normalized = normalizeCode(code);
   if (!normalized) { const e = new Error("Enter a coupon code."); e.status = 400; throw e; }
@@ -114,7 +122,7 @@ export async function validateCouponForPlan(code, plan) {
   if (coupon.valid_until && now > new Date(coupon.valid_until)) { const e = new Error("This coupon has expired."); e.status = 400; throw e; }
   if (coupon.max_redemptions != null && coupon.redemption_count >= coupon.max_redemptions) { const e = new Error("This coupon has reached its usage limit."); e.status = 400; throw e; }
 
-  const price = Number(plan.price);
+  const price = Number(baseAmount);
   let discountAmount = coupon.discount_type === "percent" ? (price * Number(coupon.discount_value)) / 100 : Number(coupon.discount_value);
   discountAmount = Math.min(Math.round(discountAmount * 100) / 100, price);
   const finalAmount = Math.round((price - discountAmount) * 100) / 100;
@@ -130,18 +138,21 @@ export async function validateCouponForPlan(code, plan) {
  * finding out whether the code worked after Razorpay/BillDesk's own
  * overlay is already open. Coupons only ever discount the plain 1-month
  * price (see createRazorpayCheckoutForCompany's own rule), so this always
- * previews against `plan.price`, regardless of any duration tier the
+ * previews against the 1-month base — `plan.price`, or `plan.price ×
+ * seatQuantity` for a per-user plan — regardless of any duration tier the
  * caller might otherwise be looking at.
  */
-export async function previewCoupon(code, planId) {
-  const [[plan]] = await pool.query(`SELECT id, name, price, currency FROM plans WHERE id = ? AND status = 'active'`, [planId]);
+export async function previewCoupon(code, planId, seatQuantity = 1) {
+  const [[plan]] = await pool.query(`SELECT id, name, price, currency, pricing_model FROM plans WHERE id = ? AND status = 'active'`, [planId]);
   if (!plan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(plan.price) > 0)) { const e = new Error("This plan is free — no coupon needed."); e.status = 400; throw e; }
 
-  const { coupon, discountAmount, finalAmount } = await validateCouponForPlan(code, plan);
+  const seats = plan.pricing_model === "per_user" ? Math.max(1, Number(seatQuantity) || 1) : 1;
+  const baseAmount = Number(plan.price) * seats;
+  const { coupon, discountAmount, finalAmount } = await validateCouponForPlan(code, plan, baseAmount);
   return {
     code: coupon.code, discountType: coupon.discount_type, discountValue: Number(coupon.discount_value),
-    discountAmount, finalAmount, planPrice: Number(plan.price), currency: plan.currency,
+    discountAmount, finalAmount, planPrice: Number(plan.price), seatQuantity: seats, baseAmount, currency: plan.currency,
   };
 }
 

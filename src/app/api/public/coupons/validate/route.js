@@ -15,9 +15,9 @@ export const POST = withErrorHandling(async (request) => {
   if (!rateLimit(`public-coupon-validate:${ip}`, { max: 20, windowMs: 60 * 60 * 1000 }).allowed) {
     return badRequest("Too many attempts. Please try again later.");
   }
-  const { code, planId } = await request.json();
+  const { code, planId, seatQuantity } = await request.json();
   if (!code || !planId) return badRequest("code and planId are required.");
 
-  const preview = await previewCoupon(code, planId);
+  const preview = await previewCoupon(code, planId, seatQuantity || 1);
   return ok(preview);
 });

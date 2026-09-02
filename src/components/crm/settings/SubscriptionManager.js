@@ -10,7 +10,9 @@ import { useTimezone } from "@/components/shared/TimezoneProvider";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
 import { withGst, GST_LABEL } from "@/lib/helpers/gst";
+import { DEFAULT_SEATS } from "@/lib/helpers/seats";
 import InvoicePreview from "@/components/billing/InvoicePreview";
+import SeatStepper from "@/components/billing/SeatStepper";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 
@@ -47,6 +49,20 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const [gateway, setGateway] = useState(""); // only relevant when a plan offers both
   const [durationByPlan, setDurationByPlan] = useState({}); // plan.id -> chosen commitment length in months, default 1
   const getDuration = (plan) => durationByPlan[plan.id] || 1;
+  const [seatByPlan, setSeatByPlan] = useState({}); // plan.id -> chosen seat count, default DEFAULT_SEATS — only meaningful for pricing_model='per_user'
+  const getSeats = (plan) => (plan.pricing_model === "per_user" ? seatByPlan[plan.id] || DEFAULT_SEATS : 1);
+  // Pre-filled from whatever's already on file for this company (see
+  // /api/core/subscription/gstin's GET) so a returning buyer isn't asked
+  // to retype it every time; saved back (best-effort) once checkout/plan
+  // change actually succeeds.
+  const [gstin, setGstin] = useState("");
+  useEffect(() => {
+    apiFetch("/api/core/subscription/gstin").then((r) => r.json()).then((d) => setGstin(d.gstin || "")).catch(() => {});
+  }, []);
+  function saveGstin() {
+    if (!gstin) return;
+    apiFetch("/api/core/subscription/gstin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gstin }) }).catch(() => {});
+  }
   // Set the moment "Subscribe"/"Switch Now"/"At Renewal" is clicked — shows
   // an invoice preview (see InvoicePreview) in place of the plan grid,
   // requiring an explicit "Proceed to Pay" before the real checkout/
@@ -148,7 +164,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     setCouponError("");
     try {
       const res = await apiFetch("/api/core/subscription/coupons/validate", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: referencePlan.id }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: referencePlan.id, seatQuantity: getSeats(referencePlan) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid coupon code.");
@@ -157,9 +173,11 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     } catch (err) { setCouponError(err.message); setAppliedCoupon(null); } finally { setCouponChecking(false); }
   }
   function removeCoupon() { setAppliedCoupon(null); setCouponCode(""); setCouponError(""); }
+  // Discounts the whole seat-multiplied total ONCE (never once per seat) —
+  // same rule the server applies, see coupons.js/razorpayBilling.js.
   function discountFor(plan) {
     if (!appliedCoupon || getDuration(plan) !== 1 || !(Number(plan.price) > 0)) return 0;
-    const price = Number(plan.price);
+    const price = Number(plan.price) * getSeats(plan);
     const raw = appliedCoupon.discountType === "percent" ? (price * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue;
     return Math.min(Math.round(raw * 100) / 100, price);
   }
@@ -182,7 +200,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     setCheckingOut(plan.id);
     if (effectiveGateway === "billdesk") {
       try {
-        const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null }) });
+        const res = await apiFetch("/api/core/subscription/billdesk/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null, seatQuantity: getSeats(plan) }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
         window.location.href = data.checkoutUrl;
@@ -192,9 +210,10 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
 
     // Razorpay Checkout is an in-page modal, not a redirect.
     try {
-      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null, durationMonths: monthsOverride ?? getDuration(plan) }) });
+      const res = await apiFetch("/api/core/subscription/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, couponCode: couponCode.trim() || null, durationMonths: monthsOverride ?? getDuration(plan), seatQuantity: getSeats(plan) }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't start checkout.");
+      saveGstin();
       await payWithRazorpayThenFinish(data);
     } catch (err) { toast.error(err.message); setCheckingOut(null); }
   }
@@ -206,11 +225,12 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     setCheckingOut(`${plan.id}:${when}`);
     try {
       const res = await apiFetch("/api/core/subscription/razorpay/change-plan", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when, couponCode: appliedCoupon?.code || null }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when, couponCode: appliedCoupon?.code || null, seatQuantity: getSeats(plan) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't change plan.");
 
+      saveGstin();
       toast.success(when === "now" ? `Switched to "${plan.name}".` : `Will switch to "${plan.name}" on ${formatDate(data.effectiveAt, timezone)}.`);
       onClose();
       router.refresh();
@@ -234,10 +254,13 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
           <InvoiceStep
             pendingInvoice={pendingInvoice}
             getDuration={getDuration}
+            getSeats={getSeats}
             discountFor={discountFor}
             appliedCoupon={appliedCoupon}
             gateway={gateway}
             checkingOut={checkingOut}
+            gstin={gstin}
+            onGstinChange={setGstin}
             onBack={() => setPendingInvoice(null)}
             onProceed={() => {
               const { plan, when } = pendingInvoice;
@@ -297,8 +320,13 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             const isSamePlan = plan.id === currentPlanId;
             const isCurrent = isSamePlan && !needsPayment;
             const isPaid = Number(plan.price) > 0;
+            const seats = getSeats(plan);
             const discount = discountFor(plan);
-            const discountedPrice = discount > 0 ? Math.round((Number(plan.price) - discount) * 100) / 100 : null;
+            // A fixed discount is against the whole seat-multiplied total
+            // (see discountFor's own doc comment) — divided back down to a
+            // per-seat rate here purely for this per-unit price display;
+            // percent discounts land on the same number either way.
+            const discountedPrice = discount > 0 ? Math.round(((Number(plan.price) * seats - discount) / seats) * 100) / 100 : null;
             return (
               <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className={`relative rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30 hover:border-indigo-500/20"}`}>
@@ -312,6 +340,14 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                   {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
                 </p>
                 {isPaid && <p className="text-muted-foreground text-[10px] mt-0.5">Incl. {GST_LABEL} (base {plan.currency} {(discountedPrice ?? Number(plan.price)).toLocaleString()})</p>}
+                {isPaid && plan.pricing_model === "per_user" && !isCurrent && (
+                  <div className="mt-2">
+                    <SeatStepper value={seats} onChange={(v) => setSeatByPlan((s) => ({ ...s, [plan.id]: v }))} />
+                    <p className="text-muted-foreground text-[10px] mt-1">
+                      Total: {plan.currency} {withGst(Math.max(0, Number(plan.price) * seats - discount)).toLocaleString()}/mo for {seats} seats
+                    </p>
+                  </div>
+                )}
                 {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
                 <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
                   <li>Registration: {plan.registration_label || "Self"}</li>
@@ -382,11 +418,13 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
  * firing the checkout/plan-change — same InvoicePreview component
  * RegisterFlow.js uses, fed from whichever button (Subscribe / Switch Now
  * / At Renewal) set `pendingInvoice`. */
-function InvoiceStep({ pendingInvoice, getDuration, discountFor, appliedCoupon, gateway, checkingOut, onBack, onProceed }) {
+function InvoiceStep({ pendingInvoice, getDuration, getSeats, discountFor, appliedCoupon, gateway, checkingOut, gstin, onGstinChange, onBack, onProceed }) {
   const { plan, when } = pendingInvoice;
   const months = when ? 1 : getDuration(plan); // in-place switching doesn't support commitment tiers yet
   const tier = months > 1 ? plan.durationTiers?.find((t) => t.durationMonths === months) : null;
-  const baseAmount = tier ? Number(tier.price) * months : Number(plan.price);
+  const isPerUser = plan.pricing_model === "per_user";
+  const seats = isPerUser ? getSeats(plan) : 1;
+  const baseAmount = (tier ? Number(tier.price) * months : Number(plan.price)) * seats;
   const discount = discountFor(plan);
   const effectiveGateway = plan.hasBillDesk && plan.hasRazorpay ? gateway : plan.hasBillDesk ? "billdesk" : "razorpay";
   const busyKey = when ? `${plan.id}:${when}` : plan.id;
@@ -397,14 +435,60 @@ function InvoiceStep({ pendingInvoice, getDuration, discountFor, appliedCoupon, 
         billingLabel={months > 1 ? `Every ${months} months` : "Every 1 month"}
         currency={plan.currency}
         baseAmount={baseAmount}
+        seatQuantity={isPerUser ? seats : null}
+        perSeatAmount={isPerUser ? plan.price : null}
         discountAmount={discount}
         discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
         gatewayLabel={GATEWAY_LABEL[effectiveGateway]}
+        gstin={gstin}
+        onGstinChange={onGstinChange}
         proceedLabel={when === "cycle_end" ? "Confirm — Switch at Renewal" : "Proceed to Pay"}
         onProceed={onProceed}
         onBack={onBack}
         busy={checkingOut === busyKey}
       />
+    </div>
+  );
+}
+
+/** Lets an existing per_user subscriber buy more (or fewer) seats without
+ * going through "Change Plan" at all — the plan itself isn't changing,
+ * just the purchased seat block. Shows its own compact invoice line
+ * (base × new seats, discount unaffected — see updateCompanySeatQuantity's
+ * own doc comment on why a prior coupon's per-seat rate just carries over)
+ * rather than the full InvoicePreview, since there's no gateway/coupon
+ * choice to make here, only a seat count. */
+function ManageSeatsPanel({ subscription }) {
+  const router = useRouter();
+  const [seats, setSeats] = useState(subscription.seatQuantity || DEFAULT_SEATS);
+  const [saving, setSaving] = useState(false);
+  const changed = seats !== subscription.seatQuantity;
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/core/subscription/razorpay/seats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seatQuantity: seats }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't update seats.");
+      toast.success(`Seats updated to ${seats}.`);
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="mt-3 p-3 rounded-lg bg-muted/30 border border-border">
+      <p className="text-foreground text-xs font-medium mb-2">Manage Seats</p>
+      <div className="flex items-center gap-4 flex-wrap">
+        <SeatStepper value={seats} onChange={setSeats} />
+        {changed && (
+          <button onClick={save} disabled={saving} className="btn-brand flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium cursor-pointer disabled:opacity-50">
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save ({seats} seats)
+          </button>
+        )}
+      </div>
+      <p className="text-muted-foreground text-[11px] mt-2">
+        {subscription.currency} {withGst(Number(subscription.price) * seats).toLocaleString()}/mo for {seats} seats (incl. {GST_LABEL}), effective immediately.
+      </p>
     </div>
   );
 }
@@ -420,6 +504,7 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
   const [showHistory, setShowHistory] = useState(false);
   const [payments] = useState(initialPayments);
   const [busy, setBusy] = useState(false);
+  const canManageSeats = subscription.pricingModel === "per_user" && subscription.gateway === "razorpay" && subscription.state === "active";
 
   async function cancel() {
     if (!confirm("Cancel your subscription? You'll keep access until the current billing period ends, then the plan will stop renewing.")) return;
@@ -465,6 +550,8 @@ export default function SubscriptionManager({ subscription, plans, payments: ini
           <Receipt className="h-3.5 w-3.5" /> Payment History
         </button>
       </div>
+
+      {canManageSeats && <ManageSeatsPanel subscription={subscription} />}
 
       <AnimatePresence>
         {showHistory && (

@@ -7,7 +7,6 @@ import { softDelete, paginate } from "@/lib/helpers/db";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
 import { createNotification } from "@/lib/actions/notifications";
 import { enforceUserLimit } from "@/lib/platform/tenant";
-import { syncSubscriptionSeatCount } from "@/lib/platform/actions/razorpayBilling";
 
 const VALID_STATUSES = new Set(["active", "inactive", "suspended"]);
 const SORTABLE = new Set(["name", "email", "created_at", "last_login_at", "status"]);
@@ -118,7 +117,6 @@ export async function createUser(session, data, createdBy) {
       link: `/workspace/users/${result.insertId}`,
     });
   }
-  syncSubscriptionSeatCount(session.company_id).catch((e) => console.error("Seat-count sync failed:", e.message));
   return getUserById(session, result.insertId);
 }
 
@@ -137,10 +135,6 @@ export async function setUserStatus(session, id, status, updatedBy) {
   if (!VALID_STATUSES.has(status)) { const e = new Error("Invalid status."); e.status = 400; throw e; }
   await pool.query(`UPDATE users SET status=?, updated_by=? WHERE id=? AND company_id=? AND is_deleted=0`, [status, updatedBy, id, session.company_id]);
   await logActivity({ userId: updatedBy, module: "users", action: status, entityType: "user", entityId: id, description: `User #${id} set to ${status}`, companyId: session.company_id });
-  // Seat-based billing counts ACTIVE employees only — deactivating/
-  // reactivating someone changes the billable headcount just as much as
-  // creating/deleting one does.
-  syncSubscriptionSeatCount(session.company_id).catch((e) => console.error("Seat-count sync failed:", e.message));
 }
 
 export async function resetUserPassword(session, id, newPassword, updatedBy) {
@@ -166,20 +160,17 @@ export async function deleteUser(session, id, deletedBy) {
   }
   await softDelete("users", id, deletedBy);
   await logActivity({ userId: deletedBy, module: "users", action: "delete", entityType: "user", entityId: id, description: `Deleted user #${id}`, companyId: session.company_id });
-  syncSubscriptionSeatCount(session.company_id).catch((e) => console.error("Seat-count sync failed:", e.message));
 }
 
 export async function restoreUser(session, id, updatedBy) {
   await pool.query(`UPDATE users SET is_deleted=0, deleted_at=NULL, status='active', updated_by=? WHERE id=? AND company_id=?`, [updatedBy, id, session.company_id]);
   await logActivity({ userId: updatedBy, module: "users", action: "restore", entityType: "user", entityId: id, description: `Restored user #${id}`, companyId: session.company_id });
-  syncSubscriptionSeatCount(session.company_id).catch((e) => console.error("Seat-count sync failed:", e.message));
 }
 
 export async function bulkSetUserStatus(session, ids, status, updatedBy) {
   if (!ids.length) return;
   await pool.query(`UPDATE users SET status=?, updated_by=? WHERE id IN (?) AND company_id=? AND is_deleted=0 AND is_super_admin=0`, [status, updatedBy, ids, session.company_id]);
   await logActivity({ userId: updatedBy, module: "users", action: "bulk_status", entityType: "user", description: `Bulk status → ${status}`, meta: { ids }, companyId: session.company_id });
-  syncSubscriptionSeatCount(session.company_id).catch((e) => console.error("Seat-count sync failed:", e.message));
 }
 
 export async function bulkAssignRole(session, ids, roleId, updatedBy) {

@@ -4,6 +4,8 @@ import { hashPassword } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
+import { hasGstinColumn } from "@/lib/db/schemaFlags";
+import { normalizeGstin } from "@/lib/helpers/gstin";
 
 /**
  * =====================================================================
@@ -131,6 +133,12 @@ export async function provisionCompany(input, operatorId) {
     companyAddress = null,
     companyCountry = null,
     companyWebsite = null,
+    // Optional — the buyer's GST number, captured at the invoice/payment
+    // step (not this earlier company-info step) since that's genuinely
+    // where it's needed; see InvoicePreview.js. Schema-gated (a fresh
+    // additive UPDATE, not part of the fixed INSERT below) so this never
+    // breaks provisioning on a pre-migration database.
+    companyGstin = null,
     adminName,
     adminEmail,
     adminPhone = null,
@@ -217,6 +225,10 @@ export async function provisionCompany(input, operatorId) {
     );
     companyId = companyResult.insertId;
     stepLog.record("company_created", "success");
+
+    if (companyGstin && (await hasGstinColumn())) {
+      await conn.query(`UPDATE companies SET gstin = ? WHERE id = ?`, [normalizeGstin(companyGstin), companyId]);
+    }
 
     // -------------------------------------------------------------
     // Clone System Roles (templates where company_id IS NULL)

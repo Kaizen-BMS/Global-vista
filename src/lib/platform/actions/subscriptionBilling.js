@@ -6,7 +6,36 @@ import { getSubscriptionForCompany } from "@/lib/platform/actions/subscriptions"
 import { cancelBillDeskMandate } from "@/lib/payments/billdeskClient";
 import { cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasSubscriptionBillingSchema, hasCancelAtPeriodEndColumn } from "@/lib/db/schemaFlags";
+import { hasSubscriptionBillingSchema, hasCancelAtPeriodEndColumn, hasPaymentSeatBreakdownColumns, hasGstinColumn } from "@/lib/db/schemaFlags";
+import { validateGstin, normalizeGstin } from "@/lib/helpers/gstin";
+
+/** Reads back whatever GSTIN (if any) is already on file for a company,
+ * so the invoice screen can pre-fill it instead of asking again every
+ * time. Returns null on a pre-migration database rather than throwing —
+ * this feeds a page load, never something worth a 500 over. */
+export async function getCompanyGstin(companyId) {
+  if (!(await hasGstinColumn())) return null;
+  const [[row]] = await pool.query(`SELECT gstin FROM companies WHERE id = ?`, [companyId]);
+  return row?.gstin || null;
+}
+
+/**
+ * Saves (or clears, with an empty string) the company's GSTIN for the
+ * invoice/tax record. Deliberately does NOT require the value to pass
+ * validateGstin's format+checksum check — the company's own instruction
+ * is explicit: GST is charged the same either way, and this field is a
+ * record for the buyer's own paperwork, not a gate on checkout. A
+ * malformed value is still saved as typed (normalized to uppercase) so a
+ * buyer who saves a typo and fixes it later isn't blocked either way.
+ */
+export async function updateCompanyGstin(session, gstin) {
+  if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can update the GSTIN."); e.status = 403; throw e; }
+  if (!(await hasGstinColumn())) { const e = new Error("GSTIN isn't available yet."); e.status = 503; throw e; }
+  const normalized = normalizeGstin(gstin);
+  await pool.query(`UPDATE companies SET gstin = ? WHERE id = ?`, [normalized || null, session.company_id]);
+  await logActivity({ userId: session.id, module: "settings", action: "gstin_updated", entityType: "company", entityId: session.company_id, companyId: session.company_id, description: `${session.name} updated the company GSTIN` }).catch(() => {});
+  return { gstin: normalized, valid: normalized ? validateGstin(normalized).valid : null };
+}
 
 /** Shared by every gateway's activation path — a company's subscription
  * just went active, so every Platform Operator gets notified regardless of
@@ -39,13 +68,20 @@ export function assertBillingSchemaReady() {
 // Payment recording — idempotent on (gateway, gateway_transaction_id)
 // ---------------------------------------------------------------------------
 
-export async function recordSubscriptionPayment({ companyId, subscriptionId, planId, gateway, amount, currency, gatewayTransactionId, gatewayOrderId = null, gatewaySubscriptionId, status = "completed", billingCycle = null, invoiceReference = null }) {
+/** `seatQuantity`/`gstAmount` are a snapshot of what was ACTUALLY billed
+ * this payment (schema-gated — see hasPaymentSeatBreakdownColumns) so a
+ * downloaded invoice for an old payment always reflects what was charged
+ * at the time, even if the company's seat count or the GST rate has
+ * changed since. Omitted entirely pre-migration, same degrade-quietly
+ * convention as every other optional column here. */
+export async function recordSubscriptionPayment({ companyId, subscriptionId, planId, gateway, amount, currency, gatewayTransactionId, gatewayOrderId = null, gatewaySubscriptionId, status = "completed", billingCycle = null, invoiceReference = null, seatQuantity = null, gstAmount = null }) {
   if (!(await hasSubscriptionBillingSchema())) assertBillingSchemaReady();
+  const seatColumnsReady = await hasPaymentSeatBreakdownColumns();
   await pool.query(
-    `INSERT INTO subscription_payments (company_id, subscription_id, plan_id, gateway, gateway_transaction_id, gateway_order_id, gateway_subscription_id, amount, currency, status, billing_cycle, invoice_reference, payment_date)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,CURDATE())
+    `INSERT INTO subscription_payments (company_id, subscription_id, plan_id, gateway, gateway_transaction_id, gateway_order_id, gateway_subscription_id, amount, currency, status, billing_cycle, invoice_reference${seatColumnsReady ? ", seat_quantity, gst_amount" : ""}, payment_date)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?${seatColumnsReady ? ",?,?" : ""},CURDATE())
      ON DUPLICATE KEY UPDATE id = id`,
-    [companyId, subscriptionId, planId, gateway, gatewayTransactionId, gatewayOrderId, gatewaySubscriptionId, amount, currency, status, billingCycle, invoiceReference]
+    [companyId, subscriptionId, planId, gateway, gatewayTransactionId, gatewayOrderId, gatewaySubscriptionId, amount, currency, status, billingCycle, invoiceReference, ...(seatColumnsReady ? [seatQuantity, gstAmount] : [])]
   );
   await pool.query(`UPDATE company_subscriptions SET last_payment_at = CURDATE() WHERE id = ?`, [subscriptionId]);
 }
@@ -165,7 +201,12 @@ export async function resumeOwnSubscription(session) {
 // Downgrade protection (never silently strip data over a new plan's limit)
 // ---------------------------------------------------------------------------
 
-export async function assertPlanChangeAllowed(companyId, newPlanId) {
+/** `seatQuantity` is only meaningful for a `pricing_model = 'per_user'`
+ * plan — the purchased seat block being chosen for this checkout/switch,
+ * checked against real headcount the same way max_users already is for a
+ * flat plan. Omitted (e.g. the very first "which plan?" check before a
+ * seat count has even been chosen yet) simply skips that one check. */
+export async function assertPlanChangeAllowed(companyId, newPlanId, seatQuantity = null) {
   const [[newPlan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [newPlanId]);
   if (!newPlan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
 
@@ -180,6 +221,7 @@ export async function assertPlanChangeAllowed(companyId, newPlanId) {
 
   const problems = [];
   if (newPlan.max_users && usage.userCount > newPlan.max_users) problems.push(`${usage.userCount} employees exceed this plan's limit of ${newPlan.max_users}.`);
+  if (newPlan.pricing_model === "per_user" && seatQuantity && usage.userCount > seatQuantity) problems.push(`${usage.userCount} employees exceed the ${seatQuantity}-seat block you've chosen.`);
   if (newPlan.max_leads && usage.leadCount > newPlan.max_leads) problems.push(`${usage.leadCount} leads exceed this plan's limit of ${newPlan.max_leads}.`);
   if (newPlan.max_storage_mb && usage.storageBytes > newPlan.max_storage_mb * 1024 * 1024) problems.push(`Current storage use exceeds this plan's ${newPlan.max_storage_mb}MB limit.`);
 

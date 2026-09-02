@@ -58,8 +58,10 @@ export async function getSubscriptionState(companyId) {
  */
 export async function getSubscriptionDetails(companyId) {
   const pendingColumnReady = await hasPendingPlanIdColumn();
+  const tieredReady = await hasTieredPlansSchema();
   const [[sub]] = await pool.query(
     `SELECT cs.*, p.name AS plan_name, p.price, p.currency, p.billing_cycle, p.trial_days, p.max_storage_mb, p.max_users, p.max_leads
+            ${tieredReady ? ", p.pricing_model" : ""}
             ${pendingColumnReady ? ", pp.name AS pending_plan_name" : ""}
      FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
      ${pendingColumnReady ? "LEFT JOIN plans pp ON pp.id = cs.pending_plan_id" : ""}
@@ -107,6 +109,8 @@ export async function getSubscriptionDetails(companyId) {
     cancelAtPeriodEnd: !!sub.cancel_at_period_end,
     pendingPlanId: sub.pending_plan_id || null,
     pendingPlanName: sub.pending_plan_name || null,
+    pricingModel: tieredReady ? sub.pricing_model : null,
+    seatQuantity: tieredReady ? sub.seat_quantity : null,
   };
 }
 
@@ -118,23 +122,33 @@ export async function getSubscriptionDetails(companyId) {
  * newly registered ones — since it's evaluated fresh against the company's
  * current subscription every time, not seeded once at signup.
  */
-/** Same shape as enforceLeadLimit, for the plan's max_users limit — called
- * before creating a new employee. A per_user-priced plan (see
- * pricing_model on plans) has "Unlimited users" in the sense that adding
- * one is never blocked by this check (max_users is typically NULL on those
- * tiers) — the cost of adding a seat there is the recurring per-user
- * charge itself (see syncSubscriptionSeatCount), not a hard cap. */
+/** Same shape as enforceLeadLimit, for the employee cap — called before
+ * creating a new employee. A flat plan's cap is `max_users`; a
+ * per_user-priced plan (see pricing_model on plans) instead caps at the
+ * seat BLOCK the company has actually purchased (`company_subscriptions.
+ * seat_quantity` — 5, 10, 15, …, the account owner counting as the first
+ * seat), never real headcount auto-scaling the bill the way it used to.
+ * Buying more seats (see updateCompanySeatQuantity) is what raises this
+ * cap, exactly the way upgrading a flat plan raises `max_users`. */
 export async function enforceUserLimit(companyId) {
-  const [[plan]] = await pool.query(
-    `SELECT p.max_users FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
+  const tieredReady = await hasTieredPlansSchema();
+  const [[sub]] = await pool.query(
+    `SELECT p.max_users, p.pricing_model${tieredReady ? ", cs.seat_quantity" : ""} FROM company_subscriptions cs JOIN plans p ON p.id = cs.plan_id
      WHERE cs.company_id = ? ORDER BY cs.created_at DESC LIMIT 1`,
     [companyId]
   );
-  if (!plan?.max_users) return; // no subscription row, or unlimited
+  if (!sub) return; // no subscription row
+
+  const limit = tieredReady && sub.pricing_model === "per_user" ? sub.seat_quantity : sub.max_users;
+  if (!limit) return; // unlimited (flat plan with no max_users), or per_user with no seat_quantity yet (pre-migration)
 
   const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users WHERE company_id = ? AND is_deleted = 0`, [companyId]);
-  if (count >= plan.max_users) {
-    const e = new Error(`This plan's employee limit (${plan.max_users}) has been reached. Upgrade the plan to add more employees.`);
+  if (count >= limit) {
+    const e = new Error(
+      tieredReady && sub.pricing_model === "per_user"
+        ? `You've reached your purchased seat limit (${limit}). Buy more seats from Settings → Subscription to add another employee.`
+        : `This plan's employee limit (${limit}) has been reached. Upgrade the plan to add more employees.`
+    );
     e.status = 403;
     throw e;
   }

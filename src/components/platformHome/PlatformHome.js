@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
-  Contact2, CalendarClock, Users, MessageSquare, Bell, BarChart3, CreditCard, ShieldCheck,
+  Contact2, MessageSquare, Bell, BarChart3, CreditCard,
   ChevronDown, Sparkles,
 } from "lucide-react";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
@@ -14,13 +14,12 @@ import { withGst, GST_LABEL } from "@/lib/helpers/gst";
  * Document-style homepage — a printed-sheet look (masthead, thin rules,
  * serif headline) carried over from the earlier v2-mockup rewrite, now
  * built out into a full Zoho/Odoo-style marketing page: a hero "connected
- * products" graphic, a proper feature grid, the real product walkthrough
- * video, a permanently-visible pricing + comparison pair (never collapsed
- * behind a toggle), a factual "why teams choose us" section, and an FAQ.
- * Every module/feature listed here is something this app actually has —
- * nothing invented to pad the page out — and nothing here fabricates
- * customer counts, logos, or quoted testimonials, which this project
- * doesn't have real ones for yet.
+ * products" graphic, the real product walkthrough video, a
+ * permanently-visible pricing + comparison pair (never collapsed behind a
+ * toggle), and an FAQ. Every claim here is something this app actually
+ * has — nothing invented to pad the page out — and nothing here
+ * fabricates customer counts, logos, or quoted testimonials, which this
+ * project doesn't have real ones for yet.
  */
 const SERIF = "font-[family-name:var(--font-source-serif)]";
 // Written as their own complete, literal class strings (not derived via
@@ -60,50 +59,12 @@ const SERVICES = [
   { label: "Security" },
 ];
 
-/** The real feature set — one entry per major module this app actually
- * ships, described accurately rather than in marketing-generic terms
- * (e.g. "personal + company-wide notification preferences" is a real,
- * specific thing this platform has, not a filler bullet). Grouped into two
- * real categories (customer-facing day-to-day work vs. the business/admin
- * side) purely for the tree layout below — same 8 features either way,
- * just organized for a branching diagram instead of a flat grid. */
-const FEATURE_GROUPS = [
-  {
-    label: "Sales & Engagement",
-    items: [
-      { icon: Contact2, title: "CRM & Lead Management", description: "Pipeline, Kanban and calendar views, lead scoring, duplicate detection, and assignment/release — all in one workspace.", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" },
-      { icon: CalendarClock, title: "Follow-ups & Calendar", description: "Every scheduled follow-up in one place, overdue and today's calls surfaced automatically, no lead left waiting.", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
-      { icon: MessageSquare, title: "Team Messaging", description: "Direct messages and admin-managed group chats — rename, add, or remove members right from the conversation.", color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
-      { icon: Bell, title: "Smart Notifications", description: "Real-time alerts with both company-wide and per-employee category preferences — control exactly what reaches you.", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400" },
-    ],
-  },
-  {
-    label: "Operations & Business",
-    items: [
-      { icon: Users, title: "Employees & Roles", description: "Employees, departments, and branches with fine-grained, role-based permissions across every module.", color: "bg-sky-500/10 text-sky-600 dark:text-sky-400" },
-      { icon: BarChart3, title: "Reports & Analytics", description: "Live dashboards for pipeline health and source performance, with exportable reports across leads, users, and tasks.", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
-      { icon: CreditCard, title: "Payments & Subscriptions", description: "GST-inclusive pricing, coupon codes, flexible commitment terms, and a built-in partner/affiliate program.", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400" },
-      { icon: ShieldCheck, title: "Security & Permissions", description: "Every tenant fully isolated, every module gated by role-based permissions, with an activity log that traces who changed what.", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
-    ],
-  },
-];
-const ALL_FEATURES = FEATURE_GROUPS.flatMap((g) => g.items);
-
-/** Factual differentiators — no invented customer counts, logos, or
- * quoted testimonials attributed to people who don't exist. */
-const WHY_US = [
-  { title: "Multi-tenant from day one", description: "Your company's data, users, and branding are isolated at the database layer — never shared, never crossed with another tenant." },
-  { title: "Transparent, GST-inclusive pricing", description: "The price shown on every plan is the price you actually pay — tax included, coupon codes applied before you ever reach checkout." },
-  { title: "A partner program built in", description: "Turn a coupon code into a trackable affiliate link — every signup and payment it drives is attributed automatically." },
-  { title: "Your own branding, not ours", description: "Logo, favicon, and color scheme are configurable per company and apply across the sidebar, reports, and outgoing email." },
-];
-
 const FAQS = [
   { q: "Is this a multi-tenant platform?", a: "Yes. Every company gets its own isolated workspace — data, users, roles, and branding are scoped per tenant and never cross over." },
   { q: "Can we use our own branding?", a: "Yes. Logo, favicon, and color scheme are configurable per company from Settings, and apply across the sidebar, reports, and outgoing email." },
   { q: "What does the pricing above actually include?", a: "The price on every plan card already includes GST — nothing added at checkout beyond a coupon discount you choose to apply. Longer commitment terms cost less per month." },
   { q: "What payment methods are supported?", a: "Checkout runs through Razorpay — cards, UPI, and net banking are all supported there." },
-  { q: "Can I change plans later?", a: "Yes — upgrade, downgrade, or change your commitment term anytime from Settings → Subscription, effective immediately or at your next renewal." },
+  { q: "Can I change plans later?", a: "Yes — upgrade or change your commitment term anytime from Settings → Subscription, effective immediately or at your next renewal." },
 ];
 
 const DURATION_LABELS = { 1: "1 month", 3: "Quarterly", 6: "Half-yearly", 12: "Yearly", 24: "2 years", 36: "3 years" };
@@ -142,111 +103,6 @@ function OffersMarquee({ offers }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function FeatureCard({ icon: Icon, title, description, color, delay }) {
-  return (
-    <Fade delay={delay} className={`rounded-lg border ${BORDER} p-5 hover:border-indigo-500/30 dark:hover:border-indigo-400/30 transition-colors`}>
-      <span className={`inline-flex items-center justify-center h-9 w-9 rounded-md mb-3 ${color || `bg-indigo-500/10 ${ACCENT}`}`}>
-        <Icon className="h-4.5 w-4.5" />
-      </span>
-      <p className={`font-medium ${TEXT_PRIMARY}`}>{title}</p>
-      <p className={`text-sm mt-1.5 leading-relaxed ${TEXT_SECONDARY}`}>{description}</p>
-    </Fade>
-  );
-}
-
-/**
- * The feature grid's replacement — a compact, vertical, animated org
- * chart: one root (this app) branches down into the two real feature
- * groups, each branching down again into its 4 real features, in a single
- * row of small colored icon nodes (heading only — no description; this is
- * a diagram, not a card grid, and each feature's full description is
- * still one click away in the FAQ/feature grid on smaller screens).
- * Every connecting line draws itself in and every node cascades in right
- * after its own line finishes, and — since the whole thing is only ~300px
- * tall now — it all plays as one cohesive reveal the moment it scrolls
- * into view, not a slow trickle. Desktop-only (a diagram like this has no
- * legible mobile form) — small screens get FeatureCard's plain grid
- * instead, same content (with its own description), no tree.
- */
-const TREE_V = {
-  rootX: 50, rootY: 14,
-  elbow1Y: 30, midY: 46, elbow2Y: 64,
-  groupX: [25, 75], leafY: 86,
-};
-function treeLeafX(i) { return ((i + 0.5) / ALL_FEATURES.length) * 100; }
-function elbowPathV(x1, y1, yMid, y2, x2) { return `M ${x1} ${y1} V ${yMid} H ${x2} V ${y2}`; }
-
-// A literal `text-*` twin of BORDER_SOFT's own color (never derived via
-// .replace() on the border- string at runtime — same reasoning as
-// HOVER_PRIMARY/HOVER_ACCENT above: Tailwind only ever generates CSS for a
-// class name it can find as literal text in source).
-const TREE_LINE_COLOR = "text-[#E4E3DE] dark:text-white/10";
-
-function TreeConnector({ d, delay }) {
-  return (
-    <motion.path
-      d={d} fill="none" strokeWidth={1.5} vectorEffect="non-scaling-stroke"
-      className={`stroke-current ${TREE_LINE_COLOR}`}
-      initial={{ pathLength: 0, opacity: 0 }}
-      whileInView={{ pathLength: 1, opacity: 1 }} viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.5, delay, ease: "easeInOut" }}
-    />
-  );
-}
-
-function TreeLeaf({ icon: Icon, title, color, x, delay }) {
-  return (
-    <Fade
-      delay={delay}
-      className="absolute flex flex-col items-center gap-1.5 text-center"
-      style={{ left: `${x}%`, top: `${TREE_V.leafY}%`, width: "12%", transform: "translate(-50%, -50%)" }}
-    >
-      <span className={`inline-flex items-center justify-center h-9 w-9 rounded-full shrink-0 ${color}`}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <p className={`text-[11px] font-medium leading-tight ${TEXT_PRIMARY}`}>{title}</p>
-    </Fade>
-  );
-}
-
-function FeatureTree() {
-  return (
-    <div className="relative hidden lg:block h-[300px] mt-10">
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        {FEATURE_GROUPS.map((group, gi) => (
-          <TreeConnector key={`root-${gi}`} d={elbowPathV(TREE_V.rootX, TREE_V.rootY, TREE_V.elbow1Y, TREE_V.midY, TREE_V.groupX[gi])} delay={0.1} />
-        ))}
-        {ALL_FEATURES.map((_, i) => (
-          <TreeConnector key={`mid-${i}`} d={elbowPathV(TREE_V.groupX[Math.floor(i / 4)], TREE_V.midY, TREE_V.elbow2Y, TREE_V.leafY, treeLeafX(i))} delay={0.45 + (i % 4) * 0.06} />
-        ))}
-      </svg>
-
-      {/* Root — this app */}
-      <Fade className="absolute flex flex-col items-center gap-1.5" style={{ left: `${TREE_V.rootX}%`, top: `${TREE_V.rootY}%`, transform: "translate(-50%, -50%)" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/KaizenBMS%20infinity%20logo.png" alt="" className="h-9 w-9 object-contain" />
-        <span className={`text-xs font-medium whitespace-nowrap ${TEXT_PRIMARY}`}>Your Workspace</span>
-      </Fade>
-
-      {/* Mid nodes — the two real feature groups */}
-      {FEATURE_GROUPS.map((group, gi) => (
-        <Fade
-          key={group.label} delay={0.35}
-          className={`absolute whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border ${BORDER} bg-white/80 dark:bg-white/5 backdrop-blur-sm shadow-sm ${TEXT_PRIMARY}`}
-          style={{ left: `${TREE_V.groupX[gi]}%`, top: `${TREE_V.midY}%`, transform: "translate(-50%, -50%)" }}
-        >
-          {group.label}
-        </Fade>
-      ))}
-
-      {/* Leaves — the 8 real features */}
-      {ALL_FEATURES.map((f, i) => (
-        <TreeLeaf key={f.title} {...f} x={treeLeafX(i)} delay={0.5 + (i % 4) * 0.06} />
-      ))}
     </div>
   );
 }
@@ -345,9 +201,8 @@ function HeroNetwork() {
   );
 }
 
-/** Cycles through short, factual value props — same wording used
- * elsewhere on this page (WHY_US/FEATURES), never a new unverified claim
- * invented just for this strip. */
+/** Cycles through short, factual value props consistent with the rest of
+ * this page — never a new unverified claim invented just for this strip. */
 const HERO_CAPTIONS = [
   "CRM, messaging, and billing — one workspace.",
   "GST-inclusive pricing on every plan, no surprises at checkout.",
@@ -384,21 +239,22 @@ function ScrollCue() {
 }
 
 /**
- * The recording has plain black pillarboxing down both sides (the capture
- * canvas was wider than the actual browser content) — this crops that out
- * rather than showing it. `CROP_FRACTION` is how much of the raw frame's
- * width is real content (eyeballed against the recording, ~3/4); it's
- * applied by giving the wrapper an `aspect-ratio` narrower than the
- * video's own, computed from the video's REAL measured resolution (via
+ * `CROP_FRACTION` is how much of the raw frame's width is real content —
+ * 1 means "use the video's own native width, no cropping." Set below 1
+ * only for a recording that has actual black pillarboxing down both sides
+ * (a wider capture canvas than the real browser content); it's applied by
+ * giving the wrapper an `aspect-ratio` narrower than the video's own,
+ * computed from the video's REAL measured resolution (via
  * `loadedmetadata`, not a guessed/hardcoded one), then letting
  * `object-fit: cover` crop in from both sides equally — never stretches
- * or distorts the picture the way scaling the element itself would.
+ * or distorts the picture the way scaling the element itself would. The
+ * newer recording (below) has no pillarboxing, so this stays at 1.
  */
-const CROP_FRACTION = 0.75;
+const CROP_FRACTION = 1;
 
 /**
  * The real product walkthrough — an actual screen recording
- * (`/videos/Kaizen BMS Walkthrough.mp4`), not a recreated animation.
+ * (`/videos/Kaizen BMS Walkthrough new.mp4`), not a recreated animation.
  * Deliberately shown WITHOUT player controls — no scrubber, no play
  * button — so it reads as a self-running automated demo (like a looping
  * GIF) rather than "a video someone has to click play on": it starts the
@@ -428,7 +284,7 @@ function WalkthroughVideo() {
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video
             ref={videoRef}
-            src="/videos/Kaizen%20BMS%20Walkthrough.mp4"
+            src="/videos/Kaizen%20BMS%20Walkthrough%20new.mp4"
             className="w-full h-full object-cover"
             autoPlay
             muted
@@ -537,7 +393,7 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
                 every link, with "Start Free" as a solid accent pill inside
                 it rather than a separate plain-text link. */}
             <div className={`flex items-center gap-1 flex-wrap rounded-full border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/[0.04] backdrop-blur-md shadow-sm px-2 py-1.5`}>
-              <a href="#modules" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Modules</a>
+              <a href="#walkthrough" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Overview</a>
               <a href="#pricing" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Packs</a>
               <a href="#compare" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>Compare</a>
               <a href="#faq" className={`text-sm px-3 py-1.5 rounded-full ${TEXT_SECONDARY} hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors`}>FAQ</a>
@@ -598,21 +454,6 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
             </div>
           </div>
         </div>
-
-        {/* ============================================================
-            FEATURES — an animated horizontal tree on desktop (see
-            FeatureTree's own doc comment), a plain grid on smaller screens
-            where a branching diagram this wide has no legible form. Same
-            8 real features, same real copy, either way.
-            ============================================================ */}
-        <section id="modules" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-2`}>
-          <MicroLabel className="mb-2">What&apos;s inside</MicroLabel>
-          <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Everything a growing team needs, one workspace.</h2>
-          <FeatureTree />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-4 mt-8">
-            {ALL_FEATURES.map((f, i) => <FeatureCard key={f.title} {...f} delay={(i % 4) * 0.05} />)}
-          </div>
-        </section>
 
         {/* ============================================================
             PRODUCT WALKTHROUGH — the real screen recording, see
@@ -704,7 +545,7 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
                     <p className={`text-xs ${TEXT_FAINT} mt-1`}>
                       {isFree
                         ? (p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started.")
-                        : `${p.description ? `${p.description} · ` : ""}Incl. ${GST_LABEL} (${p.currency} ${tier.price} + GST)`}
+                        : `${p.description ? `${p.description} · ` : ""}Incl. ${GST_LABEL} (${p.currency} ${tier.price} + GST)${p.pricing_model === "per_user" ? " · 5 users min" : ""}`}
                     </p>
 
                     <div className={`mt-4 pt-4 border-t ${BORDER_SOFT} space-y-1.5 text-sm ${TEXT_SECONDARY} flex-1`}>
@@ -770,23 +611,6 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
             </Fade>
           </section>
         )}
-
-        {/* ============================================================
-            WHY US — factual differentiators, deliberately no invented
-            customer counts, logos, or attributed quotes.
-            ============================================================ */}
-        <section id="why" className={`border-t ${BORDER} pt-10 sm:pt-12 mt-12`}>
-          <MicroLabel className="mb-2">Why teams choose us</MicroLabel>
-          <h2 className={`${SERIF} text-2xl sm:text-3xl font-bold tracking-tight`}>Built for how growing teams actually work.</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 mt-8">
-            {WHY_US.map((w, i) => (
-              <Fade key={w.title} delay={i * 0.05} className={`pb-6 border-b ${BORDER_SOFT}`}>
-                <p className={`font-medium ${TEXT_PRIMARY}`}>{w.title}</p>
-                <p className={`text-sm mt-1.5 leading-relaxed ${TEXT_SECONDARY}`}>{w.description}</p>
-              </Fade>
-            ))}
-          </div>
-        </section>
 
         {/* ============================================================
             FAQ

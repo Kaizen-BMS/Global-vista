@@ -101,3 +101,8 @@ export async function hasLeadFormBuilderSchema() {
   const [sections, layout] = await Promise.all([hasLeadFieldSectionsSchema(), hasLeadFieldLayoutSchema()]);
   return sections && layout;
 }
+
+/** Seat-block billing + GSTIN migration — companies.gstin and
+ * subscription_payments.seat_quantity/gst_amount land together. */
+export async function hasGstinColumn() { return columnExists("companies", "gstin"); }
+export async function hasPaymentSeatBreakdownColumns() { return columnExists("subscription_payments", "seat_quantity"); }

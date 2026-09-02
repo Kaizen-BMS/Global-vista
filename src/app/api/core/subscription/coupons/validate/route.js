@@ -9,9 +9,9 @@ export const POST = withErrorHandling(async (request) => {
   const session = await getSession();
   if (!session) return unauthorized();
   if (!isSuperAdmin(session)) return forbidden();
-  const { code, planId } = await request.json();
+  const { code, planId, seatQuantity } = await request.json();
   if (!code || !planId) return badRequest("code and planId are required.");
 
-  const preview = await previewCoupon(code, planId);
+  const preview = await previewCoupon(code, planId, seatQuantity || 1);
   return ok(preview);
 });

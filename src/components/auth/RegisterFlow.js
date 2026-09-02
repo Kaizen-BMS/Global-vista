@@ -7,7 +7,9 @@ import { Building2, User, CreditCard, CheckCircle2, ArrowRight, ArrowLeft, Loade
 import { apiFetch } from "@/components/shared/apiClient";
 import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
 import { withGst, GST_LABEL } from "@/lib/helpers/gst";
+import { DEFAULT_SEATS } from "@/lib/helpers/seats";
 import InvoicePreview from "@/components/billing/InvoicePreview";
+import SeatStepper from "@/components/billing/SeatStepper";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
 const STEPS = ["Company", "Admin", "Plan", "Confirm"];
@@ -50,7 +52,7 @@ export default function RegisterFlow() {
   const [form, setForm] = useState({
     companyName: "", companyEmail: "", companyPhone: "", companyWebsite: "", companyCountry: "", companyState: "", companyCity: "", companyAddress: "",
     adminName: "", adminEmail: "", adminPhone: "", adminPassword: "", confirmPassword: "",
-    planId: "", gateway: "", couponCode: "", durationMonths: 1,
+    planId: "", gateway: "", couponCode: "", durationMonths: 1, seatQuantity: DEFAULT_SEATS, gstin: "",
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const [appliedCoupon, setAppliedCoupon] = useState(null); // { code, discountType, discountValue }
@@ -88,9 +90,11 @@ export default function RegisterFlow() {
   function selectPlan(id) {
     const plan = plans.find((p) => String(p.id) === String(id));
     const onlyGateway = plan?.hasBillDesk && !plan?.hasRazorpay ? "billdesk" : plan?.hasRazorpay && !plan?.hasBillDesk ? "razorpay" : "";
-    setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway, durationMonths: 1 }));
+    setForm((f) => ({ ...f, planId: String(id), gateway: onlyGateway, durationMonths: 1, seatQuantity: DEFAULT_SEATS }));
     setAppliedCoupon(null); setCouponError("");
   }
+  const isPerUser = selectedPlan?.pricing_model === "per_user";
+  const seats = isPerUser ? form.seatQuantity : 1;
 
   /** Same reasoning as SubscriptionManager.js's own applyCoupon — validates
    * against the currently selected plan so the exact discount/final price
@@ -104,7 +108,7 @@ export default function RegisterFlow() {
     setCouponError("");
     try {
       const res = await apiFetch("/api/public/coupons/validate", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: selectedPlan.id }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, planId: selectedPlan.id, seatQuantity: seats }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid coupon code.");
@@ -113,10 +117,13 @@ export default function RegisterFlow() {
     } catch (err) { setCouponError(err.message); setAppliedCoupon(null); } finally { setCouponChecking(false); }
   }
   function removeCoupon() { setAppliedCoupon(null); set("couponCode", ""); setCouponError(""); }
+  // Discounts the whole seat-multiplied total ONCE (never once per seat) —
+  // same rule the server applies, see coupons.js/razorpayBilling.js.
+  const couponBaseAmount = selectedPlan ? Number(selectedPlan.price) * seats : 0;
   const couponDiscount = appliedCoupon && selectedPlan && form.durationMonths === 1
     ? Math.min(
-        Math.round((appliedCoupon.discountType === "percent" ? (Number(selectedPlan.price) * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue) * 100) / 100,
-        Number(selectedPlan.price)
+        Math.round((appliedCoupon.discountType === "percent" ? (couponBaseAmount * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue) * 100) / 100,
+        couponBaseAmount
       )
     : 0;
 
@@ -288,12 +295,18 @@ export default function RegisterFlow() {
                         {p.description && <p className="text-white/50 text-xs mt-0.5">{p.description}</p>}
                         <p className="text-white/40 text-xs mt-0.5">
                           {p.trial_days ? `${p.trial_days}-day free trial · ` : ""}
-                          {p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
+                          {p.pricing_model === "per_user" ? "5 users min" : p.max_users ? `${p.max_users} users` : "Unlimited users"} · {p.max_leads ? `${p.max_leads} leads` : "Unlimited leads"} · {p.max_storage_mb ? `${(p.max_storage_mb / 1024).toFixed(1)} GB` : "Unlimited storage"}
                           {p.price ? ` · incl. ${GST_LABEL}` : ""}
                         </p>
                       </div>
                     </label>
                   ))}
+                </div>
+              )}
+
+              {isPerUser && (
+                <div className="pt-1">
+                  <SeatStepper dark value={form.seatQuantity} onChange={(v) => set("seatQuantity", v)} />
                 </div>
               )}
 
@@ -307,13 +320,13 @@ export default function RegisterFlow() {
                         className={`px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition text-center ${form.durationMonths === opt.months ? "border-indigo-500 bg-indigo-500/10 text-white" : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"}`}
                       >
                         <p className="font-medium">{opt.months} {opt.months === 1 ? "month" : "months"}</p>
-                        <p className="text-white/40">{selectedPlan.currency} {withGst(opt.price)}/mo</p>
+                        <p className="text-white/40">{selectedPlan.currency} {withGst(opt.price)}{isPerUser ? "/user/mo" : "/mo"}</p>
                       </button>
                     ))}
                   </div>
                   {selectedDurationOption && selectedDurationOption.months > 1 && (
                     <p className="text-white/40 text-xs mt-1.5">
-                      Billed {selectedPlan.currency} {withGst(Number(selectedDurationOption.price) * selectedDurationOption.months).toLocaleString()} every {selectedDurationOption.months} months{selectedPlan.pricing_model === "per_user" ? ", per user" : ""} (incl. {GST_LABEL}).
+                      Billed {selectedPlan.currency} {withGst(Number(selectedDurationOption.price) * selectedDurationOption.months * seats).toLocaleString()} every {selectedDurationOption.months} months{isPerUser ? ` (${seats} users)` : ""} (incl. {GST_LABEL}).
                     </p>
                   )}
                 </div>
@@ -378,10 +391,14 @@ export default function RegisterFlow() {
                   planName={selectedPlan?.name}
                   billingLabel={selectedDurationOption && selectedDurationOption.months > 1 ? `Every ${selectedDurationOption.months} months` : `Every 1 month`}
                   currency={selectedPlan?.currency}
-                  baseAmount={selectedDurationOption && selectedDurationOption.months > 1 ? Number(selectedDurationOption.price) * selectedDurationOption.months : Number(selectedPlan?.price)}
+                  baseAmount={(selectedDurationOption && selectedDurationOption.months > 1 ? Number(selectedDurationOption.price) * selectedDurationOption.months : Number(selectedPlan?.price)) * seats}
+                  seatQuantity={isPerUser ? seats : null}
+                  perSeatAmount={isPerUser ? selectedPlan?.price : null}
                   discountAmount={couponDiscount}
                   discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
                   gatewayLabel={GATEWAY_LABEL[effectiveGateway]}
+                  gstin={form.gstin}
+                  onGstinChange={(v) => set("gstin", v)}
                   proceedLabel="Proceed to Pay"
                   onProceed={submit}
                   onBack={back}

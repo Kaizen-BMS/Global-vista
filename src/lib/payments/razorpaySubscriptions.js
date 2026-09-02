@@ -138,11 +138,11 @@ export async function createRazorpaySubscription({ razorpayPlanId, period, inter
 }
 
 /** Updates just the seat count on an already-authorized subscription —
- * called whenever a company's active employee count changes (see
- * syncSubscriptionSeatCount). "now" so the new headcount is reflected on
- * the very next charge; Razorpay's own proration (if any) for a quantity
- * change mid-cycle is Razorpay's documented behavior, not something this
- * app calculates independently. */
+ * called when a buyer changes their purchased seat block (see
+ * updateCompanySeatQuantity), never auto-triggered by headcount changes.
+ * "now" so the new count is reflected on the very next charge; Razorpay's
+ * own proration (if any) for a quantity change mid-cycle is Razorpay's
+ * documented behavior, not something this app calculates independently. */
 export async function updateRazorpaySubscriptionQuantity(razorpaySubscriptionId, quantity) {
   return updateRazorpaySubscription(razorpaySubscriptionId, { quantity, scheduleChangeAt: "now" });
 }
