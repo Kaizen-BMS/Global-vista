@@ -321,30 +321,37 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             const isCurrent = isSamePlan && !needsPayment;
             const isPaid = Number(plan.price) > 0;
             const seats = getSeats(plan);
+            // The card's own top-line price tracks whichever commitment
+            // length is currently selected below (getDuration(plan)) — a
+            // 36-month tier's own, lower per-month rate, not always the
+            // plain 1-month price.
+            const duration = getDuration(plan);
+            const tierForCard = duration > 1 ? plan.durationTiers?.find((t) => t.durationMonths === duration) : null;
+            const unitPrice = tierForCard ? Number(tierForCard.price) : Number(plan.price);
             const discount = discountFor(plan);
             // A fixed discount is against the whole seat-multiplied total
             // (see discountFor's own doc comment) — divided back down to a
             // per-seat rate here purely for this per-unit price display;
             // percent discounts land on the same number either way.
-            const discountedPrice = discount > 0 ? Math.round(((Number(plan.price) * seats - discount) / seats) * 100) / 100 : null;
+            const discountedPrice = discount > 0 ? Math.round(((unitPrice * seats - discount) / seats) * 100) / 100 : null;
             return (
               <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className={`relative rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30 hover:border-indigo-500/20"}`}>
                 {isCurrent && <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
                 <p className="text-foreground font-medium mt-1">{plan.name}</p>
                 {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
-                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {withGst(Number(plan.price)).toLocaleString()}</p>}
+                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {withGst(unitPrice).toLocaleString()}</p>}
                 <p className={`text-foreground text-lg font-semibold ${discountedPrice != null ? "" : "mt-2"}`}>
-                  {isPaid ? `${plan.currency} ${withGst(discountedPrice ?? Number(plan.price)).toLocaleString()}` : "Free"}
+                  {isPaid ? `${plan.currency} ${withGst(discountedPrice ?? unitPrice).toLocaleString()}` : "Free"}
                   {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
                   {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
                 </p>
-                {isPaid && <p className="text-muted-foreground text-[10px] mt-0.5">Incl. {GST_LABEL} (base {plan.currency} {(discountedPrice ?? Number(plan.price)).toLocaleString()})</p>}
+                {isPaid && <p className="text-muted-foreground text-[10px] mt-0.5">Incl. {GST_LABEL} (base {plan.currency} {(discountedPrice ?? unitPrice).toLocaleString()})</p>}
                 {isPaid && plan.pricing_model === "per_user" && !isCurrent && (
                   <div className="mt-2">
                     <SeatStepper value={seats} onChange={(v) => setSeatByPlan((s) => ({ ...s, [plan.id]: v }))} />
                     <p className="text-muted-foreground text-[10px] mt-1">
-                      Total: {plan.currency} {withGst(Math.max(0, Number(plan.price) * seats - discount)).toLocaleString()}/mo for {seats} seats
+                      Total: {plan.currency} {withGst(Math.max(0, unitPrice * seats - discount)).toLocaleString()}/mo for {seats} seats
                     </p>
                   </div>
                 )}
@@ -436,7 +443,7 @@ function InvoiceStep({ pendingInvoice, getDuration, getSeats, discountFor, appli
         currency={plan.currency}
         baseAmount={baseAmount}
         seatQuantity={isPerUser ? seats : null}
-        perSeatAmount={isPerUser ? plan.price : null}
+        perSeatAmount={isPerUser ? (tier ? tier.price : plan.price) : null}
         discountAmount={discount}
         discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
         gatewayLabel={GATEWAY_LABEL[effectiveGateway]}

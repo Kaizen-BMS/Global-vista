@@ -393,7 +393,7 @@ export default function RegisterFlow() {
                   currency={selectedPlan?.currency}
                   baseAmount={(selectedDurationOption && selectedDurationOption.months > 1 ? Number(selectedDurationOption.price) * selectedDurationOption.months : Number(selectedPlan?.price)) * seats}
                   seatQuantity={isPerUser ? seats : null}
-                  perSeatAmount={isPerUser ? selectedPlan?.price : null}
+                  perSeatAmount={isPerUser ? selectedDurationOption?.price : null}
                   discountAmount={couponDiscount}
                   discountLabel={appliedCoupon ? `Coupon (${appliedCoupon.code})` : undefined}
                   gatewayLabel={GATEWAY_LABEL[effectiveGateway]}
