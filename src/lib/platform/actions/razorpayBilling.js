@@ -359,10 +359,27 @@ function rethrowIfUpiPlanChangeRestriction(err) {
     e.status = 400;
     throw e;
   }
+  // "Can't update subscription when subscription is not in Authenticated
+  // or Active state" — Razorpay's own state, not ours: our local
+  // company_subscriptions row can say status='active' (e.g. it WAS active
+  // and is only now stuck, or a past write marked it active) while the
+  // real subscription object on Razorpay's side never completed its
+  // first payment authorization (created/pending, halted, or already
+  // cancelled/expired there). Switching a plan in place only works on an
+  // authorized subscription — Razorpay's rule, not a bug in this app —
+  // so the real fix is a fresh checkout, same next step as the UPI case.
+  if (/not in authenticated or active state/i.test(err?.message || "")) {
+    const e = new Error(
+      "This subscription hasn't completed authorization on Razorpay's side, so its plan/seats can't be changed in place. " +
+      "Cancel it and start a fresh checkout for the plan you want instead."
+    );
+    e.status = 409;
+    throw e;
+  }
   throw err;
 }
 
-export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now", couponCode = null, requestedSeats = undefined) {
+export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now", couponCode = null, requestedSeats = undefined, durationMonths = 1) {
   if (!isSuperAdmin(session)) { const e = new Error("Only a Company Super Admin can change the subscription plan."); e.status = 403; throw e; }
   if (!["now", "cycle_end"].includes(when)) { const e = new Error('when must be "now" or "cycle_end".'); e.status = 400; throw e; }
 
@@ -378,6 +395,13 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
 
   const tieredReady = await hasTieredPlansSchema();
   const couponsAvailable = await hasCouponsSchema();
+  const commitmentColumnReady = await hasCommitmentMonthsColumn();
+
+  // Same commitment-tier concept the fresh-checkout path uses — a company
+  // switching plans in place can pick a longer term too, not just the
+  // plain monthly price.
+  const months = Number(durationMonths) || 1;
+  const tier = months > 1 ? await getDurationTier(newPlanId, months) : null;
 
   // Seat quantity for the plan being switched TO — a fresh choice, not
   // carried over from whatever the old plan's quantity happened to be
@@ -388,15 +412,17 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
   // createRazorpayCheckoutForCompany uses for a fresh checkout — a
   // Razorpay Subscription always bills against a real Plan object with a
   // fixed price, so a coupon applied here needs its own discounted Plan
-  // too, not just a number changed on our side. This is the in-place
-  // "Switch Now"/"Upgrade" path (no duration-tier concept), so the
-  // discount is always against the plain monthly price, same as checkout
-  // — and, same as checkout, against the whole seat-multiplied total once
-  // (never once per seat), then divided back to a per-seat Plan price.
+  // too, not just a number changed on our side. Same rule as checkout: a
+  // coupon only ever discounts the plain monthly price, never stacked with
+  // an already-discounted commitment tier — and, same as checkout, against
+  // the whole seat-multiplied total once (never once per seat), then
+  // divided back to a per-seat Plan price.
   let couponId = null;
   let discountAmount = 0;
   let razorpayPlanId;
-  if (couponCode && couponsAvailable) {
+  if (couponCode && months > 1) {
+    const e = new Error("Coupons can only be applied to monthly billing, not a multi-month commitment plan."); e.status = 400; throw e;
+  } else if (couponCode && couponsAvailable) {
     const baseTotal = Number(newPlan.price) * seatQuantity;
     const validated = await validateCouponForPlan(couponCode, newPlan, baseTotal);
     couponId = validated.coupon.id;
@@ -405,6 +431,8 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
     razorpayPlanId = await createRazorpayPlan({ ...newPlan, price: perSeatFinal });
   } else if (couponCode && !couponsAvailable) {
     const e = new Error("Coupons aren't available yet."); e.status = 404; throw e;
+  } else if (tier) {
+    razorpayPlanId = await ensureDurationRazorpayPlanId(newPlan, tier);
   } else {
     razorpayPlanId = await ensureRazorpayPlanId(newPlan);
   }
@@ -423,8 +451,8 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
 
   if (when === "now") {
     await pool.query(
-      `UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""}${tieredReady ? ", maintenance_gateway_subscription_id=NULL, seat_quantity=?" : ""}${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
-      [newPlanId, ...(tieredReady ? [seatQuantity] : []), ...couponColumns, existing.id]
+      `UPDATE company_subscriptions SET plan_id=?${pendingColumnReady ? ", pending_plan_id=NULL" : ""}${tieredReady ? ", maintenance_gateway_subscription_id=NULL, seat_quantity=?" : ""}${commitmentColumnReady ? ", commitment_months=?" : ""}${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
+      [newPlanId, ...(tieredReady ? [seatQuantity] : []), ...(commitmentColumnReady ? [months] : []), ...couponColumns, existing.id]
     );
     const conn = await pool.getConnection();
     try { await syncCompanyModulesToPlan(conn, session.company_id, newPlanId, session.id); } finally { conn.release(); }
@@ -436,13 +464,17 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
     // in confirmRazorpaySubscription below). coupon_id/coupon_discount_amount
     // ARE set now though, so whenever that future payment actually lands,
     // the existing webhook-driven redeemCoupon() call picks it up correctly.
+    // seat_quantity is ALSO set now (not deferred) — Razorpay itself is
+    // already told the new quantity via scheduleChangeAt="cycle_end" above,
+    // so our own record should match what will actually bill, not the old
+    // count, even before the switch visibly takes effect locally.
     await pool.query(
-      `UPDATE company_subscriptions SET pending_plan_id=?${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
-      [newPlanId, ...couponColumns, existing.id]
+      `UPDATE company_subscriptions SET pending_plan_id=?${tieredReady ? ", seat_quantity=?" : ""}${commitmentColumnReady ? ", commitment_months=?" : ""}${couponsAvailable ? ", coupon_id=?, coupon_discount_amount=?" : ""} WHERE id=?`,
+      [newPlanId, ...(tieredReady ? [seatQuantity] : []), ...(commitmentColumnReady ? [months] : []), ...couponColumns, existing.id]
     );
   }
 
-  await logActivity({ userId: session.id, module: "platform", action: "razorpay_plan_change_scheduled", entityType: "company_subscription", entityId: existing.id, companyId: session.company_id, description: `${session.name} ${when === "now" ? "switched" : "scheduled a switch"} to plan "${newPlan.name}"${when === "cycle_end" ? ` (effective ${existing.ends_at})` : ""}${couponId ? " with a coupon" : ""}` }).catch(() => {});
+  await logActivity({ userId: session.id, module: "platform", action: "razorpay_plan_change_scheduled", entityType: "company_subscription", entityId: existing.id, companyId: session.company_id, description: `${session.name} ${when === "now" ? "switched" : "scheduled a switch"} to plan "${newPlan.name}"${when === "cycle_end" ? ` (effective ${existing.ends_at})` : ""}${couponId ? " with a coupon" : ""}${tier ? ` (${months}-month commitment)` : ""}` }).catch(() => {});
 
   return { planName: newPlan.name, when, effectiveAt: when === "cycle_end" ? existing.ends_at : null };
 }

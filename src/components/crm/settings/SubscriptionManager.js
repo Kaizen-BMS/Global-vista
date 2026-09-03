@@ -101,8 +101,8 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     const plan = plans.find((p) => p.id === autoCheckout.planId);
     if (!plan || plan.id === currentPlanId || !plan.hasRazorpay || plan.hasBillDesk) return;
     autoFiredRef.current = true;
-    if (!canSwitchInPlace) setDurationByPlan((d) => ({ ...d, [plan.id]: autoCheckout.months || 1 }));
-    setPendingInvoice({ plan, when: canSwitchInPlace ? "now" : null }); // duration tiers aren't supported on the in-place switch path yet — see its own doc comment
+    setDurationByPlan((d) => ({ ...d, [plan.id]: autoCheckout.months || 1 }));
+    setPendingInvoice({ plan, when: canSwitchInPlace ? "now" : null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoCheckout, plans, currentPlanId, canSwitchInPlace]);
 
@@ -225,7 +225,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     setCheckingOut(`${plan.id}:${when}`);
     try {
       const res = await apiFetch("/api/core/subscription/razorpay/change-plan", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when, couponCode: appliedCoupon?.code || null, seatQuantity: getSeats(plan) }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id, when, couponCode: appliedCoupon?.code || null, seatQuantity: getSeats(plan), durationMonths: getDuration(plan) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't change plan.");
@@ -358,7 +358,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                   {plan.max_storage_mb ? <li>{plan.max_storage_mb >= 1024 ? `${Math.round(plan.max_storage_mb / 1024)}GB` : `${plan.max_storage_mb}MB`} storage</li> : <li>Unlimited storage</li>}
                   <li>Import/Export: {plan.allow_import_export === 0 ? "No" : "Yes"}</li>
                 </ul>
-                {!isCurrent && !canSwitchInPlace && plan.hasRazorpay && plan.durationTiers?.length > 0 && (
+                {!isCurrent && plan.hasRazorpay && plan.durationTiers?.length > 0 && (
                   <div className="mt-2">
                     <p className="text-muted-foreground text-[10px] mb-1">Commitment length</p>
                     <div className="flex flex-wrap gap-1">
@@ -367,7 +367,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                           key={opt.durationMonths} type="button" onClick={() => setDurationByPlan((d) => ({ ...d, [plan.id]: opt.durationMonths }))}
                           className={`px-2 py-1 rounded-md border text-[10px] cursor-pointer transition ${getDuration(plan) === opt.durationMonths ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
                         >
-                          {opt.durationMonths}mo · {plan.currency}{withGst(opt.price)}/mo
+                          {opt.durationMonths}mo · {plan.currency}{withGst(opt.price)}{plan.pricing_model === "per_user" ? "/user/mo" : "/mo"}
                         </button>
                       ))}
                     </div>
@@ -420,7 +420,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
  * / At Renewal) set `pendingInvoice`. */
 function InvoiceStep({ pendingInvoice, getDuration, getSeats, discountFor, appliedCoupon, gateway, checkingOut, gstin, onGstinChange, onBack, onProceed }) {
   const { plan, when } = pendingInvoice;
-  const months = when ? 1 : getDuration(plan); // in-place switching doesn't support commitment tiers yet
+  const months = getDuration(plan);
   const tier = months > 1 ? plan.durationTiers?.find((t) => t.durationMonths === months) : null;
   const isPerUser = plan.pricing_model === "per_user";
   const seats = isPerUser ? getSeats(plan) : 1;
