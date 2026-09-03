@@ -389,6 +389,30 @@ export async function changeCompanyRazorpayPlan(session, newPlanId, when = "now"
   }
   if (existing.plan_id === Number(newPlanId)) { const e = new Error("This is already the current plan."); e.status = 400; throw e; }
 
+  // Self-healing check: our own status='active' can be stale/wrong (a
+  // manual platform-side override, or a webhook that never arrived) even
+  // though Razorpay itself never actually authorized this subscription
+  // (no card/UPI mandate registered, paid_count=0 — status stuck at
+  // "created"). Razorpay refuses to update the plan/quantity on anything
+  // but an authenticated/active subscription, and would otherwise fail
+  // here with an opaque "not in Authenticated or Active state" error every
+  // single time. Verifying against Razorpay's real, live status FIRST and
+  // reconciling our own record to match it means this corrects itself the
+  // moment it's discovered, instead of dead-ending on the same error
+  // forever — the very next load of this page shows the correct
+  // "Subscribe"/"Complete Payment" fresh-checkout button instead.
+  const liveSub = await getRazorpaySubscription(existing.gateway_subscription_id);
+  if (!["authenticated", "active"].includes(liveSub.status)) {
+    const reconciledStatus = RAZORPAY_STATUS_MAP[liveSub.status] || "pending";
+    await pool.query(`UPDATE company_subscriptions SET status = ? WHERE id = ?`, [reconciledStatus, existing.id]);
+    const e = new Error(
+      `This subscription was never actually completed on Razorpay's side (it never finished payment authorization). ` +
+      `We've corrected the record — refresh this page and you'll see "Subscribe"/"Complete Payment" instead, which starts a real checkout.`
+    );
+    e.status = 409;
+    throw e;
+  }
+
   const [[newPlan]] = await pool.query(`SELECT * FROM plans WHERE id = ? AND status = 'active'`, [newPlanId]);
   if (!newPlan) { const e = new Error("Plan not found or inactive."); e.status = 404; throw e; }
   if (!(Number(newPlan.price) > 0)) { const e = new Error("This plan is free — cancel the current subscription instead of switching to it."); e.status = 400; throw e; }
