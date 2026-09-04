@@ -19,7 +19,7 @@ const ACCENTS = {
   neutral: "text-muted-foreground bg-muted-foreground/10",
 };
 
-function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
+export function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
   const Icon = ICONS[icon];
   const content = (
     <>

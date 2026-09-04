@@ -1,5 +1,5 @@
 "use client";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Users } from "lucide-react";
 import { DEFAULT_SEATS, SEAT_STEP } from "@/lib/helpers/seats";
 
 /**
@@ -18,7 +18,7 @@ export default function SeatStepper({ value, onChange, dark = false, disabled = 
 
   return (
     <div>
-      <p className={`text-xs mb-1.5 ${faint}`}>Users</p>
+      <p className={`flex items-center gap-1.5 text-xs mb-1.5 font-medium ${faint}`}><Users className="h-3 w-3" /> Users</p>
       <div className="flex items-center gap-3">
         <button
           type="button" disabled={disabled || value <= DEFAULT_SEATS}
@@ -27,7 +27,7 @@ export default function SeatStepper({ value, onChange, dark = false, disabled = 
         >
           <Minus className="h-3.5 w-3.5" />
         </button>
-        <span className={`text-sm font-medium w-20 text-center ${strong}`}>{value} {value === 1 ? "seat" : "seats"}</span>
+        <span className={`text-sm font-semibold w-20 text-center ${strong}`}>{value} {value === 1 ? "seat" : "seats"}</span>
         <button
           type="button" disabled={disabled}
           onClick={() => onChange(value + SEAT_STEP)}

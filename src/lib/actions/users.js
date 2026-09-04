@@ -175,11 +175,14 @@ export async function bulkSetUserStatus(session, ids, status, updatedBy) {
 
 export async function bulkAssignRole(session, ids, roleId, updatedBy) {
   if (!ids.length) return;
-  // FIX: roleId is now verified as belonging to this company (or a
-  // NULL-company system template) before being assigned — previously
-  // any roleId could be written regardless of which company owned it.
+  // FIX: roleId is verified as belonging to this company before being
+  // assigned — previously any roleId could be written regardless of which
+  // company owned it. Strictly this tenant's own roles now (every company
+  // already has its own cloned copy of every role — see provisioning.js —
+  // so there's never a legitimate reason to assign one of the
+  // company_id-IS-NULL templates those clones came from).
   const [[role]] = await pool.query(
-    `SELECT id FROM roles WHERE id=? AND (company_id=? OR company_id IS NULL) AND is_deleted=0 LIMIT 1`,
+    `SELECT id FROM roles WHERE id=? AND company_id=? AND is_deleted=0 LIMIT 1`,
     [roleId, session.company_id]
   );
   if (!role) {

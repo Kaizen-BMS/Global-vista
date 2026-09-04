@@ -5,12 +5,64 @@ import { toast } from "sonner";
 import { Loader2, Trash2, ArrowUp, ArrowDown, Eye, EyeOff, Plus, ImagePlus, X } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
-const MAX_IMAGE_MB = 5;
+const MAX_IMAGE_MB = 5; // the server's own final cap (savePlatformUpload) — rarely hit once compressImage() has run
+const MAX_ORIGINAL_MB = 20; // a generous pre-compression sanity check — typical phone photos land well under this
+
+/**
+ * Shrinks a raster image client-side (resize + re-encode to WebP) before
+ * it ever hits the network — a straight-from-phone-camera photo can
+ * easily be 3-8MB, and Hostinger's own reverse proxy (or any similar
+ * hosting setup) commonly caps request bodies well under that, which
+ * shows up in the browser as a bare, unhelpful "Failed to fetch" rather
+ * than a real error message (the request never completes at all). SVG
+ * and GIF are left untouched (already tiny / animation would break).
+ * Falls back to the original file untouched if decoding fails or the
+ * "compressed" result isn't actually smaller — this only ever helps, it
+ * never blocks an upload that would otherwise have gone through fine.
+ */
+async function compressImage(file, { maxDimension = 1600, quality = 0.82 } = {}) {
+  if (file.type === "image/svg+xml" || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".webp", { type: "image/webp" });
+  } catch {
+    return file; // decoding failed for some reason — upload the original rather than blocking entirely
+  }
+}
+
+/** A bare "Failed to fetch" is the browser's own message when the request
+ * never got a response at all (as opposed to a real error response from
+ * the server) — almost always a body the server/proxy rejected outright,
+ * or a dropped connection. Translated into something a Platform Operator
+ * can actually act on; every other (real, server-returned) error message
+ * passes through unchanged. */
+function friendlyUploadError(err) {
+  if (/failed to fetch/i.test(err?.message || "")) {
+    return new Error("Couldn't reach the server to upload this image — it may still be too large, or the connection dropped. Try a smaller image, or add the offer with just text for now.");
+  }
+  return err;
+}
 
 async function uploadOfferImage(file) {
+  const compressed = await compressImage(file);
   const formData = new FormData();
-  formData.append("file", file);
-  const res = await apiFetch("/api/platform/offers/upload", { method: "POST", body: formData });
+  formData.append("file", compressed);
+  let res;
+  try {
+    res = await apiFetch("/api/platform/offers/upload", { method: "POST", body: formData });
+  } catch (err) {
+    throw friendlyUploadError(err);
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Failed to upload image.");
   return data.url;
@@ -51,7 +103,7 @@ function OfferRow({ offer, index, total, onRefresh, onMove }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_IMAGE_MB * 1024 * 1024) { toast.error(`Image must be under ${MAX_IMAGE_MB}MB.`); return; }
+    if (file.size > MAX_ORIGINAL_MB * 1024 * 1024) { toast.error(`Image must be under ${MAX_ORIGINAL_MB}MB.`); return; }
     setBusy(true);
     try {
       const url = await uploadOfferImage(file);
@@ -113,7 +165,7 @@ export default function OffersManager({ offers }) {
   function pickImage(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_IMAGE_MB * 1024 * 1024) { toast.error(`Image must be under ${MAX_IMAGE_MB}MB.`); e.target.value = ""; return; }
+    if (file.size > MAX_ORIGINAL_MB * 1024 * 1024) { toast.error(`Image must be under ${MAX_ORIGINAL_MB}MB.`); e.target.value = ""; return; }
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   }

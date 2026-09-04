@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, X, Ban, RotateCcw, ArrowUpRight, Receipt, CheckCircle2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Loader2, X, Ban, RotateCcw, ArrowUpRight, Receipt, CheckCircle2, ShieldCheck, AlertTriangle, Check, Zap, CalendarClock, Shield, Crown, Gem } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
@@ -15,6 +15,23 @@ import InvoicePreview from "@/components/billing/InvoicePreview";
 import SeatStepper from "@/components/billing/SeatStepper";
 
 const GATEWAY_LABEL = { billdesk: "BillDesk", razorpay: "Razorpay" };
+
+/** Same metal-name-driven theming the public pricing page (PlatformHome.js)
+ * already uses for Silver/Gold/Diamond — matched here purely for a
+ * cohesive, more premium look on this modal's cards; matched
+ * case-insensitively against the plan's own name so it never needs
+ * updating if plans are renamed/added. Anything that isn't one of these
+ * three (Starter, or a custom plan name) just uses the modal's existing
+ * neutral styling — nothing about pricing/checkout logic changes here. */
+const PLAN_THEMES = {
+  silver: { icon: Shield, text: "text-slate-500 dark:text-slate-300", border: "border-slate-400/40 dark:border-slate-300/30", bar: "bg-slate-400" },
+  gold: { icon: Crown, text: "text-amber-600 dark:text-amber-400", border: "border-amber-500/40 dark:border-amber-400/30", bar: "bg-amber-500" },
+  diamond: { icon: Gem, text: "text-sky-500 dark:text-sky-300", border: "border-sky-400/40 dark:border-sky-300/30", bar: "bg-sky-500" },
+};
+function planTheme(name) {
+  const key = Object.keys(PLAN_THEMES).find((k) => (name || "").toLowerCase().includes(k));
+  return key ? PLAN_THEMES[key] : null;
+}
 
 /** Only BillDesk/Razorpay ever get mentioned, and only the ones actually
  * connected to at least one plan shown here — currently just Razorpay, so
@@ -51,6 +68,12 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
   const getDuration = (plan) => durationByPlan[plan.id] || 1;
   const [seatByPlan, setSeatByPlan] = useState({}); // plan.id -> chosen seat count, default DEFAULT_SEATS — only meaningful for pricing_model='per_user'
   const getSeats = (plan) => (plan.pricing_model === "per_user" ? seatByPlan[plan.id] || DEFAULT_SEATS : 1);
+  // Only relevant when switching an already-active subscription in place —
+  // a real, explained choice picked BEFORE moving to the invoice, rather
+  // than two lookalike buttons that each both choose the timing AND fire
+  // the change in the same click.
+  const [timingByPlan, setTimingByPlan] = useState({}); // plan.id -> "now" | "cycle_end", default "now"
+  const getTiming = (plan) => timingByPlan[plan.id] || "now";
   // Pre-filled from whatever's already on file for this company (see
   // /api/core/subscription/gstin's GET) so a returning buyer isn't asked
   // to retype it every time; saved back (best-effort) once checkout/plan
@@ -241,13 +264,17 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <ModalFocusTrap>
-      <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} role="dialog" aria-modal="true" aria-label="Choose a Plan" className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
-          <div>
-            <p className="text-foreground font-semibold">Choose a Plan</p>
-            <p className="text-muted-foreground text-[11px] mt-0.5">Secure payment powered by {gatewayTrustLabel(plans)}</p>
+      <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} role="dialog" aria-modal="true" aria-label="Choose a Plan" className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl">
+        <div className="relative flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10 overflow-hidden">
+          <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-indigo-500/[0.07] via-transparent to-transparent pointer-events-none" />
+          <div className="relative flex items-center gap-3">
+            <span className="h-9 w-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0"><ArrowUpRight className="h-4.5 w-4.5" /></span>
+            <div>
+              <p className="text-foreground font-semibold">Choose a Plan</p>
+              <p className="flex items-center gap-1 text-muted-foreground text-[11px] mt-0.5"><ShieldCheck className="h-3 w-3 text-indigo-400" /> Secure payment powered by {gatewayTrustLabel(plans)}</p>
+            </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label="Close" className="relative text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
 
         {pendingInvoice ? (
@@ -278,7 +305,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
           </div>
         )}
 
-        <div className="px-6 pt-4 flex flex-wrap gap-4">
+        <div className="mx-6 mt-4 flex flex-wrap gap-4 rounded-xl border border-border bg-muted/30 p-4">
           <div>
             <label className="block text-muted-foreground text-xs mb-1.5">Coupon Code (optional)</label>
             {appliedCoupon ? (
@@ -315,7 +342,7 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
           )}
         </div>
 
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
           {plans.map((plan) => {
             const isSamePlan = plan.id === currentPlanId;
             const isCurrent = isSamePlan && !needsPayment;
@@ -334,70 +361,126 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
             // per-seat rate here purely for this per-unit price display;
             // percent discounts land on the same number either way.
             const discountedPrice = discount > 0 ? Math.round(((unitPrice * seats - discount) / seats) * 100) / 100 : null;
+            const canSwitchThisPlan = !isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay;
+            const timing = getTiming(plan);
+            const featureLines = [
+              `Registration: ${plan.registration_label || "Self"}`,
+              `Development: ${plan.development_cost_label || "Free"}`,
+              `Installation: ${plan.installation_cost_label || "Free"}`,
+              plan.max_users ? `${plan.max_users} employees` : "Unlimited employees",
+              plan.max_leads ? `${plan.max_leads.toLocaleString()} leads` : "Unlimited leads",
+              plan.max_storage_mb ? `${plan.max_storage_mb >= 1024 ? `${Math.round(plan.max_storage_mb / 1024)}GB` : `${plan.max_storage_mb}MB`} storage` : "Unlimited storage",
+              `Import/Export: ${plan.allow_import_export === 0 ? "No" : "Yes"}`,
+            ];
+            const theme = planTheme(plan.name);
+            const TierIcon = theme?.icon;
             return (
-              <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className={`relative rounded-xl border p-4 flex flex-col transition ${isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : "border-border bg-muted/30 hover:border-indigo-500/20"}`}>
-                {isCurrent && <span className="absolute -top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
-                <p className="text-foreground font-medium mt-1">{plan.name}</p>
+              <motion.div
+                key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -2 }}
+                className={`relative rounded-2xl border p-4 pt-5 flex flex-col shadow-sm transition-shadow hover:shadow-md overflow-hidden ${
+                  isCurrent ? "border-indigo-500/40 bg-indigo-500/5" : theme ? `${theme.border} bg-muted/20` : "border-border bg-muted/30"
+                }`}
+              >
+                {/* A thin top accent bar in the plan's own metal color —
+                    purely decorative, gives each tier a distinct identity
+                    at a glance without touching any pricing/checkout logic. */}
+                {theme && <span className={`absolute top-0 left-0 right-0 h-1 ${theme.bar}`} aria-hidden="true" />}
+                {isCurrent && <span className="absolute top-2.5 left-4 text-[10px] px-2 py-0.5 rounded-full bg-indigo-600 text-white font-medium">Current Plan</span>}
+
+                {/* Header */}
+                <div className="flex items-center gap-2">
+                  {TierIcon && <TierIcon className={`h-4 w-4 shrink-0 ${theme.text}`} />}
+                  <p className={`font-semibold ${theme ? theme.text : "text-foreground"}`}>{plan.name}</p>
+                </div>
                 {plan.description && <p className="text-muted-foreground text-xs mt-1">{plan.description}</p>}
-                {discountedPrice != null && <p className="text-muted-foreground text-xs line-through mt-2">{plan.currency} {withGst(unitPrice).toLocaleString()}</p>}
-                <p className={`text-foreground text-lg font-semibold ${discountedPrice != null ? "" : "mt-2"}`}>
-                  {isPaid ? `${plan.currency} ${withGst(discountedPrice ?? unitPrice).toLocaleString()}` : "Free"}
-                  {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
-                  {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
-                </p>
-                {isPaid && <p className="text-muted-foreground text-[10px] mt-0.5">Incl. {GST_LABEL} (base {plan.currency} {(discountedPrice ?? unitPrice).toLocaleString()})</p>}
+
+                {/* Price */}
+                <div className="mt-3">
+                  {discountedPrice != null && <p className="text-muted-foreground text-xs line-through">{plan.currency} {withGst(unitPrice).toLocaleString()}</p>}
+                  <p className="text-foreground text-2xl font-bold tracking-tight">
+                    {isPaid ? `${plan.currency} ${withGst(discountedPrice ?? unitPrice).toLocaleString()}` : "Free"}
+                    {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
+                    {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
+                  </p>
+                  {isPaid && <p className="text-muted-foreground text-[11px] mt-0.5">Incl. {GST_LABEL} · base {plan.currency} {(discountedPrice ?? unitPrice).toLocaleString()}</p>}
+                  {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1 font-medium">{plan.trial_days}-day free trial included</p>}
+                </div>
+
+                {/* What's included */}
+                <ul className="mt-3 pt-3 border-t border-border/60 space-y-2 text-xs text-muted-foreground flex-1">
+                  {featureLines.map((line) => (
+                    <li key={line} className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0"><Check className="h-2.5 w-2.5" /></span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Users (per-seat plans only) */}
                 {isPaid && plan.pricing_model === "per_user" && !isCurrent && (
-                  <div className="mt-2">
+                  <div className="mt-3 pt-3 border-t border-border/60">
                     <SeatStepper value={seats} onChange={(v) => setSeatByPlan((s) => ({ ...s, [plan.id]: v }))} />
-                    <p className="text-muted-foreground text-[10px] mt-1">
-                      Total: {plan.currency} {withGst(Math.max(0, unitPrice * seats - discount)).toLocaleString()}/mo for {seats} seats
+                    <p className="flex items-center gap-1 text-muted-foreground text-[11px] mt-1.5 bg-muted/60 rounded-md px-2 py-1 w-fit">
+                      <Zap className="h-3 w-3 text-indigo-400 shrink-0" /> Total: {plan.currency} {withGst(Math.max(0, unitPrice * seats - discount)).toLocaleString()}/mo for {seats} seats
                     </p>
                   </div>
                 )}
-                {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1">{plan.trial_days}-day free trial</p>}
-                <ul className="text-muted-foreground text-xs mt-2 space-y-1 flex-1">
-                  <li>Registration: {plan.registration_label || "Self"}</li>
-                  <li>Development: {plan.development_cost_label || "Free"}</li>
-                  <li>Installation: {plan.installation_cost_label || "Free"}</li>
-                  {plan.max_users ? <li>{plan.max_users} employees</li> : <li>Unlimited employees</li>}
-                  {plan.max_leads ? <li>{plan.max_leads.toLocaleString()} leads</li> : <li>Unlimited leads</li>}
-                  {plan.max_storage_mb ? <li>{plan.max_storage_mb >= 1024 ? `${Math.round(plan.max_storage_mb / 1024)}GB` : `${plan.max_storage_mb}MB`} storage</li> : <li>Unlimited storage</li>}
-                  <li>Import/Export: {plan.allow_import_export === 0 ? "No" : "Yes"}</li>
-                </ul>
+
+                {/* Billing term */}
                 {!isCurrent && plan.hasRazorpay && plan.durationTiers?.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-muted-foreground text-[10px] mb-1">Commitment length</p>
-                    <div className="flex flex-wrap gap-1">
+                  <div className="mt-3 pt-3 border-t border-border/60">
+                    <p className="flex items-center gap-1.5 text-foreground text-xs font-medium mb-1.5"><CalendarClock className="h-3 w-3 text-indigo-400" /> Billing term</p>
+                    <div className="grid grid-cols-2 gap-1.5">
                       {[{ durationMonths: 1, price: plan.price }, ...plan.durationTiers].map((opt) => (
                         <button
                           key={opt.durationMonths} type="button" onClick={() => setDurationByPlan((d) => ({ ...d, [plan.id]: opt.durationMonths }))}
-                          className={`px-2 py-1 rounded-md border text-[10px] cursor-pointer transition ${getDuration(plan) === opt.durationMonths ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
+                          className={`min-w-0 px-2 py-1.5 rounded-md border text-center cursor-pointer transition ${getDuration(plan) === opt.durationMonths ? "border-indigo-500 bg-indigo-500/10 text-foreground" : "border-border bg-muted text-muted-foreground hover:border-indigo-500/30"}`}
                         >
-                          {opt.durationMonths}mo · {plan.currency}{withGst(opt.price)}{plan.pricing_model === "per_user" ? "/user/mo" : "/mo"}
+                          <span className="block text-[11px] font-medium">{opt.durationMonths === 1 ? "1 month" : `${opt.durationMonths} months`}</span>
+                          <span className="block text-[10px] opacity-80 break-words">{plan.currency} {withGst(opt.price)}{plan.pricing_model === "per_user" ? " / user" : ""}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
-                {!isCurrent && isPaid && canSwitchInPlace && plan.hasRazorpay ? (
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => setPendingInvoice({ plan, when: "now" })}
-                      disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
-                      className="btn-brand flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium disabled:opacity-50 cursor-pointer"
-                    >
-                      {checkingOut === `${plan.id}:now` && <Loader2 className="h-3 w-3 animate-spin" />} Switch Now
-                    </button>
-                    <button
-                      onClick={() => setPendingInvoice({ plan, when: "cycle_end" })}
-                      disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
-                      title={currentEndsAt ? `Effective ${formatDate(currentEndsAt, timezone)}` : undefined}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-xs font-medium disabled:opacity-50 cursor-pointer hover:border-indigo-500/30"
-                    >
-                      {checkingOut === `${plan.id}:cycle_end` && <Loader2 className="h-3 w-3 animate-spin" />} At Renewal
-                    </button>
+
+                {/* When should this take effect? — a real, explained choice
+                    for a company already on an active plan (a brand-new
+                    subscriber has nothing to switch "at renewal" from). */}
+                {canSwitchThisPlan && (
+                  <div className="mt-3 pt-3 border-t border-border/60">
+                    <p className="text-foreground text-xs font-medium mb-1.5">When should this take effect?</p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <button
+                        type="button" onClick={() => setTimingByPlan((t) => ({ ...t, [plan.id]: "now" }))}
+                        className={`text-left px-2.5 py-2 rounded-lg border transition cursor-pointer ${timing === "now" ? "border-indigo-500 bg-indigo-500/10" : "border-border bg-muted hover:border-indigo-500/30"}`}
+                      >
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground"><Zap className="h-3 w-3 text-indigo-400" /> Right away</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">Switches immediately — you're billed the new amount today.</span>
+                      </button>
+                      <button
+                        type="button" onClick={() => setTimingByPlan((t) => ({ ...t, [plan.id]: "cycle_end" }))}
+                        className={`text-left px-2.5 py-2 rounded-lg border transition cursor-pointer ${timing === "cycle_end" ? "border-indigo-500 bg-indigo-500/10" : "border-border bg-muted hover:border-indigo-500/30"}`}
+                      >
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground"><CalendarClock className="h-3 w-3 text-indigo-400" /> At renewal</span>
+                        <span className="block text-[11px] text-muted-foreground mt-0.5">
+                          Keep your current plan until {currentEndsAt ? formatDate(currentEndsAt, timezone) : "your next billing date"}, then switch automatically.
+                        </span>
+                      </button>
+                    </div>
                   </div>
+                )}
+
+                {/* Action */}
+                {canSwitchThisPlan ? (
+                  <button
+                    onClick={() => setPendingInvoice({ plan, when: timing })}
+                    disabled={checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`}
+                    className="btn-brand mt-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
+                  >
+                    {(checkingOut === `${plan.id}:now` || checkingOut === `${plan.id}:cycle_end`) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Continue{timing === "cycle_end" ? " — At Renewal" : ""}
+                  </button>
                 ) : (
                 <button
                   onClick={() => (isPaid ? setPendingInvoice({ plan, when: null }) : choosePlan(plan))}

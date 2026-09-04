@@ -16,11 +16,16 @@ export async function listUserRoles(session, userId) {
   return rows;
 }
 
-// Same company-or-system-template rule bulkAssignRole already uses in
-// users.js — a role is assignable if it belongs to this tenant, or is one
-// of the NULL-company system role templates.
+// Strictly this tenant's own roles — every company already has its own
+// cloned copy of every role (see provisioning.js), so a role is only ever
+// assignable if it's actually this company's, never one of the
+// company_id-IS-NULL templates those clones came from. (The old
+// "or is a system template" allowance here was a workaround for the
+// listing bug where a role picker sourced from listRoles() could offer a
+// template as if it were a real option — now that listRoles() itself
+// never returns templates, this can go back to being strict.)
 async function assertRoleInCompany(companyId, roleId) {
-  const [[role]] = await pool.query(`SELECT id, name, slug FROM roles WHERE id=? AND (company_id=? OR company_id IS NULL) AND is_deleted=0 LIMIT 1`, [roleId, companyId]);
+  const [[role]] = await pool.query(`SELECT id, name, slug FROM roles WHERE id=? AND company_id=? AND is_deleted=0 LIMIT 1`, [roleId, companyId]);
   if (!role) { const e = new Error("Role not found in this company."); e.status = 404; throw e; }
   return role;
 }

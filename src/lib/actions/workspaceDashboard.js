@@ -107,7 +107,7 @@ export async function getRoleDistribution(session) {
   const [rows] = await pool.query(
     `SELECT r.name AS role, COUNT(u.id) AS count
      FROM roles r LEFT JOIN users u ON u.role_id=r.id AND u.is_deleted=0 AND u.status='active' AND u.company_id=?
-     WHERE (r.company_id=? OR r.company_id IS NULL) AND r.is_deleted=0
+     WHERE r.company_id=? AND r.is_deleted=0
      GROUP BY r.id, r.name HAVING count > 0 ORDER BY count DESC`,
     [session.company_id, session.company_id]
   );

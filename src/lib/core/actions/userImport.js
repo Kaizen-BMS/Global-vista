@@ -39,7 +39,12 @@ export function parseSpreadsheet(buffer, fileSizeBytes) {
 
 async function loadLookupMaps(companyId) {
   const [[roles], [departments], [designations], [branches], [employeeTypes]] = await Promise.all([
-    pool.query(`SELECT id, name FROM roles WHERE is_deleted = 0 AND (company_id = ? OR company_id IS NULL)`, [companyId]),
+    // Strictly this company's own roles — every company already has its
+    // own cloned copy of every role (see provisioning.js), so matching a
+    // CSV row's role name against the company_id-IS-NULL templates too
+    // risked an ambiguous match (two rows named "Admin") resolving to
+    // whichever one happened to be processed last.
+    pool.query(`SELECT id, name FROM roles WHERE is_deleted = 0 AND company_id = ?`, [companyId]),
     pool.query(`SELECT id, name FROM departments WHERE is_deleted = 0 AND company_id = ?`, [companyId]),
     pool.query(`SELECT id, name FROM designations WHERE is_deleted = 0`),
     pool.query(`SELECT id, name FROM branches WHERE is_deleted = 0 AND company_id = ?`, [companyId]),

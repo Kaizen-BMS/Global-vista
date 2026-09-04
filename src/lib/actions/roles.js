@@ -4,16 +4,24 @@ import { logActivity } from "@/lib/activityLog";
 import { softDelete } from "@/lib/helpers/db";
 import { createNotification } from "@/lib/actions/notifications";
 
+// Every company gets its OWN copy of every role (provisionCompany clones
+// the company_id-IS-NULL "template" rows into company-scoped copies at
+// signup — see provisioning.js) — so a company-facing read never needs to
+// fall back to the global templates themselves. Doing so used to show a
+// company's own "Admin"/"Super Admin" AND the untouched global template
+// of the same name side by side as if they were two different roles.
+// Those template rows still exist (provisioning would break without at
+// least one to clone), they just aren't this tenant's to see or use.
 export async function listRoles(session) {
   const [rows] = await pool.query(
     `SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role_id=r.id AND u.is_deleted=0 AND u.company_id=?) AS user_count
-     FROM roles r WHERE r.is_deleted=0 AND (r.company_id=? OR r.company_id IS NULL) ORDER BY r.name`,
+     FROM roles r WHERE r.is_deleted=0 AND r.company_id=? ORDER BY r.name`,
     [session.company_id, session.company_id]
   );
   return rows;
 }
 export async function getRoleById(session, id) {
-  const [rows] = await pool.query(`SELECT * FROM roles WHERE id=? AND is_deleted=0 AND (company_id=? OR company_id IS NULL) LIMIT 1`, [id, session.company_id]);
+  const [rows] = await pool.query(`SELECT * FROM roles WHERE id=? AND is_deleted=0 AND company_id=? LIMIT 1`, [id, session.company_id]);
   return rows[0] || null;
 }
 export async function getRoleAssignedUserCount(session, id) {
