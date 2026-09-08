@@ -9,7 +9,7 @@ import { formatDate } from "@/lib/helpers/dateFormat";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 import { loadRazorpayScript } from "@/lib/helpers/loadRazorpayScript";
-import { withGst, GST_LABEL } from "@/lib/helpers/gst";
+import { withGst, gstBreakdown, GST_LABEL } from "@/lib/helpers/gst";
 import { DEFAULT_SEATS } from "@/lib/helpers/seats";
 import InvoicePreview from "@/components/billing/InvoicePreview";
 import SeatStepper from "@/components/billing/SeatStepper";
@@ -402,7 +402,14 @@ function PlanPickerModal({ plans, currentPlanId, subscriptionState, currentGatew
                     {isPaid && <span className="text-muted-foreground text-xs font-normal"> {plan.pricing_model === "per_user" ? "/user/mo" : ` / ${plan.billing_cycle}`}</span>}
                     {discountedPrice != null && <span className="ml-1.5 text-emerald-400 text-xs font-medium">Coupon applied</span>}
                   </p>
-                  {isPaid && <p className="text-muted-foreground text-[11px] mt-0.5">Incl. {GST_LABEL} · base {plan.currency} {(discountedPrice ?? unitPrice).toLocaleString()}</p>}
+                  {isPaid && (() => {
+                    const { base, tax } = gstBreakdown(discountedPrice ?? unitPrice);
+                    return (
+                      <p className="text-muted-foreground text-[11px] mt-0.5">
+                        {plan.currency} {base.toLocaleString(undefined, { maximumFractionDigits: 2 })} + {GST_LABEL} {plan.currency} {tax.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </p>
+                    );
+                  })()}
                   {!!plan.trial_days && <p className="text-indigo-400 text-[11px] mt-1 font-medium">{plan.trial_days}-day free trial included</p>}
                 </div>
 

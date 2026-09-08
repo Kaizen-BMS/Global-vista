@@ -30,7 +30,7 @@ export default async function PlatformHomePage() {
   // pricing cards need to say so rather than link to a page that'll just
   // reject them.
   const viewer = session
-    ? { loggedIn: true, isSuperAdmin: isSuperAdmin(session), currentPlanId: subscription?.planId || null, currentPlanState: subscription?.state || null }
-    : { loggedIn: false, isSuperAdmin: false, currentPlanId: null, currentPlanState: null };
+    ? { loggedIn: true, isSuperAdmin: isSuperAdmin(session), currentPlanId: subscription?.planId || null, currentPlanState: subscription?.state || null, name: session.name || null }
+    : { loggedIn: false, isSuperAdmin: false, currentPlanId: null, currentPlanState: null, name: null };
   return <PlatformHome plans={plans} offers={offers} viewer={viewer} />;
 }
