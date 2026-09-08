@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { GLOBAL_VISTA_BRANDING } from "@/lib/constants/platformBranding";
 import { PAGE_BG, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_FAINT, BORDER, BORDER_SOFT, ACCENT } from "@/components/platformHome/editorialTheme";
-import { withGst, gstBreakdown } from "@/lib/helpers/gst";
+import { withGst } from "@/lib/helpers/gst";
 
 // This public, international-facing page deliberately never says "GST" —
 // the actual math is unchanged (still the real 18% rate from gst.js), only
@@ -362,7 +362,9 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
   const highlightIndex = paidCount > 1 ? displayPlans.findIndex((p) => p.price != null) + 1 : -1;
 
   const comparisonRows = [
+    { label: "Details", get: (p) => p.description || "—" },
     { label: "Billing model", get: (p) => (p.price == null ? "—" : p.pricing_model === "per_user" ? "Per user" : "Per company") },
+    { label: "Minimum users", get: (p) => (p.pricing_model === "per_user" ? "5 users" : "—") },
     { label: "Registration", get: (p) => p.registration_label || "Self" },
     { label: "Development cost", get: (p) => p.development_cost_label || "Free" },
     { label: "Installation cost", get: (p) => p.installation_cost_label || "Free" },
@@ -585,19 +587,17 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
                           </>
                         )}
                       </p>
-                      {!isFree && (() => {
-                        const { base, tax } = gstBreakdown(tier.price);
-                        return (
-                          <p className={`text-[11px] ${TEXT_FAINT} mt-0.5`}>
-                            {p.currency} {base.toLocaleString(undefined, { maximumFractionDigits: 2 })} + {p.currency} {tax.toLocaleString(undefined, { maximumFractionDigits: 2 })} tax
-                          </p>
-                        );
-                      })()}
-                      <p className={`text-xs ${TEXT_FAINT} mt-1`}>
-                        {isFree
-                          ? (p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started.")
-                          : `${p.description ? `${p.description} · ` : ""}Price shown is ${TAX_LABEL}${p.pricing_model === "per_user" ? " · 5 users min" : ""}`}
-                      </p>
+                      {/* Description, tax note, and the "5 users min" line
+                          all moved to the Compare table below (Details /
+                          Price / Minimum users rows) — a card only needs
+                          the headline price. The free-trial card keeps its
+                          own line since that's a genuinely different,
+                          time-boxed offer worth calling out right here. */}
+                      {isFree && (
+                        <p className={`text-xs ${TEXT_FAINT} mt-1`}>
+                          {p.trial_days ? `${p.trial_days}-day trial, no card required.` : "Free to get started."}
+                        </p>
+                      )}
 
                       <div className="flex-1" />
 
