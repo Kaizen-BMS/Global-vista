@@ -10,6 +10,7 @@ const emptyForm = {
   name: "", description: "", billingCycle: "monthly", pricingModel: "flat", price: "", currency: "INR", trialDays: "",
   maxUsers: "", maxLeads: "", maxStorageMb: "", maxApiCallsPerDay: "", status: "active",
   registrationLabel: "Self", developmentCostLabel: "Free", installationCostLabel: "Free", allowImportExport: true,
+  maintenanceCostLabel: "Free", paymentMethodLabel: "x", featureFlags: [],
 };
 
 function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) {
@@ -21,7 +22,10 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
     maxStorageMb: initial.max_storage_mb || "", maxApiCallsPerDay: initial.max_api_calls_per_day || "", status: initial.status,
     registrationLabel: initial.registration_label || "Self", developmentCostLabel: initial.development_cost_label || "Free",
     installationCostLabel: initial.installation_cost_label || "Free", allowImportExport: initial.allow_import_export !== 0,
+    maintenanceCostLabel: initial.maintenance_cost_label || "Free", paymentMethodLabel: initial.payment_method_label || "x",
+    featureFlags: Array.isArray(initial.feature_flags) ? initial.feature_flags : [],
   } : emptyForm);
+  const [newFlagLabel, setNewFlagLabel] = useState("");
   const [moduleIds, setModuleIds] = useState(new Set(initial ? (planModulesByPlan[initial.id] || []) : []));
   const [saving, setSaving] = useState(false);
   const inputClass = "w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm";
@@ -99,6 +103,8 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
               <input placeholder="Registration" value={form.registrationLabel} onChange={(e) => setForm({ ...form, registrationLabel: e.target.value })} className={inputClass} />
               <input placeholder="Dev. Cost" value={form.developmentCostLabel} onChange={(e) => setForm({ ...form, developmentCostLabel: e.target.value })} className={inputClass} />
               <input placeholder="Install Cost" value={form.installationCostLabel} onChange={(e) => setForm({ ...form, installationCostLabel: e.target.value })} className={inputClass} />
+              <input placeholder="Maintenance Cost" value={form.maintenanceCostLabel} onChange={(e) => setForm({ ...form, maintenanceCostLabel: e.target.value })} className={inputClass} />
+              <input placeholder="Payment Method (e.g. Annual, Flexible)" value={form.paymentMethodLabel} onChange={(e) => setForm({ ...form, paymentMethodLabel: e.target.value })} className={`${inputClass} col-span-2`} />
             </div>
           </div>
 
@@ -106,6 +112,50 @@ function PlanForm({ initial, allModules, planModulesByPlan, onClose, onSaved }) 
             <input type="checkbox" checked={form.allowImportExport} onChange={(e) => setForm({ ...form, allowImportExport: e.target.checked })} />
             Allow lead import/export on this plan
           </label>
+
+          <div>
+            <p className="text-foreground text-sm font-medium mb-2">Extra Comparison Rows</p>
+            <p className="text-muted-foreground text-xs mb-2">
+              Any ✓/✗ row beyond the built-in ones above — e.g. "AI Analytic Reports", "Dedicated Account Manager". The
+              pricing page's comparison table shows the union of whatever every currently-displayed plan has here, in the
+              order first added — a row left unconfigured on a plan just shows as not included ("✗"), so add it only to the
+              plans that actually offer it.
+            </p>
+            <div className="space-y-1.5 mb-2">
+              {form.featureFlags.map((flag, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <label className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg border border-border bg-muted/40 text-xs cursor-pointer">
+                    <input
+                      type="checkbox" checked={!!flag.included}
+                      onChange={(e) => setForm({ ...form, featureFlags: form.featureFlags.map((f, fi) => (fi === i ? { ...f, included: e.target.checked } : f)) })}
+                    />
+                    {flag.included ? <Check className="h-3 w-3 text-emerald-400 shrink-0" /> : <X className="h-3 w-3 text-muted-foreground shrink-0" />}
+                    {flag.label}
+                  </label>
+                  <button type="button" onClick={() => setForm({ ...form, featureFlags: form.featureFlags.filter((_, fi) => fi !== i) })} aria-label={`Remove ${flag.label}`} className="text-muted-foreground hover:text-red-400 cursor-pointer shrink-0">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              {form.featureFlags.length === 0 && <p className="text-muted-foreground text-xs">No extra rows on this plan yet.</p>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                placeholder="New row name (e.g. AI Analytic Reports)" value={newFlagLabel}
+                onChange={(e) => setNewFlagLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newFlagLabel.trim()) { setForm({ ...form, featureFlags: [...form.featureFlags, { label: newFlagLabel.trim(), included: true }] }); setNewFlagLabel(""); } } }}
+                className={`${inputClass} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => { if (newFlagLabel.trim()) { setForm({ ...form, featureFlags: [...form.featureFlags, { label: newFlagLabel.trim(), included: true }] }); setNewFlagLabel(""); } }}
+                disabled={!newFlagLabel.trim()}
+                className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
 
           <div>
             <p className="text-foreground text-sm font-medium mb-2">Included Modules</p>
@@ -299,7 +349,17 @@ export default function PlansManager({ plans, allModules = [], planModulesByPlan
                 <p>Leads: {p.max_leads || "Unlimited"}</p>
                 <p>Storage: {p.max_storage_mb ? `${p.max_storage_mb} MB` : "Unlimited"}</p>
                 <p>Import/Export: {p.allow_import_export === 0 ? "No" : "Yes"}</p>
+                <p>Maintenance: {p.maintenance_cost_label || "Free"} · Payment: {p.payment_method_label || "x"}</p>
               </div>
+              {Array.isArray(p.feature_flags) && p.feature_flags.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-2 border-t border-border mb-2">
+                  {p.feature_flags.map((f) => (
+                    <span key={f.label} className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] border ${f.included ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-muted/40 text-muted-foreground border-border"}`}>
+                      {f.included ? <Check className="h-2.5 w-2.5" /> : <X className="h-2.5 w-2.5" />} {f.label}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1 pt-2 border-t border-border">
                 {planModuleNames.length === 0 ? (
                   <span className="text-muted-foreground text-[11px]">No modules assigned yet</span>

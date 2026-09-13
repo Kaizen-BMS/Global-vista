@@ -361,21 +361,36 @@ export default function PlatformHome({ plans, viewer, offers = [] }) {
   const paidCount = displayPlans.filter((p) => p.price != null).length;
   const highlightIndex = paidCount > 1 ? displayPlans.findIndex((p) => p.price != null) + 1 : -1;
 
+  // Matches the company's own comparison spreadsheet row-for-row, in the
+  // same order, sourced entirely from real plan fields — nothing here is
+  // hardcoded to a specific plan name. The last block (feature-flag rows:
+  // AI Analytic Reports, Dedicated Account Manager, etc.) is fully
+  // dynamic: it's the UNION of whatever `featureFlags` label every
+  // currently-displayed plan has configured (in first-seen order), read
+  // from the Platform Admin's Plan editor — adding, renaming, or removing
+  // one of those rows for any plan needs zero further code changes here.
+  const featureFlagLabels = [];
+  for (const p of displayPlans) {
+    for (const f of p.featureFlags || []) {
+      if (!featureFlagLabels.includes(f.label)) featureFlagLabels.push(f.label);
+    }
+  }
   const comparisonRows = [
-    { label: "Details", get: (p) => p.description || "—" },
-    { label: "Billing model", get: (p) => (p.price == null ? "—" : p.pricing_model === "per_user" ? "Per user" : "Per company") },
-    { label: "Minimum users", get: (p) => (p.pricing_model === "per_user" ? "5 users" : "—") },
     { label: "Registration", get: (p) => p.registration_label || "Self" },
     { label: "Development cost", get: (p) => p.development_cost_label || "Free" },
     { label: "Installation cost", get: (p) => p.installation_cost_label || "Free" },
-    { label: `Price (${months === 1 ? "1mo" : `${months}mo`}, ${TAX_LABEL})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${withGst(tierFor(p).price)}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
-    { label: "Employees", get: (p) => p.max_users || "Unlimited" },
+    { label: "Maintenance cost", get: (p) => p.maintenance_cost_label || "Free" },
+    { label: "Max user count", get: (p) => p.max_users || "Unlimited" },
     { label: "Leads", get: (p) => p.max_leads || "Unlimited" },
     { label: "Storage", get: (p) => (p.max_storage_mb ? `${p.max_storage_mb >= 1024 ? `${Math.round(p.max_storage_mb / 1024)}GB` : `${p.max_storage_mb}MB`}` : "Unlimited") },
-    { label: "Import / export", get: (p) => (p.allow_import_export === 0 ? false : true) },
-    { label: "Free trial", get: (p) => (p.trial_days ? `${p.trial_days} days` : false) },
-    { label: "Commitment discounts", get: (p) => (p.durationTiers?.length > 0) },
-    { label: "Payment methods", get: (p) => [p.hasRazorpay && "Razorpay", p.hasBillDesk && "BillDesk"].filter(Boolean).join(" · ") || "—" },
+    { label: `Price (${TAX_LABEL})`, get: (p) => (p.price == null ? "Free trial" : `${p.currency} ${withGst(tierFor(p).price)}${p.pricing_model === "per_user" ? "/user" : ""}/mo`) },
+    { label: "Payment method", get: (p) => p.payment_method_label || "x" },
+    { label: "Billing model", get: (p) => (p.price == null ? "x" : p.pricing_model === "per_user" ? "Per user" : "Per company") },
+    { label: "Data import / export", get: (p) => (p.allow_import_export === 0 ? false : true) },
+    ...featureFlagLabels.map((label) => ({
+      label,
+      get: (p) => !!(p.featureFlags || []).find((f) => f.label === label)?.included,
+    })),
   ];
 
   return (

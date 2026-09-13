@@ -5,7 +5,7 @@ import { createBillDeskCheckoutForCompany } from "@/lib/platform/actions/billdes
 import { createRazorpayCheckoutForCompany } from "@/lib/platform/actions/razorpayBilling";
 import { validateCouponForPlan } from "@/lib/platform/actions/coupons";
 import { getBillDeskStatus } from "@/lib/payments/billdeskClient";
-import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasCouponsSchema, hasPlanRazorpayColumns, hasTieredPlansSchema, hasPlanExtendedComparisonSchema } from "@/lib/db/schemaFlags";
 import { listPublicDurationPrices } from "@/lib/platform/actions/planDurationPricing";
 import { normalizeSeatQuantity, DEFAULT_SEATS } from "@/lib/helpers/seats";
 
@@ -18,11 +18,12 @@ import { normalizeSeatQuantity, DEFAULT_SEATS } from "@/lib/helpers/seats";
  * platform-wide (not per-plan), reported separately via billDeskAvailable
  * so the registration UI knows which payment method(s) to offer. */
 export async function listPublicPlans() {
-  const [withDescription, withRazorpay, withTiers] = await Promise.all([hasPlanDescriptionColumn(), hasPlanRazorpayColumns(), hasTieredPlansSchema()]);
+  const [withDescription, withRazorpay, withTiers, withExtended] = await Promise.all([hasPlanDescriptionColumn(), hasPlanRazorpayColumns(), hasTieredPlansSchema(), hasPlanExtendedComparisonSchema()]);
   const [rows] = await pool.query(
     `SELECT id, name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb
      ${withRazorpay ? ", (razorpay_plan_id IS NOT NULL) AS hasRazorpay" : ", 0 AS hasRazorpay"}
      ${withTiers ? ", pricing_model, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""}
+     ${withExtended ? ", maintenance_cost_label, payment_method_label, feature_flags" : ""}
      FROM plans WHERE status = 'active' ORDER BY price IS NULL DESC, price ASC`
   );
   const billDeskAvailable = getBillDeskStatus().configured;
@@ -31,6 +32,11 @@ export async function listPublicPlans() {
     ...r, hasRazorpay: !!r.hasRazorpay, hasBillDesk: billDeskAvailable,
     pricing_model: r.pricing_model || "flat", allow_import_export: r.allow_import_export ?? 1,
     durationTiers: durationTiersByPlan[r.id] || [],
+    // feature_flags is stored as JSON-in-TEXT (see schemaFlags.js) — never
+    // trust it blindly, a bad/pre-migration value degrades to "no extra
+    // comparison rows configured for this plan" rather than a 500 on the
+    // public homepage.
+    featureFlags: (() => { try { const p = JSON.parse(r.feature_flags || "[]"); return Array.isArray(p) ? p.filter((f) => f && typeof f.label === "string") : []; } catch { return []; } })(),
   }));
 }
 

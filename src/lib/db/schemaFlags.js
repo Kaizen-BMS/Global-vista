@@ -106,3 +106,15 @@ export async function hasLeadFormBuilderSchema() {
  * subscription_payments.seat_quantity/gst_amount land together. */
 export async function hasGstinColumn() { return columnExists("companies", "gstin"); }
 export async function hasPaymentSeatBreakdownColumns() { return columnExists("subscription_payments", "seat_quantity"); }
+
+/** Extended plan comparison migration — maintenance_cost_label,
+ * payment_method_label, and feature_flags (a JSON-as-TEXT list of
+ * {label, included} pairs, same JSON.stringify/parse-on-read convention
+ * as savedFilters.js) land together, so any one column stands in for
+ * "has the whole thing run". feature_flags is what makes the homepage's
+ * comparison table's extra rows (AI Analytics, Dedicated Account
+ * Manager, etc.) genuinely dynamic — an operator can add/remove/rename
+ * any of them per plan without a further code change; the table just
+ * renders whatever union of labels the currently-displayed plans have
+ * configured. */
+export async function hasPlanExtendedComparisonSchema() { return columnExists("plans", "maintenance_cost_label"); }

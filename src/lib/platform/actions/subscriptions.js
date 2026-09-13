@@ -2,7 +2,19 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
-import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable, hasTieredPlansSchema } from "@/lib/db/schemaFlags";
+import { hasPlanDescriptionColumn, hasPlanPayPalColumns, hasPlanRazorpayColumns, hasCompanySubscriptionsGatewayColumns, hasSubscriptionPaymentsTable, hasTieredPlansSchema, hasPlanExtendedComparisonSchema } from "@/lib/db/schemaFlags";
+
+/** feature_flags is stored as TEXT (JSON.stringify'd on write) — see
+ * schemaFlags.js's hasPlanExtendedComparisonSchema doc comment for why.
+ * Never trust a stored value blindly on read: a hand-edited row or a
+ * pre-migration NULL must degrade to "no extra rows configured", not throw. */
+function parseFeatureFlags(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((f) => f && typeof f.label === "string") : [];
+  } catch { return []; }
+}
 import { cancelRazorpaySubscription } from "@/lib/payments/razorpaySubscriptions";
 
 /** One row per company — its most recent subscription, joined with plan,
@@ -47,7 +59,7 @@ export async function listSubscriptions() {
 
 export async function listPlansForAdmin() {
   const [rows] = await pool.query(`SELECT * FROM plans ORDER BY max_storage_mb IS NULL, max_storage_mb ASC, name ASC`);
-  return rows;
+  return rows.map((r) => ("feature_flags" in r ? { ...r, feature_flags: parseFeatureFlags(r.feature_flags) } : r));
 }
 
 export async function getPlanModuleIds(planId) {
@@ -129,13 +141,15 @@ export async function createPlan(data) {
   const slug = data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   const withDescription = await hasPlanDescriptionColumn();
   const withTiers = await hasTieredPlansSchema();
+  const withExtended = await hasPlanExtendedComparisonSchema();
   const [result] = await pool.query(
-    `INSERT INTO plans (name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status${withTiers ? ", pricing_model, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""})
-     VALUES (?,?${withDescription ? ",?" : ""},?,?,?,?,?,?,?,?,?${withTiers ? ",?,?,?,?,?" : ""})`,
+    `INSERT INTO plans (name, slug${withDescription ? ", description" : ""}, billing_cycle, price, currency, trial_days, max_users, max_leads, max_storage_mb, max_api_calls_per_day, status${withTiers ? ", pricing_model, registration_label, development_cost_label, installation_cost_label, allow_import_export" : ""}${withExtended ? ", maintenance_cost_label, payment_method_label, feature_flags" : ""})
+     VALUES (?,?${withDescription ? ",?" : ""},?,?,?,?,?,?,?,?,?${withTiers ? ",?,?,?,?,?" : ""}${withExtended ? ",?,?,?" : ""})`,
     [
       data.name, slug, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR",
       data.trialDays || null, data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
       ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+      ...(withExtended ? [data.maintenanceCostLabel || "Free", data.paymentMethodLabel || "x", JSON.stringify(Array.isArray(data.featureFlags) ? data.featureFlags : [])] : []),
     ]
   );
   return result.insertId;
@@ -203,7 +217,7 @@ export async function deletePlan(id, operatorId) {
 // were synced before the PayPal/Razorpay retirement — no code still syncs
 // to either.
 export async function updatePlan(id, data) {
-  const [withDescription, withPayPal, withRazorpay, withTiers] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns(), hasTieredPlansSchema()]);
+  const [withDescription, withPayPal, withRazorpay, withTiers, withExtended] = await Promise.all([hasPlanDescriptionColumn(), hasPlanPayPalColumns(), hasPlanRazorpayColumns(), hasTieredPlansSchema(), hasPlanExtendedComparisonSchema()]);
 
   let paypalLinkCleared = false;
   let razorpayLinkCleared = false;
@@ -225,11 +239,12 @@ export async function updatePlan(id, data) {
   const clearClauses = [paypalLinkCleared && "paypal_plan_id=NULL", razorpayLinkCleared && "razorpay_plan_id=NULL"].filter(Boolean).map((c) => `, ${c}`).join("");
 
   await pool.query(
-    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${withTiers ? ", pricing_model=?, registration_label=?, development_cost_label=?, installation_cost_label=?, allow_import_export=?" : ""}${clearClauses} WHERE id=?`,
+    `UPDATE plans SET name=?${withDescription ? ", description=?" : ""}, billing_cycle=?, price=?, currency=?, trial_days=?, max_users=?, max_leads=?, max_storage_mb=?, max_api_calls_per_day=?, status=?${withTiers ? ", pricing_model=?, registration_label=?, development_cost_label=?, installation_cost_label=?, allow_import_export=?" : ""}${withExtended ? ", maintenance_cost_label=?, payment_method_label=?, feature_flags=?" : ""}${clearClauses} WHERE id=?`,
     [
       data.name, ...(withDescription ? [data.description || null] : []), data.billingCycle || "monthly", data.price || null, data.currency || "INR", data.trialDays || null,
       data.maxUsers || null, data.maxLeads || null, data.maxStorageMb || null, data.maxApiCallsPerDay || null, data.status || "active",
       ...(withTiers ? [data.pricingModel === "per_user" ? "per_user" : "flat", data.registrationLabel || "Self", data.developmentCostLabel || "Free", data.installationCostLabel || "Free", data.allowImportExport === false ? 0 : 1] : []),
+      ...(withExtended ? [data.maintenanceCostLabel || "Free", data.paymentMethodLabel || "x", JSON.stringify(Array.isArray(data.featureFlags) ? data.featureFlags : [])] : []),
       id,
     ]
   );
