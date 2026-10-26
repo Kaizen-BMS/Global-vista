@@ -19,6 +19,7 @@ import FollowupReminderWatcher from "@/components/notifications/FollowupReminder
 import SessionLivenessWatcher from "@/components/shared/SessionLivenessWatcher";
 import RealtimeUpdatesWatcher from "@/components/shared/RealtimeUpdatesWatcher";
 import FeatureGuideWidget from "@/components/workspace/FeatureGuideWidget";
+import ChildCompanyBanner from "@/components/workspace/ChildCompanyBanner";
 
 export default async function WorkspaceLayout({ children }) {
   const session = await getSession();
@@ -31,8 +32,16 @@ export default async function WorkspaceLayout({ children }) {
   // existing user of the company the instant ends_at passes, not just
   // future logins. Short-circuits before the rest of the page's queries
   // run at all when blocked.
+  //
+  // A child company (session.is_child_company — re-checked fresh in
+  // getSession, same place company_status is) never gets a subscription
+  // row at all, so getSubscriptionDetails would otherwise report
+  // blocked:true ("no_subscription") here and wall off its ENTIRE
+  // workspace before any dashboard page ever renders — exactly the
+  // billing exemption this company is supposed to have, so it's
+  // excluded from this gate the same way isCompanySuspended is above.
   const subscription = await getSubscriptionDetails(session.company_id);
-  if (subscription.blocked) {
+  if (subscription.blocked && !session.is_child_company) {
     const [company, systemSettings] = await Promise.all([getCurrentCompany(session.company_id), getSettingsByGroup(session, "system")]);
     return (
       <SubscriptionExpiredPage
@@ -44,9 +53,10 @@ export default async function WorkspaceLayout({ children }) {
     );
   }
 
-  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads, guideEntries] = await Promise.all([
+  const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads, guideEntries, homeCompany] = await Promise.all([
     getVisibleNavItems(session), getCurrentCompany(session.company_id), getPlatformSettingsByGroup("branding"), getSettingsByGroup(session, "branding"),
     getSettingsByGroup(session, "system"), can(session, "leads.view"), getVisibleGuideEntries(session),
+    session.home_company_id ? getCurrentCompany(session.home_company_id) : Promise.resolve(null),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const hour12 = systemSettings.time_format !== "24h";
@@ -66,6 +76,7 @@ export default async function WorkspaceLayout({ children }) {
           {canViewLeads && <FollowupReminderWatcher />}
           <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
           <div className="flex-1 flex flex-col min-w-0">
+            {session.home_company_id && <ChildCompanyBanner companyName={company?.name} homeCompanyName={homeCompany?.name} />}
             <Topbar company={company} session={session} />
             <main className="flex-1 overflow-y-auto p-4 md:p-6">
               {session.must_change_password ? <div className="max-w-md mx-auto mt-12"><h1 className="text-xl font-semibold text-foreground mb-1">Set a New Password</h1><ChangePasswordForm forced /></div> : <PageTransition>{children}</PageTransition>}

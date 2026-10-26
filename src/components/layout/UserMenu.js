@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, User, Settings, Check, Repeat, Loader2 } from "lucide-react";
+import { LogOut, User, Settings, Check, Repeat, Loader2, Building2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import FloatingPanel from "@/components/shared/FloatingPanel";
 
@@ -11,6 +11,8 @@ export default function UserMenu({ session, scope = "workspace" }) {
   const [open, setOpen] = useState(false);
   const [roles, setRoles] = useState(null);
   const [switching, setSwitching] = useState(null);
+  const [childCompanies, setChildCompanies] = useState(null);
+  const [switchingCompany, setSwitchingCompany] = useState(null);
   const anchorRef = useRef(null);
   const router = useRouter();
   const initial = (session?.name || "?").charAt(0).toUpperCase();
@@ -22,7 +24,13 @@ export default function UserMenu({ session, scope = "workspace" }) {
     apiFetch(`/api/core/session/available-roles`).then((r) => r.json()).then((d) => setRoles(d.roles || [])).catch(() => setRoles([]));
   }, [session?.id, scope]);
 
+  const loadChildCompanies = useCallback(() => {
+    if (!session?.id || scope !== "workspace") return;
+    apiFetch(`/api/core/session/child-companies`).then((r) => r.json()).then((d) => setChildCompanies(d.companies || [])).catch(() => setChildCompanies([]));
+  }, [session?.id, scope]);
+
   useEffect(() => { if (open && roles === null) loadRoles(); }, [open, roles, loadRoles]);
+  useEffect(() => { if (open && childCompanies === null) loadChildCompanies(); }, [open, childCompanies, loadChildCompanies]);
 
   async function switchRole(roleId) {
     if (roleId === session?.role_id) return;
@@ -35,6 +43,18 @@ export default function UserMenu({ session, scope = "workspace" }) {
       setOpen(false);
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setSwitching(null); }
+  }
+
+  async function switchCompany(companyId, companyName) {
+    setSwitchingCompany(companyId);
+    try {
+      const res = await apiFetch("/api/core/session/switch-company", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to switch company.");
+      toast.success(`Switched to ${companyName}.`);
+      setOpen(false);
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setSwitchingCompany(null); }
   }
 
   async function handleLogout() {
@@ -79,6 +99,23 @@ export default function UserMenu({ session, scope = "workspace" }) {
                   {r.name}
                 </span>
                 {switching === r.role_id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!session?.home_company_id && childCompanies && childCompanies.length > 0 && (
+          <div className="p-1 border-b border-border">
+            <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5"><Building2 className="h-3 w-3" /> Switch to Company</p>
+            {childCompanies.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => switchCompany(c.id, c.name)}
+                disabled={switchingCompany !== null}
+                className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <span className="truncate">{c.name}</span>
+                {switchingCompany === c.id && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
               </button>
             ))}
           </div>

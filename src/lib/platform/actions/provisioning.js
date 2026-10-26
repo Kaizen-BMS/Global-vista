@@ -151,6 +151,13 @@ export async function provisionCompany(input, operatorId) {
     moduleIds = [],
     endsAt = null,
     subscriptionStatus = "trial",
+    // A child company (e.g. a school under a parent like Global Vista
+    // Educators) — completely normal in every other respect, but gets
+    // zero subscription row (billing-exempt, see tenant.js/permissions.js)
+    // and every module enabled by default (see the modules step below).
+    // Only ever set by the Platform Operator's Create Company wizard —
+    // never self-service.
+    parentCompanyId = null,
   } = input;
 
   // ---------------------------------------------------------------
@@ -208,23 +215,47 @@ export async function provisionCompany(input, operatorId) {
     }
 
     // -------------------------------------------------------------
+    // Validate Parent Company — strictly 2-level (parent, children),
+    // never a deeper tree: a company that is ITSELF already a child is
+    // rejected as a parent choice, so "grandchildren" can't happen.
+    // -------------------------------------------------------------
+    if (parentCompanyId) {
+      const [[parent]] = await conn.query(
+        `SELECT id, parent_company_id FROM companies WHERE id=? AND status != 'deleted' LIMIT 1`,
+        [parentCompanyId]
+      );
+      if (!parent) {
+        const e = new Error("Selected parent company was not found.");
+        e.status = 400;
+        throw e;
+      }
+      if (parent.parent_company_id) {
+        const e = new Error("That company is itself a child company and can't be used as a parent.");
+        e.status = 400;
+        throw e;
+      }
+    }
+
+    // -------------------------------------------------------------
     // Create Company
-    // companies columns used: name, short_name, slug, status,
-    // created_by, updated_by — 6 columns, 6 placeholders, 6 params.
-    // Verified against DESCRIBE companies: all 6 are valid columns;
-    // short_name is nullable (YES) so `|| null` is safe; status is an
-    // ENUM('active','suspended','deleted') — 'active' is a valid member.
+    // companies columns used: parent_company_id, name, short_name, slug,
+    // status, created_by, updated_by — 7 columns, 7 placeholders, 7 params
+    // (plus the pre-existing optional ones below). Verified against
+    // DESCRIBE companies: all are valid columns; short_name is nullable
+    // (YES) so `|| null` is safe; status is an ENUM('active','suspended',
+    // 'deleted') — 'active' is a valid member.
     // -------------------------------------------------------------
     const baseSlug = makeSlug(companyName);
     slug = await getUniqueCompanySlug(conn, baseSlug);
 
     const [companyResult] = await conn.query(
-      `INSERT INTO companies (name, short_name, slug, status, country, contact_email, contact_phone, address, website, created_by, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyName, shortName || null, slug, "active", companyCountry || null, companyEmail || null, companyPhone || null, companyAddress || null, companyWebsite || null, operatorId, operatorId]
+      `INSERT INTO companies (parent_company_id, name, short_name, slug, status, country, contact_email, contact_phone, address, website, created_by, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [parentCompanyId || null, companyName, shortName || null, slug, "active", companyCountry || null, companyEmail || null, companyPhone || null, companyAddress || null, companyWebsite || null, operatorId, operatorId]
     );
     companyId = companyResult.insertId;
     stepLog.record("company_created", "success");
+    if (parentCompanyId) stepLog.record("parent_linked", "success", `parent_company_id=${parentCompanyId}`);
 
     if (companyGstin && (await hasGstinColumn())) {
       await conn.query(`UPDATE companies SET gstin = ? WHERE id = ?`, [normalizeGstin(companyGstin), companyId]);
@@ -497,10 +528,20 @@ export async function provisionCompany(input, operatorId) {
     // trial_days in Platform Settings changes what future registrations
     // get automatically; it does not touch any already-created subscription
     // (this only runs once, at creation).
+    //
+    // A child company (parentCompanyId set) NEVER gets a subscription
+    // row, full stop — this is a server-side invariant, not something
+    // that depends on the caller also happening to leave planId unset.
+    // Every usage-limit check in tenant.js (enforceUserLimit,
+    // enforceLeadLimit, isImportExportAllowed) already fails OPEN
+    // (unlimited) when a company has zero company_subscriptions rows, so
+    // this alone is most of what makes a child company billing-exempt —
+    // the rest is the explicit bypasses in permissions.js/workspace
+    // layout.js for the one place that does NOT fail open.
     // -------------------------------------------------------------
     let resolvedEndsAt = endsAt || null;
     let planRow = null;
-    if (planId) {
+    if (planId && !parentCompanyId) {
       [[planRow]] = await conn.query(`SELECT id, trial_days FROM plans WHERE id = ?`, [planId]);
       if (!resolvedEndsAt && subscriptionStatus === "trial" && planRow?.trial_days) {
         const trialEnd = new Date(Date.now() + planRow.trial_days * 86400000);
@@ -527,6 +568,12 @@ export async function provisionCompany(input, operatorId) {
     // (who never sees a module picker at all) gets exactly what their
     // chosen plan includes.
     //
+    // A child company gets EVERY module enabled, forever, regardless of
+    // moduleIds/planId — "full features" per the parent/child
+    // requirement, with no dependency on the wizard remembering to tick
+    // every box and no plan_modules table to fall back to (there's no
+    // plan at all).
+    //
     // Skipped entirely when subscriptionStatus === "pending" — that status
     // means "awaiting BillDesk payment confirmation" (see registerCompany's
     // paid-plan path), and modules/limits must only activate once BillDesk
@@ -535,12 +582,18 @@ export async function provisionCompany(input, operatorId) {
     // grants them later via the same syncCompanyModulesToPlan this would
     // have called.
     // -------------------------------------------------------------
-    let effectiveModuleIds = Array.isArray(moduleIds) && moduleIds.length ? moduleIds.map(Number) : [];
-    if (effectiveModuleIds.length === 0 && planId && subscriptionStatus !== "pending") {
-      const [planModuleRows] = await conn.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
-      effectiveModuleIds = planModuleRows.map((r) => r.module_id);
+    let effectiveModuleIds;
+    if (parentCompanyId) {
+      const [allModules] = await conn.query(`SELECT id FROM modules`);
+      effectiveModuleIds = allModules.map((m) => m.id);
+    } else {
+      effectiveModuleIds = Array.isArray(moduleIds) && moduleIds.length ? moduleIds.map(Number) : [];
+      if (effectiveModuleIds.length === 0 && planId && subscriptionStatus !== "pending") {
+        const [planModuleRows] = await conn.query(`SELECT module_id FROM plan_modules WHERE plan_id = ?`, [planId]);
+        effectiveModuleIds = planModuleRows.map((r) => r.module_id);
+      }
+      if (subscriptionStatus === "pending") effectiveModuleIds = [];
     }
-    if (subscriptionStatus === "pending") effectiveModuleIds = [];
     for (const moduleId of effectiveModuleIds) {
       const [[existingModule]] = await conn.query(
         `SELECT id FROM company_modules WHERE company_id=? AND module_id=? LIMIT 1`,
@@ -583,7 +636,7 @@ export async function provisionCompany(input, operatorId) {
         action: "company_provisioned",
         entityType: "company",
         entityId: companyId,
-        description: `Provisioned company "${companyName}"`,
+        description: `Provisioned company "${companyName}"${parentCompanyId ? ` as a child of company #${parentCompanyId}` : ""}`,
       });
     } catch (e) {
       console.error("Activity log failed:", e.message);

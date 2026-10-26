@@ -40,8 +40,17 @@ export async function can(session, permissionSlug) {
   const moduleSlug = await getPermissionModuleSlug(permissionSlug);
   const isPlatformSlug = moduleSlug === "platform";
   if (!isPlatformSlug && moduleSlug !== "core") {
-    const state = await getSubscriptionState(session.company_id);
-    if (["expired", "cancelled", "no_subscription", "suspended"].includes(state) && permissionSlug.split(".").pop() !== "view") return false;
+    // A child company (e.g. a school under a parent like Global Vista
+    // Educators) never gets a company_subscriptions row at all — that's
+    // the whole point of the billing exemption — so skip the
+    // subscription-state gate entirely for it. The module-enabled check
+    // right below still runs, but child companies get every module
+    // enabled permanently at provisioning time (see provisioning.js), so
+    // it already passes unconditionally; no change needed there.
+    if (!session.is_child_company) {
+      const state = await getSubscriptionState(session.company_id);
+      if (["expired", "cancelled", "no_subscription", "suspended"].includes(state) && permissionSlug.split(".").pop() !== "view") return false;
+    }
     if (!(await isModuleEnabledForCompany(session.company_id, moduleSlug))) return false;
   }
   if (isSuperAdmin(session)) return true;

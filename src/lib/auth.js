@@ -53,13 +53,23 @@ export async function getSession() {
       // remote DB host under any concurrent load, that latency doubles up
       // on literally every authenticated request in the app.
       const [[row]] = await pool.query(
-        `SELECT us.revoked_at, c.status AS company_status
+        `SELECT us.revoked_at, c.status AS company_status, c.parent_company_id
          FROM user_sessions us LEFT JOIN companies c ON c.id = ?
          WHERE us.jti = ? LIMIT 1`,
         [payload.company_id || null, payload.jti]
       );
       if (row?.revoked_at) return null;
-      if (payload.company_id && !payload.is_platform_operator) payload.company_status = row?.company_status || null;
+      if (payload.company_id && !payload.is_platform_operator) {
+        payload.company_status = row?.company_status || null;
+        // Whether the CURRENTLY active company_id (home or switched-into
+        // child, whichever the session is presently scoped to) is itself
+        // a child company — re-checked fresh every request, same
+        // guarantee as company_status above, never trusted from the
+        // signed JWT alone. This is what lets permissions.js/workspace
+        // layout.js bypass the subscription-required gate for exactly
+        // this company, without a second query anywhere else.
+        payload.is_child_company = !!row?.parent_company_id;
+      }
       pool.query(`UPDATE user_sessions SET last_seen_at = NOW() WHERE jti = ?`, [payload.jti]).catch(() => {});
     }
     return payload;
@@ -76,6 +86,52 @@ export async function getSession() {
 export async function reissueSessionWithRole(payload, roleId, roleSlug) {
   const { iat, exp, ...rest } = payload;
   const token = await new SignJWT({ ...rest, role_id: roleId, role_slug: roleSlug })
+    .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
+  const cookieStore = await cookies();
+  const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
+  cookieStore.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge, path: "/" });
+}
+
+// Parent-company Super Admin "switch into" a child company's real
+// workspace — same mechanism as reissueSessionWithRole just above
+// (same jti, so user_sessions revocation/last_seen tracking is
+// untouched; same absolute exp, so switching never extends session
+// life), except this one changes company_id + role_id + role_slug
+// together. Every can()/RLS/query in the app reads those three fields
+// fresh off the session on every request — nothing re-validates them
+// against the users table — so this one write is the entire mechanism
+// that makes the whole existing /workspace app work correctly for a
+// different company, with zero other code changes anywhere.
+//
+// home_company_id/home_role_id/home_role_slug record the TRUE original
+// identity, and are set ONLY the first time (never overwritten if
+// already present) — so however this got called, "exit" always
+// restores the real identity exactly. The caller (switchIntoChildCompany
+// in src/lib/actions/companySwitch.js) additionally refuses to call this
+// at all when already switched, so multi-hop child-to-child switching
+// without returning home first is structurally impossible, not just
+// discouraged.
+export async function reissueSessionWithCompany(payload, { companyId, roleId, roleSlug }) {
+  const { iat, exp, ...rest } = payload;
+  const alreadySwitched = !!rest.home_company_id;
+  const home = alreadySwitched
+    ? { home_company_id: rest.home_company_id, home_role_id: rest.home_role_id, home_role_slug: rest.home_role_slug }
+    : { home_company_id: rest.company_id, home_role_id: rest.role_id, home_role_slug: rest.role_slug };
+  const token = await new SignJWT({ ...rest, ...home, company_id: companyId, role_id: roleId, role_slug: roleSlug })
+    .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
+  const cookieStore = await cookies();
+  const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
+  cookieStore.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge, path: "/" });
+}
+
+// Reverses reissueSessionWithCompany exactly — restores company_id/
+// role_id/role_slug from the home_* claims and strips them, so the
+// resulting session is indistinguishable from one that was never
+// switched at all. A no-op if the session isn't currently switched.
+export async function reissueSessionExitingToHome(payload) {
+  const { iat, exp, home_company_id, home_role_id, home_role_slug, ...rest } = payload;
+  if (!home_company_id) return;
+  const token = await new SignJWT({ ...rest, company_id: home_company_id, role_id: home_role_id, role_slug: home_role_slug })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
   const cookieStore = await cookies();
   const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));

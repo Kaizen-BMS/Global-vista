@@ -18,7 +18,13 @@ export async function getCompanyDetail(id) {
     `SELECT m.id, m.name, m.slug, m.icon, m.category, cm.enabled FROM modules m
      LEFT JOIN company_modules cm ON cm.module_id=m.id AND cm.company_id=? ORDER BY m.sort_order`, [id]
   );
-  return { ...company, modules };
+  const [parentResult, childResult] = await Promise.all([
+    company.parent_company_id
+      ? pool.query(`SELECT id, name FROM companies WHERE id=?`, [company.parent_company_id])
+      : Promise.resolve([[]]),
+    pool.query(`SELECT id, name, status FROM companies WHERE parent_company_id=? ORDER BY name`, [id]),
+  ]);
+  return { ...company, modules, parentCompany: parentResult[0][0] || null, childCompanies: childResult[0] };
 }
 export async function updateCompanyBranding(id, { logoUrl, faviconUrl, primaryColor, secondaryColor, website, contactEmail, contactPhone, address }, updatedBy) {
   await pool.query(
@@ -98,6 +104,18 @@ export async function listPlans() { const [rows] = await pool.query(`SELECT * FR
 export async function deleteCompany(id, operatorId) {
   const [[company]] = await pool.query(`SELECT id, name FROM companies WHERE id = ?`, [id]);
   if (!company) { const e = new Error("Company not found."); e.status = 404; throw e; }
+
+  // parent_company_id is ON DELETE RESTRICT — deleting a company with
+  // existing children would otherwise fail as a raw SQL FK error deep
+  // inside the transaction below. A friendly pre-check surfaces this the
+  // same way every other validation in this app does, before any writes
+  // are attempted.
+  const [[{ childCount }]] = await pool.query(`SELECT COUNT(*) AS childCount FROM companies WHERE parent_company_id = ?`, [id]);
+  if (childCount > 0) {
+    const e = new Error(`This company still has ${childCount} child compan${childCount === 1 ? "y" : "ies"} — remove them first.`);
+    e.status = 409;
+    throw e;
+  }
 
   const conn = await pool.getConnection();
   try {

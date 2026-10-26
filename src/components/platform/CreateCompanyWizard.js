@@ -8,11 +8,16 @@ import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const STEPS = ["Company", "Admin", "Modules & Plan"];
 
-export default function CreateCompanyWizard({ modules, plans, onClose }) {
+export default function CreateCompanyWizard({ modules, plans, companies = [], onClose }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ companyName: "", shortName: "", adminName: "", adminEmail: "", planId: plans[0]?.id || "", moduleIds: [], endsAt: "", subscriptionStatus: "trial" });
+  const [form, setForm] = useState({ companyName: "", shortName: "", adminName: "", adminEmail: "", planId: plans[0]?.id || "", moduleIds: [], endsAt: "", subscriptionStatus: "trial", parentCompanyId: "" });
   const [saving, setSaving] = useState(false);
+
+  // A company that's already itself a child can't be picked as a parent
+  // (strictly 2-level — no grandchildren), same rule provisionCompany
+  // enforces server-side; filtered here too so it's never even offered.
+  const parentOptions = companies.filter((c) => !c.parent_company_id && c.status !== "deleted");
 
   useEffect(() => {
     function onKey(e) { if (e.key === "Escape") onClose(); }
@@ -25,7 +30,7 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
   async function handleSubmit() {
     setSaving(true);
     try {
-      const res = await apiFetch(`/api/platform/companies/0/provision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await apiFetch(`/api/platform/companies/0/provision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, parentCompanyId: form.parentCompanyId || null }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("Company provisioned. Welcome email sent to admin.");
@@ -43,6 +48,12 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
           <div className="space-y-3">
             <input required aria-label="Company Name" placeholder="Company Name" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
             <input aria-label="Short Name" placeholder="Short Name" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+            {parentOptions.length > 0 && (
+              <select aria-label="Parent Company (optional)" value={form.parentCompanyId} onChange={(e) => setForm({ ...form, parentCompanyId: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
+                <option value="">No parent (standalone company)</option>
+                {parentOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
           </div>
         )}
         {step === 1 && (
@@ -53,14 +64,22 @@ export default function CreateCompanyWizard({ modules, plans, onClose }) {
         )}
         {step === 2 && (
           <div>
-            <select aria-label="Plan" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <select aria-label="Subscription Status" value={form.subscriptionStatus} onChange={(e) => setForm({ ...form, subscriptionStatus: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
-                <option value="trial">Trial</option><option value="active">Active</option>
-              </select>
-              <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} aria-label="Expiry date (leave blank for no expiry)" title="Expiry date (leave blank for no expiry)" className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border text-sm text-foreground cursor-pointer transition hover:border-border"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
+            {form.parentCompanyId ? (
+              <p className="px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-foreground text-sm">
+                This is a child company — exempt from billing. Every module is included automatically, no plan is needed.
+              </p>
+            ) : (
+              <>
+                <select aria-label="Plan" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} className="w-full mb-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <select aria-label="Subscription Status" value={form.subscriptionStatus} onChange={(e) => setForm({ ...form, subscriptionStatus: e.target.value })} className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm">
+                    <option value="trial">Trial</option><option value="active">Active</option>
+                  </select>
+                  <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} aria-label="Expiry date (leave blank for no expiry)" title="Expiry date (leave blank for no expiry)" className="px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">{modules.map((m) => <label key={m.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border text-sm text-foreground cursor-pointer transition hover:border-border"><input type="checkbox" checked={form.moduleIds.includes(m.id)} onChange={() => toggleModule(m.id)} className="cursor-pointer" />{m.name}</label>)}</div>
+              </>
+            )}
           </div>
         )}
 

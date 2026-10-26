@@ -47,7 +47,7 @@ export default function CompaniesPage() {
           ))}
         </div>
       )}
-      {wizardOpen && data && <CreateCompanyWizard modules={data.modules} plans={data.plans} onClose={() => setWizardOpen(false)} />}
+      {wizardOpen && data && <CreateCompanyWizard modules={data.modules} plans={data.plans} companies={data.companies} onClose={() => setWizardOpen(false)} />}
     </div>
   );
 }
