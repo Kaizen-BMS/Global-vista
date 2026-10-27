@@ -14,7 +14,7 @@ export default async function LeadDocumentTypesSettingsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Lead Document Types</h1>
-      <SettingsTabs />
+      <SettingsTabs session={session} />
       <LeadDocumentTypeManager initialTypes={types} schemaReady={schemaReady} />
     </div>
   );

@@ -53,7 +53,7 @@ export async function getSession() {
       // remote DB host under any concurrent load, that latency doubles up
       // on literally every authenticated request in the app.
       const [[row]] = await pool.query(
-        `SELECT us.revoked_at, c.status AS company_status, c.parent_company_id
+        `SELECT us.revoked_at, c.status AS company_status, c.parent_company_id, c.can_create_child_companies
          FROM user_sessions us LEFT JOIN companies c ON c.id = ?
          WHERE us.jti = ? LIMIT 1`,
         [payload.company_id || null, payload.jti]
@@ -69,6 +69,11 @@ export async function getSession() {
         // layout.js bypass the subscription-required gate for exactly
         // this company, without a second query anywhere else.
         payload.is_child_company = !!row?.parent_company_id;
+        // Same freshness guarantee — whether THIS company (e.g. Global
+        // Vista Educators) is allowed to create its own child companies
+        // from its own Settings page, re-checked every request so a
+        // Platform Operator revoking this takes effect immediately.
+        payload.can_create_child_companies = !!row?.can_create_child_companies;
       }
       pool.query(`UPDATE user_sessions SET last_seen_at = NOW() WHERE jti = ?`, [payload.jti]).catch(() => {});
     }

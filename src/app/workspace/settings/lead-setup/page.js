@@ -29,7 +29,7 @@ export default async function LeadSetupPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Lead Setup</h1>
-      <SettingsTabs />
+      <SettingsTabs session={session} />
 
       <div className="space-y-8">
         <section>

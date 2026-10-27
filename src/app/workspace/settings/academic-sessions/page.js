@@ -5,5 +5,5 @@ import AcademicSessionsEditor from "@/components/forms/AcademicSessionsEditor";
 
 export default async function AcademicSessionsPage() {
   const session = await getSession();
-  return (<div><h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1><SettingsTabs /><AcademicSessionsEditor sessions={await listAcademicSessions(session)} /></div>);
+  return (<div><h1 className="text-xl font-semibold text-foreground mb-1">Settings</h1><SettingsTabs session={session} /><AcademicSessionsEditor sessions={await listAcademicSessions(session)} /></div>);
 }

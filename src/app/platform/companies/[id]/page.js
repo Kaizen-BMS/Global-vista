@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCompanyDetail } from "@/lib/platform/actions/companies";
 import ModuleToggleList from "@/components/platform/ModuleToggleList";
 import CompanyBrandingForm from "@/components/platform/CompanyBrandingForm";
+import CanCreateChildrenToggle from "@/components/platform/CanCreateChildrenToggle";
 import DeleteCompanyDialog from "@/components/platform/DeleteCompanyDialog";
 
 export default async function CompanyDetailPage({ params }) {
@@ -23,17 +24,24 @@ export default async function CompanyDetailPage({ params }) {
         <CompanyBrandingForm companyId={company.id} company={company} />
         <div><p className="text-foreground font-medium mb-3">Modules</p><ModuleToggleList companyId={company.id} modules={company.modules} /></div>
       </div>
-      {company.childCompanies.length > 0 && (
+      {!company.parentCompany && (
         <div className="bg-card border border-border rounded-xl p-5 mb-6">
-          <p className="text-foreground font-medium mb-3">Child Companies</p>
-          <div className="space-y-2">
-            {company.childCompanies.map((c) => (
-              <div key={c.id} className="flex items-center justify-between text-sm">
-                <Link href={`/platform/companies/${c.id}`} className="text-indigo-400 hover:text-indigo-300 transition">{c.name}</Link>
-                <span className="text-muted-foreground text-xs">{c.status}</span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-foreground font-medium">Child Companies</p>
+            <CanCreateChildrenToggle companyId={company.id} enabled={!!company.can_create_child_companies} />
           </div>
+          {company.childCompanies.length > 0 ? (
+            <div className="space-y-2">
+              {company.childCompanies.map((c) => (
+                <div key={c.id} className="flex items-center justify-between text-sm">
+                  <Link href={`/platform/companies/${c.id}`} className="text-indigo-400 hover:text-indigo-300 transition">{c.name}</Link>
+                  <span className="text-muted-foreground text-xs">{c.status}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">No child companies yet.</p>
+          )}
         </div>
       )}
       <DeleteCompanyDialog companyId={company.id} companyName={company.name} />

@@ -133,7 +133,7 @@ export default async function SubscriptionSettingsPage({ searchParams }) {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Subscription</h1>
-      <SettingsTabs />
+      <SettingsTabs session={session} />
 
       {!subscription.hasSubscription ? (
         <div className="bg-card border border-border rounded-xl p-6 text-center">

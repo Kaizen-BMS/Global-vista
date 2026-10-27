@@ -52,6 +52,15 @@ export async function setCompanyModule(companyId, moduleId, enabled, updatedBy) 
   await pool.query(`INSERT INTO company_modules (company_id, module_id, enabled, enabled_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), enabled_by=VALUES(enabled_by)`, [companyId, moduleId, enabled ? 1 : 0, updatedBy]);
   await logActivity({ userId: updatedBy, module: "platform", action: enabled ? "module_enabled" : "module_disabled", entityType: "company_module", entityId: moduleId, description: `Module ${enabled ? "enabled" : "disabled"}`, companyId });
 }
+
+// Grants (or revokes) a company's own ability to create child companies
+// directly from its own workspace Settings (see provisionChildCompany in
+// src/lib/actions/companySwitch.js) — an explicit Platform Operator
+// decision per company, never self-service.
+export async function setCompanyCanCreateChildren(companyId, enabled, updatedBy) {
+  await pool.query(`UPDATE companies SET can_create_child_companies = ? WHERE id = ?`, [enabled ? 1 : 0, companyId]);
+  await logActivity({ userId: updatedBy, module: "platform", action: enabled ? "child_creation_enabled" : "child_creation_disabled", entityType: "company", entityId: companyId, description: `${enabled ? "Granted" : "Revoked"} ability to create child companies`, companyId });
+}
 export async function listAllModules() { const [rows] = await pool.query(`SELECT * FROM modules ORDER BY sort_order`); return rows; }
 export async function listModuleAdoption() {
   const [rows] = await pool.query(`

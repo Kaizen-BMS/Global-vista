@@ -15,7 +15,7 @@ export default async function SupportFeedbackPage() {
       {/* Regular employees land here too (Complaints/Ideas need to stay
           reachable for everyone) — the admin-oriented Settings tab bar only
           renders for users who can actually use the other tabs on it. */}
-      {canManageSettings && <SettingsTabs />}
+      {canManageSettings && <SettingsTabs session={session} />}
       {!canManageSettings && <h2 className="text-lg font-semibold text-foreground mb-1 mt-1">Support & Feedback</h2>}
 
       <p className="text-muted-foreground text-sm mb-6">

@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount } from "@/lib/helpers/permissions";
+import { provisionCompany } from "@/lib/platform/actions/provisioning";
 
 /**
  * Parent company "switch into a child company" — only ever possible once
@@ -81,4 +82,30 @@ export async function switchBackToHomeCompany(session) {
     companyId: session.home_company_id, description: `${session.name} exited back to the home company`,
   });
   return { companyId: session.home_company_id, roleId: session.home_role_id, roleSlug: session.home_role_slug };
+}
+
+// Self-service version of the Platform Console's Create Company wizard,
+// for a company the Platform Operator has explicitly granted
+// can_create_child_companies to (see CanCreateChildrenToggle on the
+// Platform Console's company detail page) — reuses the exact same
+// provisionCompany() every company signup already goes through, just
+// with parentCompanyId forced to this session's own company_id so a
+// caller here can never create a child under any company but their own.
+// provisionCompany's own validation already rejects a parent that is
+// itself a child (no grandchildren), which also means this naturally
+// stays disabled while a Super Admin is switched INTO a child session —
+// can_create_child_companies is per-company and a freshly-created child
+// never has it set.
+export async function provisionChildCompany(session, { companyName, shortName, adminName, adminEmail, adminPhone }) {
+  if (!isSuperAdminAccount(session)) {
+    const e = new Error("Only a Super Admin can create a child company.");
+    e.status = 403;
+    throw e;
+  }
+  if (!session.can_create_child_companies) {
+    const e = new Error("This company hasn't been granted the ability to create child companies.");
+    e.status = 403;
+    throw e;
+  }
+  return provisionCompany({ companyName, shortName, adminName, adminEmail, adminPhone, parentCompanyId: session.company_id }, session.id);
 }

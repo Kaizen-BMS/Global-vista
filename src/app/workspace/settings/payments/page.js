@@ -13,7 +13,7 @@ export default async function PaymentSettingsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Payment Integration</h1>
-      <SettingsTabs />
+      <SettingsTabs session={session} />
       <p className="text-muted-foreground text-sm mb-6 max-w-xl">
         Configure how your team collects payment. This is your company&apos;s own UPI details — no other company can see or use it.
         Payments recorded against this method are confirmed manually by your team, not verified automatically.

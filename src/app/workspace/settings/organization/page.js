@@ -25,7 +25,7 @@ export default async function OrganizationalSettingPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1 whitespace-nowrap">Organizational Setting</h1>
-      <SettingsTabs />
+      <SettingsTabs session={session} />
       <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
         Everything about how your company is set up — branding, who gets notified about what, and your org structure.
       </p>

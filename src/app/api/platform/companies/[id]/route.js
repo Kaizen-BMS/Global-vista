@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { assertPlatformOperator } from "@/lib/helpers/permissions";
 import { ok, notFound, badRequest, withErrorHandling } from "@/lib/helpers/response";
-import { getCompanyDetail, updateCompanyBranding, setCompanyStatus, deleteCompany } from "@/lib/platform/actions/companies";
+import { getCompanyDetail, updateCompanyBranding, setCompanyStatus, setCompanyCanCreateChildren, deleteCompany } from "@/lib/platform/actions/companies";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request, ctx) => {
@@ -19,6 +19,7 @@ export const PUT = withCsrf(withErrorHandling(async (request, ctx) => {
   const body = await request.json();
   if (body.status) await setCompanyStatus(id, body.status, session.id);
   if (body.branding) await updateCompanyBranding(id, body.branding, session.id);
+  if (body.canCreateChildCompanies !== undefined) await setCompanyCanCreateChildren(id, body.canCreateChildCompanies, session.id);
   return ok();
 }));
 
