@@ -109,3 +109,49 @@ export async function provisionChildCompany(session, { companyName, shortName, a
   }
   return provisionCompany({ companyName, shortName, adminName, adminEmail, adminPhone, parentCompanyId: session.company_id }, session.id);
 }
+
+/**
+ * The "mixed together" view — one combined read across every child
+ * company's own leads/users, aggregated for the parent's own reporting,
+ * alongside the existing per-company "switch into" view for drilling
+ * into just one at a time. This is the first place in the app that
+ * deliberately reads across more than one company_id at once — every
+ * other query in this codebase scopes to exactly session.company_id for
+ * complete tenant isolation, so this is scoped as narrowly as possible:
+ * read-only, and only ever the IDs returned by listChildCompanies (which
+ * itself only returns companies whose parent_company_id is THIS
+ * session's own company_id) — never an arbitrary company_id list, and
+ * never anything from a company that isn't actually this parent's own
+ * child. Mirrors the same cross-company aggregation pattern already used
+ * for the Platform Operator's own executive dashboard
+ * (getPlatformDashboard in src/lib/platform/actions/dashboard.js), just
+ * scoped to one parent's children instead of every company on the
+ * platform.
+ *
+ * Deliberately totals the SCHOOLS' own leads/users, not GVE's own —
+ * GVE itself is the holding company, not a school with its own leads to
+ * roll up alongside them.
+ */
+export async function getSchoolsOverview(session) {
+  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+    const e = new Error("Not authorized.");
+    e.status = 403;
+    throw e;
+  }
+
+  const children = await listChildCompanies(session);
+  if (children.length === 0) return { schools: [], totals: { leadCount: 0, userCount: 0 } };
+
+  const childIds = children.map((c) => c.id);
+  const [leadRows] = await pool.query(`SELECT company_id, COUNT(*) AS leadCount FROM leads WHERE company_id IN (?) AND is_deleted = 0 GROUP BY company_id`, [childIds]);
+  const [userRows] = await pool.query(`SELECT company_id, COUNT(*) AS userCount FROM users WHERE company_id IN (?) AND is_deleted = 0 GROUP BY company_id`, [childIds]);
+  const leadByCompany = new Map(leadRows.map((r) => [r.company_id, r.leadCount]));
+  const userByCompany = new Map(userRows.map((r) => [r.company_id, r.userCount]));
+
+  const schools = children.map((c) => ({ ...c, leadCount: leadByCompany.get(c.id) || 0, userCount: userByCompany.get(c.id) || 0 }));
+  const totals = schools.reduce(
+    (acc, s) => ({ leadCount: acc.leadCount + s.leadCount, userCount: acc.userCount + s.userCount }),
+    { leadCount: 0, userCount: 0 }
+  );
+  return { schools, totals };
+}
