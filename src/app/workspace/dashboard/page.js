@@ -4,7 +4,7 @@ import { getDashboardStats } from "@/lib/actions/dashboard";
 import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getUserNotifications } from "@/lib/actions/notifications";
-import { getLatestAnnouncement } from "@/lib/actions/messaging";
+import { getLatestAnnouncement, getLatestParentAnnouncement } from "@/lib/actions/messaging";
 import { resolveRange } from "@/lib/helpers/dateRange";
 import { formatDate } from "@/lib/helpers/dateFormat";
 import { getSettingsByGroup } from "@/lib/actions/settings";
@@ -65,7 +65,7 @@ export default async function DashboardPage({ searchParams }) {
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
     teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
-    recentActivity, unreadNotifications, branding, announcement,
+    recentActivity, unreadNotifications, branding, announcement, parentAnnouncement,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
     employeePayments, superAdminPayments, subscriptionDetails, subscriptionPayments,
   ] = await Promise.all([
@@ -88,6 +88,7 @@ export default async function DashboardPage({ searchParams }) {
     getUserNotifications(session, { unreadOnly: true, limit: 100 }),
     getCompanyBranding(session),
     getLatestAnnouncement(session),
+    getLatestParentAnnouncement(session),
     canManageDocuments ? getEmployeesWithMissingDocuments(session) : [],
     canManageDocuments ? getPendingApprovalDocuments(session) : [],
     canManageDocuments ? getExpiringDocuments(session) : [],
@@ -109,6 +110,7 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="space-y-8">
+      {parentAnnouncement && <AnnouncementBanner announcement={parentAnnouncement} label={parentAnnouncement.companyName || "Parent Company"} accent="indigo" />}
       <AnnouncementBanner announcement={announcement} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">

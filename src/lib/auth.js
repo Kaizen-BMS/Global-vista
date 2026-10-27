@@ -69,6 +69,12 @@ export async function getSession() {
         // layout.js bypass the subscription-required gate for exactly
         // this company, without a second query anywhere else.
         payload.is_child_company = !!row?.parent_company_id;
+        // The actual parent id itself (not just the boolean above) — lets
+        // a child company (e.g. a school) look up and display its
+        // PARENT's own broadcast announcements on its own dashboard (see
+        // getLatestParentAnnouncement in messaging.js). Same freshness
+        // guarantee as every other field read from this query.
+        payload.parent_company_id = row?.parent_company_id || null;
         // Same freshness guarantee — whether THIS company (e.g. Global
         // Vista Educators) is allowed to create its own child companies
         // from its own Settings page, re-checked every request so a

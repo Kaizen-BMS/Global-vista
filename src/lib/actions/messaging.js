@@ -415,13 +415,59 @@ export async function getLatestAnnouncement(session) {
   return { conversationId: conversation.id, messageId: message.id, title: conversation.title, body: message.body, senderName: message.sender_name, createdAt: message.created_at };
 }
 
+/**
+ * Same contract as getLatestAnnouncement, but reads the PARENT company's
+ * own broadcast conversation (e.g. Global Vista Educators posting into
+ * ITS OWN "Company Announcements" channel) instead of this company's own
+ * — lets a child company (a school) see its parent's broadcasts on its
+ * own dashboard too, alongside (never instead of) its own company's
+ * announcements. No new send-side UI needed: the parent's Super Admin
+ * already posts into their own existing broadcast conversation exactly
+ * as before; this just gives a child a second, read-only window into
+ * that same conversation. Returns null for any company with no parent,
+ * same "nothing to show" contract as getLatestAnnouncement.
+ */
+export async function getLatestParentAnnouncement(session) {
+  if (!session.parent_company_id) return null;
+  const [[conversation]] = await pool.query(
+    `SELECT c.id, c.title, co.name AS company_name FROM conversations c JOIN companies co ON co.id = c.company_id WHERE c.company_id = ? AND c.type = 'broadcast' LIMIT 1`,
+    [session.parent_company_id]
+  );
+  if (!conversation) return null;
+
+  const typeFilter = (await hasMessageEditingSchema()) ? `AND m.message_type != 'system'` : "";
+  const [[message]] = await pool.query(
+    `SELECT m.id, m.body, m.created_at, u.name AS sender_name
+     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+     WHERE m.conversation_id = ? ${typeFilter} ORDER BY m.created_at DESC LIMIT 1`,
+    [conversation.id]
+  );
+  if (!message) return null;
+
+  if (await hasAnnouncementDismissalsSchema()) {
+    const [[dismissal]] = await pool.query(
+      `SELECT id FROM announcement_dismissals WHERE conversation_id = ? AND user_id = ? AND message_id = ?`,
+      [conversation.id, session.id, message.id]
+    );
+    if (dismissal) return null;
+  }
+
+  return { conversationId: conversation.id, messageId: message.id, title: conversation.title, companyName: conversation.company_name, body: message.body, senderName: message.sender_name, createdAt: message.created_at };
+}
+
 /** Marks the CURRENT latest message dismissed for this user — re-fetches
  * which message is actually latest rather than trusting a stale client
  * value, so a dismiss click can't accidentally suppress a newer
- * announcement that arrived after the page loaded. */
+ * announcement that arrived after the page loaded. Checks BOTH this
+ * session's own company and its parent (if any) — a child company's
+ * user might be dismissing either their own company's announcement or
+ * their parent's, and the conversation's real company_id tells us which. */
 export async function dismissAnnouncement(session, conversationId) {
   if (!(await hasAnnouncementDismissalsSchema())) return;
-  const [[conversation]] = await pool.query(`SELECT id FROM conversations WHERE id = ? AND company_id = ? AND type = 'broadcast'`, [conversationId, session.company_id]);
+  const [[conversation]] = await pool.query(
+    `SELECT id FROM conversations WHERE id = ? AND type = 'broadcast' AND company_id IN (?, ?)`,
+    [conversationId, session.company_id, session.parent_company_id || 0]
+  );
   if (!conversation) return;
   const [[message]] = await pool.query(`SELECT id FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1`, [conversation.id]);
   if (!message) return;
