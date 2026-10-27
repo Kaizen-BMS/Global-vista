@@ -96,7 +96,7 @@ export async function switchBackToHomeCompany(session) {
 // stays disabled while a Super Admin is switched INTO a child session —
 // can_create_child_companies is per-company and a freshly-created child
 // never has it set.
-export async function provisionChildCompany(session, { companyName, shortName, adminName, adminEmail, adminPhone }) {
+export async function provisionChildCompany(session, { companyName, shortName, adminName, adminEmail, adminPhone, adminPassword }) {
   if (!isSuperAdminAccount(session)) {
     const e = new Error("Only a Super Admin can create a child company.");
     e.status = 403;
@@ -107,7 +107,7 @@ export async function provisionChildCompany(session, { companyName, shortName, a
     e.status = 403;
     throw e;
   }
-  return provisionCompany({ companyName, shortName, adminName, adminEmail, adminPhone, parentCompanyId: session.company_id }, session.id);
+  return provisionCompany({ companyName, shortName, adminName, adminEmail, adminPhone, adminPassword: adminPassword || null, parentCompanyId: session.company_id }, session.id);
 }
 
 /**
