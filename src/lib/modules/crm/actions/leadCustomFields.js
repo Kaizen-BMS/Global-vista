@@ -192,7 +192,7 @@ async function assertLeadVisible(session, leadId) {
 export async function getLeadCustomFieldValues(session, leadId) {
   await assertLeadVisible(session, leadId);
   const [rows] = await pool.query(
-    `SELECT f.id AS field_id, f.section, f.label, f.field_type, f.options_json, f.status AS field_status, f.is_deleted AS field_deleted,
+    `SELECT f.id AS field_id, f.field_key, f.section, f.label, f.field_type, f.options_json, f.status AS field_status, f.is_deleted AS field_deleted,
             f.display_order, v.value
      FROM lead_custom_field_values v
      JOIN lead_custom_fields f ON f.id = v.custom_field_id

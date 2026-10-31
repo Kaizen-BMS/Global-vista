@@ -36,17 +36,37 @@ export const LEAD_IMPORT_FIELDS = [
   // (leadStages.js) or falls back to "Custom".
   { key: "followupType", label: "Follow-up Type", required: false },
   { key: "followupDate", label: "Follow-up Date (YYYY-MM-DD, optional time)", required: false },
+  // Finishes what the export route's own comment already anticipated: a
+  // re-uploaded, lightly-edited export (same leadId column) can now also
+  // move a student's stage or update their Student Information custom
+  // fields, not just add a note/follow-up. `stage` is validated against
+  // this company's real configured pipeline stages; the rest map straight
+  // onto the matching lead_custom_fields row by field_key.
+  { key: "stage", label: "Stage", required: false },
+  { key: "stream", label: "Stream", required: false },
+  { key: "district", label: "District", required: false },
+  { key: "schoolName", label: "School", required: false },
+  { key: "academicYear", label: "Academic Year", required: false },
+  { key: "class", label: "Class", required: false },
+  { key: "subjects", label: "Subjects", required: false },
+  { key: "parentMobile", label: "Parent Mobile Number", required: false },
+  { key: "parentName", label: "Parent Name", required: false },
+  { key: "registrationNumber", label: "Registration Number", required: false },
 ];
 
-// noteContent/noteDate/followupType/followupDate are a sub-company-only
-// feature (schools importing an offline counselling tracking sheet) —
-// every other company's mapping UI, auto-map suggestions, and
-// downloadable template simply never offer these fields at all, matching
-// the real server-side enforcement in validateLeadImportRows/
-// commitLeadImportChunk (leadImport.js), not just hiding them here.
-// leadId is universal — exact-ID matching is safe and useful for every
-// company, not a counselling-specific concept.
-const SUB_COMPANY_ONLY_KEYS = new Set(["noteContent", "noteDate", "followupType", "followupDate"]);
+// noteContent/noteDate/followupType/followupDate/stage/stream/district/
+// schoolName/academicYear/class/subjects/parentMobile are a sub-company-
+// only feature (schools importing an offline counselling tracking sheet,
+// or re-importing their own export) — every other company's mapping UI,
+// auto-map suggestions, and downloadable template simply never offer these
+// fields at all, matching the real server-side enforcement in
+// validateLeadImportRows/commitLeadImportChunk (leadImport.js), not just
+// hiding them here. leadId is universal — exact-ID matching is safe and
+// useful for every company, not a counselling-specific concept.
+const SUB_COMPANY_ONLY_KEYS = new Set([
+  "noteContent", "noteDate", "followupType", "followupDate",
+  "stage", "stream", "district", "schoolName", "academicYear", "class", "subjects", "parentMobile", "parentName", "registrationNumber",
+]);
 export function getLeadImportFields(isChildCompany) {
   return isChildCompany ? LEAD_IMPORT_FIELDS : LEAD_IMPORT_FIELDS.filter((f) => !SUB_COMPANY_ONLY_KEYS.has(f.key));
 }

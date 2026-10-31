@@ -14,7 +14,7 @@ export default async function FollowupsPage() {
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-1">Follow-ups</h1>
       <p className="text-muted-foreground text-sm mb-6">Everything that needs your attention, automatically sorted — you never have to go looking for it.</p>
-      <FollowupDashboard data={data} />
+      <FollowupDashboard data={data} isChildCompany={session.is_child_company} />
     </div>
   );
 }

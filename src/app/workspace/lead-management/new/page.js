@@ -29,7 +29,7 @@ export default async function NewLeadPage() {
       <h1 className="text-xl font-semibold text-foreground mb-1">Add {terms.singular}</h1>
       <p className="text-muted-foreground text-sm mb-6">Fill in as much detail as you have — you can complete the rest later.</p>
       {isChildCompany ? (
-        <StudentIntakeForm sources={sources} services={services} customFields={customFields} />
+        <StudentIntakeForm sources={sources} services={services} customFields={customFields} counsellors={counsellorsResult.users} />
       ) : (
         <LeadForm sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags} customFields={customFields} groups={groups} isChildCompany={isChildCompany} />
       )}

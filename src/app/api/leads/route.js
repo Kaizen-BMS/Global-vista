@@ -4,7 +4,7 @@ import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/hel
 import { validate, leadValidators } from "@/lib/helpers/validation";
 import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/modules/crm/actions/leads";
 import { bulkAddLeadNote } from "@/lib/modules/crm/actions/leadNotes";
-import { bulkMarkStageComplete, bulkMoveToNextStage } from "@/lib/modules/crm/actions/leadStageProgress";
+import { bulkMarkStageComplete, bulkMoveToNextStage, applyBulkPreviewUpdates } from "@/lib/modules/crm/actions/leadStageProgress";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request) => {
@@ -43,6 +43,9 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
       await bulkMarkStageComplete(session, body.ids || [], session.id);
     } else if (body.bulkAction === "stageMove") {
       const result = await bulkMoveToNextStage(session, body.ids || [], session.id);
+      return ok(result);
+    } else if (body.bulkAction === "bulkPreviewUpdate") {
+      const result = await applyBulkPreviewUpdates(session, body.rows || [], session.id);
       return ok(result);
     }
     return ok();

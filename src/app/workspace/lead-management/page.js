@@ -7,6 +7,7 @@ import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineSta
 import { getLeadsByStage } from "@/lib/modules/crm/actions/dashboard";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
 import { listUsers } from "@/lib/actions/users";
+import { listLeadCustomFields } from "@/lib/modules/crm/actions/leadCustomFields";
 import { isImportExportAllowed } from "@/lib/platform/tenant";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import ForbiddenState from "@/components/shared/ForbiddenState";
@@ -16,6 +17,7 @@ import StageTabs from "@/components/crm/leads/StageTabs";
 import LeadsTable from "@/components/crm/leads/LeadsTable";
 import LeadViewToggle from "@/components/crm/leads/LeadViewToggle";
 import Pagination from "@/components/shared/Pagination";
+import ScrollRestorer from "@/components/crm/leads/ScrollRestorer";
 
 export default async function LeadManagementPage({ searchParams }) {
   const session = await getSession();
@@ -24,7 +26,7 @@ export default async function LeadManagementPage({ searchParams }) {
   const sp = await searchParams;
   const terms = getCrmTerms(session.is_child_company);
   const isChildCompany = session.is_child_company;
-  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes] = await Promise.all([
+  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
     listLeads(session, {
       status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
       sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
@@ -45,11 +47,13 @@ export default async function LeadManagementPage({ searchParams }) {
     can(session, "leads.update"),
     isImportExportAllowed(session.company_id),
     can(session, "leads.notes.manage"),
+    isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : [],
   ]);
   const stageCounts = Object.fromEntries(stageCountRows.map((r) => [r.stage, r.count]));
 
   return (
     <div>
+      <ScrollRestorer />
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-xl font-semibold text-foreground">{terms.plural} ({result.total})</h1>
         <div className="flex items-center gap-2">
@@ -94,6 +98,7 @@ export default async function LeadManagementPage({ searchParams }) {
         sortDir={sp?.dir || "DESC"}
         isChildCompany={isChildCompany}
         stages={stages}
+        customFields={customFields}
       />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>

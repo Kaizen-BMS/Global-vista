@@ -1,5 +1,6 @@
 "use client";
 import { LEAD_PRIORITIES } from "@/lib/modules/crm/constants/leadStages";
+import { INDIAN_STATES_AND_UTS } from "@/lib/modules/crm/constants/indianStates";
 import TagInput from "@/components/shared/TagInput";
 import GeoAutocomplete from "@/components/shared/GeoAutocomplete";
 
@@ -20,6 +21,16 @@ export default function BuiltinFieldInput({ field, value, onChange, required, so
       return <GeoAutocomplete type="state" value={value || ""} onChange={onChange} placeholder={field.placeholder || "e.g. Punjab"} />;
     case "geo-city":
       return <GeoAutocomplete type="city" value={value || ""} onChange={onChange} placeholder={field.placeholder || "e.g. Sirsa"} />;
+    // A genuine fixed dropdown of all 28 states + 8 UTs — distinct from
+    // geo-state's free-text autocomplete, used only by the school-facing
+    // StudentIntakeForm where the user asked for a real Select, not a
+    // type-ahead against the shared states/cities reference tables.
+    case "state-select":
+      return (
+        <select required={required} className={inputClass} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+          {INDIAN_STATES_AND_UTS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      );
     case "select": {
       const labelFor = { male: "Male", female: "Female", other: "Other" };
       return (

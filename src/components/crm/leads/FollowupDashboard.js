@@ -19,7 +19,7 @@ const SECTIONS = [
   { key: "completedToday", label: "Completed Today", icon: CheckCircle2, color: "text-emerald-400", accent: "border-emerald-500/30 bg-emerald-500/5" },
 ];
 
-export default function FollowupDashboard({ data }) {
+export default function FollowupDashboard({ data, isChildCompany = false }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [collapsed, setCollapsed] = useState({});
@@ -53,10 +53,11 @@ export default function FollowupDashboard({ data }) {
         return (
           <div key={section.key}>
             <button onClick={() => setCollapsed((c) => ({ ...c, [section.key]: !c[section.key] }))} className="flex items-center gap-2 mb-3 cursor-pointer group w-full">
+              {isChildCompany && <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />}
               <Icon className={`h-4 w-4 ${section.color}`} />
               <h2 className="text-sm font-semibold text-foreground">{section.label}</h2>
               <span className="text-muted-foreground text-xs">({items.length})</span>
-              <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+              {!isChildCompany && <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground ml-auto transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />}
             </button>
             {!isCollapsed && (
               items.length === 0 ? (

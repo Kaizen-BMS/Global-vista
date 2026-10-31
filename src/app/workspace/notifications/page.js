@@ -11,7 +11,7 @@ export default async function NotificationsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-6">Notifications</h1>
-      <NotificationsClient initialNotifications={notifications} initialPreferences={preferences} />
+      <NotificationsClient initialNotifications={notifications} initialPreferences={preferences} isChildCompany={session.is_child_company} />
     </div>
   );
 }

@@ -10,36 +10,48 @@ import BuiltinFieldInput from "@/components/crm/leads/BuiltinFieldInput";
 import { apiFetch } from "@/components/shared/apiClient";
 
 /**
- * The simplified, school-facing counterpart to LeadForm.js — a fixed,
- * single-page subset of the same BUILTIN_LEAD_FIELDS registry (so
- * BuiltinFieldInput needs no adapting), deliberately leaving out the
- * sales-CRM-specific fields (campaign, assignedTo, priority, tags, notes)
- * a school counsellor has no use for. leadSourceId/serviceId stay in —
- * they're DB-level NOT NULL columns (CORE_REQUIRED_FIELD_KEYS), not a
- * choice this form can opt out of.
+ * The simplified, school-facing counterpart to LeadForm.js — matches the
+ * user's Student Profile spec exactly: Student ID (auto, read-only),
+ * core student/parent details, DOB, academics (Class/Stream/Subjects via
+ * the Student Information custom fields seeded in provisioning.js),
+ * Country/State as real dropdowns (prefilled India/Punjab, not the free-
+ * text GeoAutocomplete the rest of the CRM uses), District/School/
+ * Academic Year (custom fields), Lead Source/Service prefilled by name
+ * ("Project UDAAN"/"Career Counselling") but still changeable, and Assign
+ * To. Campaign/Tags/"After Submission"/Spam Protection are simply never
+ * rendered here — there's nothing to "hide", they were never part of this
+ * form's field set.
  */
-const SECTIONS = [
-  { name: "Student Details", keys: ["name", "phone", "email", "whatsapp", "country", "state", "city", "address", "gender", "dob"] },
-  { name: "Academic & Study Preferences", keys: ["school", "college", "currentQualification", "englishTest", "preferredCountry", "preferredUniversity", "preferredIntake", "budget", "passportStatus"] },
-  { name: "Source & Notes", keys: ["leadSourceId", "serviceId", "remarks"] },
+const BUILTIN_SECTIONS = [
+  { name: "Student Details", keys: ["name", "phone", "dob"] },
+  { name: "Location", keys: ["country", "state"] },
+  { name: "Source & Assignment", keys: ["leadSourceId", "serviceId", "assignedTo"] },
 ];
 
-const BUILTIN_DEFAULTS = {
-  name: "", email: "", phone: "", whatsapp: "",
-  country: "", state: "", city: "", address: "", gender: "", dob: "",
-  school: "", college: "", currentQualification: "",
-  englishTest: "", preferredCountry: "", preferredUniversity: "", preferredIntake: "", budget: "", passportStatus: "",
-  leadSourceId: "", serviceId: "", remarks: "",
-};
+const BUILTIN_DEFAULTS = { name: "", phone: "", dob: "", country: "India", state: "Punjab", leadSourceId: "", serviceId: "", assignedTo: "" };
 
 function fieldDef(key) {
-  return BUILTIN_LEAD_FIELDS.find((f) => f.key === key);
+  const f = BUILTIN_LEAD_FIELDS.find((f) => f.key === key);
+  if (!f) return null;
+  // Overrides this form's rendering only — BUILTIN_LEAD_FIELDS itself (and
+  // every other form/admin screen reading it) is untouched.
+  if (key === "state") return { ...f, inputType: "state-select", label: "State" };
+  return f;
 }
 
-export default function StudentIntakeForm({ sources = [], services = [], customFields = [] }) {
+function defaultIdByName(list, name) {
+  const match = list.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  return match ? String(match.id) : "";
+}
+
+export default function StudentIntakeForm({ sources = [], services = [], customFields = [], counsellors = [] }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ ...BUILTIN_DEFAULTS });
+  const [form, setForm] = useState({
+    ...BUILTIN_DEFAULTS,
+    leadSourceId: defaultIdByName(sources, "Project UDAAN"),
+    serviceId: defaultIdByName(services, "Career Counselling"),
+  });
   const [customValues, setCustomValues] = useState({});
 
   function setField(key, value) {
@@ -86,19 +98,23 @@ export default function StudentIntakeForm({ sources = [], services = [], customF
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {SECTIONS.map((section) => (
+      <div className="bg-card border border-border rounded-xl p-6">
+        <label className="block text-sm text-foreground mb-1">Student ID</label>
+        <input disabled value="Auto-generated on save" className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-muted-foreground text-sm" />
+      </div>
+
+      {BUILTIN_SECTIONS.map((section) => (
         <div key={section.name} className="bg-card border border-border rounded-xl p-6 space-y-4">
           <p className="text-foreground font-medium">{section.name}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {section.keys.map((key) => {
               const field = fieldDef(key);
               if (!field) return null;
-              const required = !!field.coreRequired;
-              const wide = field.inputType === "textarea";
+              const required = !!field.coreRequired || ["dob", "country", "state"].includes(key);
               return (
-                <div key={key} className={wide ? "sm:col-span-2" : ""}>
+                <div key={key}>
                   <label className="block text-sm text-foreground mb-1">{field.label}{required ? " *" : ""}</label>
-                  <BuiltinFieldInput field={field} value={form[key]} onChange={(v) => setField(key, v)} required={required} sources={sources} services={services} />
+                  <BuiltinFieldInput field={field} value={form[key]} onChange={(v) => setField(key, v)} required={required} sources={sources} services={services} counsellors={counsellors} />
                 </div>
               );
             })}
@@ -113,7 +129,7 @@ export default function StudentIntakeForm({ sources = [], services = [], customF
             {customFields.map((field) => (
               <div key={field.id} className={field.field_type === "textarea" ? "sm:col-span-2" : ""}>
                 <label className="block text-sm text-foreground mb-1">{field.label}{field.is_required_on_lead_form ? " *" : ""}</label>
-                <CustomFieldInput field={field} value={customValues[field.id]} onChange={(v) => setCustomField(field.id, v)} />
+                <CustomFieldInput field={field} value={customValues[field.id] ?? field.default_value ?? ""} onChange={(v) => setCustomField(field.id, v)} />
                 {field.help_text && <p className="text-muted-foreground text-xs mt-1">{field.help_text}</p>}
               </div>
             ))}

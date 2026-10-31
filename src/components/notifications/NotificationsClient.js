@@ -28,7 +28,12 @@ function Toggle({ checked, onChange, disabled }) {
  * top of it (see the 2026-09-01 migration and createNotification's own
  * doc comment for how the two combine).
  */
-export default function NotificationsClient({ initialNotifications, initialPreferences }) {
+// Documents/Payments & Billing aren't relevant to a school's counselling
+// workflow — same two categories the Organizational Setting toggle list
+// already drops for a child company (organization/page.js).
+const CHILD_HIDDEN_CATEGORIES = new Set(["notify_documents", "notify_payments"]);
+
+export default function NotificationsClient({ initialNotifications, initialPreferences, isChildCompany = false }) {
   const timezone = useTimezone();
   const [notifications, setNotifications] = useState(initialNotifications);
   const [category, setCategory] = useState("all");
@@ -38,10 +43,15 @@ export default function NotificationsClient({ initialNotifications, initialPrefe
   const [preferences, setPreferences] = useState(initialPreferences || {});
   const [savingPref, setSavingPref] = useState(null);
 
+  const visibleCategoryLabels = isChildCompany
+    ? Object.fromEntries(Object.entries(CATEGORY_LABELS).filter(([k]) => !CHILD_HIDDEN_CATEGORIES.has(k)))
+    : CATEGORY_LABELS;
+
   const categoriesPresent = useMemo(() => {
     const present = new Set(notifications.map((n) => getNotificationCategory(n.type)));
-    return Object.keys(CATEGORY_LABELS).filter((k) => present.has(k)).concat(present.has("other") ? ["other"] : []);
-  }, [notifications]);
+    return Object.keys(visibleCategoryLabels).filter((k) => present.has(k)).concat(present.has("other") ? ["other"] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifications, isChildCompany]);
 
   const filtered = notifications.filter((n) => {
     if (readFilter === "unread" && n.is_read) return false;
@@ -111,7 +121,7 @@ export default function NotificationsClient({ initialNotifications, initialPrefe
           </div>
           <p className="text-muted-foreground text-xs mb-3">Turn a category off to stop it showing up for you — this is personal, it doesn't affect anyone else in your company.</p>
           <div className="divide-y divide-border">
-            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+            {Object.entries(visibleCategoryLabels).map(([key, label]) => (
               <div key={key} className="flex items-center justify-between gap-4 py-2.5">
                 <span className="text-sm text-foreground">{label}</span>
                 <Toggle checked={preferences[key] !== false} disabled={savingPref === key} onChange={(v) => togglePreference(key, v)} />
@@ -131,7 +141,7 @@ export default function NotificationsClient({ initialNotifications, initialPrefe
               key={c} onClick={() => setCategory(c)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition cursor-pointer border ${category === c ? "bg-indigo-600/10 text-indigo-400 border-indigo-600/30" : "text-muted-foreground border-border hover:text-foreground"}`}
             >
-              {CATEGORY_LABELS[c] || OTHER_LABEL}
+              {visibleCategoryLabels[c] || OTHER_LABEL}
             </button>
           ))}
         </div>
@@ -147,12 +157,12 @@ export default function NotificationsClient({ initialNotifications, initialPrefe
           {filtered.map((n) => (
             <button
               key={n.id} onClick={() => !n.is_read && markRead(n.id)}
-              className={`w-full text-left px-4 py-3 flex items-start gap-3 transition cursor-pointer hover:bg-muted/40 ${!n.is_read ? "bg-indigo-500/5" : ""}`}
+              className={`w-full text-left flex items-start gap-3 transition cursor-pointer hover:bg-muted/40 ${isChildCompany ? "px-3 py-2" : "px-4 py-3"} ${!n.is_read ? "bg-indigo-500/5" : ""}`}
             >
               <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${!n.is_read ? "bg-indigo-500" : "bg-transparent"}`} />
               <div className="min-w-0 flex-1">
                 <p className={`text-sm ${!n.is_read ? "text-foreground font-medium" : "text-foreground/80"}`}>{n.title}</p>
-                {n.message && <p className="text-muted-foreground text-xs mt-0.5">{n.message}</p>}
+                {n.message && <p className={`text-muted-foreground text-xs mt-0.5 ${isChildCompany ? "line-clamp-1" : ""}`}>{n.message}</p>}
                 <p className="text-muted-foreground text-[11px] mt-1">{formatDateTime(n.created_at, timezone)}</p>
               </div>
             </button>

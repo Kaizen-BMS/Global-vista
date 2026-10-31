@@ -4,6 +4,9 @@ import { logActivity } from "@/lib/activityLog";
 import { NOT_DELETED } from "@/lib/helpers/db";
 import { updateLeadStage } from "@/lib/modules/crm/actions/leads";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
+import { addLeadNote } from "@/lib/modules/crm/actions/leadNotes";
+import { createFollowup } from "@/lib/modules/crm/actions/leadFollowups";
+import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 
 /**
  * Schools-only "Mark [Stage] Complete" / "Move to Next Stage" flow.
@@ -51,6 +54,44 @@ export async function bulkMoveToNextStage(session, ids, actorId) {
   const errors = [];
   for (const id of ids) {
     try { await moveToNextStage(session, id, actorId); } catch (err) { errors.push({ id, message: err.message }); }
+  }
+  return { errors };
+}
+
+/**
+ * The "select several students, fill in a per-student note/follow-up/
+ * stream/stage, click OK" bulk preview editor — each row applies
+ * independently through the exact mechanisms that already exist and
+ * already log their own timestamp (addLeadNote, createFollowup,
+ * saveLeadCustomFieldValues, updateLeadStage), so nothing new needs its
+ * own logging here. A blank field on a row means "leave unchanged".
+ */
+export async function applyBulkPreviewUpdates(session, rows, actorId) {
+  assertSchoolFeature(session);
+  if (!Array.isArray(rows) || !rows.length) return { errors: [] };
+
+  const customFields = await listLeadCustomFields(session, { activeOnly: true });
+  const streamField = customFields.find((f) => f.field_key === "stream");
+
+  const errors = [];
+  for (const row of rows) {
+    try {
+      if (row.note && row.note.trim()) {
+        await addLeadNote(session, row.id, { content: row.note.trim() }, actorId);
+      }
+      if (row.followupDate) {
+        await createFollowup(session, row.id, { type: row.followupType || "Custom", scheduledAt: row.followupDate }, actorId);
+      }
+      if (row.stream && streamField) {
+        await saveLeadCustomFieldValues(session, row.id, { [streamField.id]: row.stream }, actorId, { context: "lead_form" });
+      }
+      if (row.stage) {
+        const [[lead]] = await pool.query(`SELECT stage FROM leads WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [row.id, session.company_id]);
+        if (lead && lead.stage !== row.stage) await updateLeadStage(session, row.id, row.stage, actorId);
+      }
+    } catch (err) {
+      errors.push({ id: row.id, message: err.message });
+    }
   }
   return { errors };
 }

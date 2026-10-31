@@ -5,6 +5,7 @@ import { createNotification } from "@/lib/actions/notifications";
 import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
+import { generateStudentCode } from "@/lib/modules/crm/studentCode";
 import { enforceLeadLimit } from "@/lib/platform/tenant";
 
 // Correlated subquery, not a JOIN: a lead can have more than one
@@ -93,7 +94,7 @@ export async function listLeads(session, {
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
 
-  const SORTABLE = new Set(["created_at", "next_follow_up", "priority", "name", "stage"]);
+  const SORTABLE = new Set(["created_at", "next_follow_up", "priority", "name", "stage", "student_code"]);
   const sortCol = SORTABLE.has(sort) ? sort : "created_at";
   const sortDir = dir === "ASC" ? "ASC" : "DESC";
 
@@ -115,6 +116,11 @@ export async function listLeads(session, {
 
   return { leads: rows, total, page: p, pageSize: size };
 }
+
+// Exported for schools only — re-importing this same export (see
+// commitLeadImportChunk's applyImportExtras) can write straight back to
+// these by field_key, so the export must offer exactly these values.
+export const SCHOOL_EXPORT_CUSTOM_FIELD_KEYS = ["stream", "district", "school_name", "academic_year", "class", "subjects", "parent_mobile", "parent_name", "registration_number"];
 
 export async function listLeadsForExport(session, {
   status = null, stage = null, sourceId = null, serviceId = null, search = null,
@@ -139,14 +145,29 @@ export async function listLeadsForExport(session, {
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
+
+  // Schools only — each Student Information custom field gets its own
+  // field-definition + value LEFT JOIN pair (field_key is a fixed,
+  // hardcoded list above, never user input, so inlining it is safe), same
+  // pattern as getTeamPerformanceByStream's existing Stream join.
+  let customFieldSelect = "";
+  let customFieldJoins = "";
+  if (session.is_child_company) {
+    customFieldSelect = SCHOOL_EXPORT_CUSTOM_FIELD_KEYS.map((key, i) => `, cfv${i}.value AS cf_${key}`).join("");
+    customFieldJoins = SCHOOL_EXPORT_CUSTOM_FIELD_KEYS.map((key, i) => `
+     LEFT JOIN lead_custom_fields cff${i} ON cff${i}.company_id = l.company_id AND cff${i}.field_key = '${key}' AND cff${i}.is_deleted = 0
+     LEFT JOIN lead_custom_field_values cfv${i} ON cfv${i}.lead_id = l.id AND cfv${i}.custom_field_id = cff${i}.id`).join("");
+  }
+
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
-            ${SOURCE_FORM_SUBQUERY}
+            ${SOURCE_FORM_SUBQUERY}${customFieldSelect}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
+     ${customFieldJoins}
      ${whereSql}
      ORDER BY l.created_at DESC LIMIT 5000`,
     params
@@ -269,18 +290,19 @@ export async function createLead(session, data, createdBy) {
   await enforceLeadLimit(session.company_id);
   const duplicate = await findDuplicateLead(session.company_id, { phone: data.phone, email: data.email });
   const leadNumber = await generateLeadNumber();
+  const studentCode = session.is_child_company ? await generateStudentCode(session.company_id) : null;
 
   const [result] = await pool.query(
     `INSERT INTO leads (
-      company_id, lead_number, name, email, phone, whatsapp, country, state, city, address, gender, dob,
+      company_id, lead_number, student_code, name, email, phone, whatsapp, country, state, city, address, gender, dob,
       school, college, current_qualification, passing_year, percentage,
       english_test, ielts_score, pte_score,
       preferred_country, preferred_university, preferred_intake, budget, passport_status,
       lead_source_id, campaign, service_id, assigned_team, stage, priority, tags,
       status, is_duplicate, duplicate_of, remarks, notes, created_by, updated_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      session.company_id, leadNumber, data.name, data.email || null, data.phone, data.whatsapp || null,
+      session.company_id, leadNumber, studentCode, data.name, data.email || null, data.phone, data.whatsapp || null,
       data.country || null, data.state || null, data.city || null, data.address || null,
       data.gender || null, data.dob || null,
       data.school || null, data.college || null, data.currentQualification || null,

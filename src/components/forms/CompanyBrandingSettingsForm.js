@@ -28,10 +28,11 @@ function ColorField({ label, value, onChange }) {
   );
 }
 
-export default function CompanyBrandingSettingsForm({ initial }) {
+export default function CompanyBrandingSettingsForm({ initial, isChildCompany = false }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
+  const locked = !!initial.brandingLocked;
   function setField(key, value) { setForm((f) => ({ ...f, [key]: value })); }
 
   async function handleSubmit(e) {
@@ -52,13 +53,15 @@ export default function CompanyBrandingSettingsForm({ initial }) {
           <p className="text-foreground font-medium">Identity</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <ImageUploadField label="Company Logo" hint="Used in the sidebar, reports, and emails." value={form.logoUrl} onChange={(v) => setField("logoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="logo" />
-            <ImageUploadField label="Favicon" hint="Shown in the browser tab while inside the workspace." value={form.faviconUrl} onChange={(v) => setField("faviconUrl", v)} uploadUrl="/api/core/company-branding/upload" category="favicon" />
-            <ImageUploadField label="Sidebar Logo Override" hint="Optional — leave blank to reuse the company logo." value={form.sidebarLogoUrl} onChange={(v) => setField("sidebarLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="sidebar_logo" />
-            <ImageUploadField label="Watermark Logo" hint="Faint background mark on printed reports." value={form.watermarkLogoUrl} onChange={(v) => setField("watermarkLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="watermark" />
-            <ImageUploadField label="Login Page Logo" hint="Optional — leave blank to reuse the company logo." value={form.loginLogoUrl} onChange={(v) => setField("loginLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="login_logo" />
-            <ImageUploadField label="Email Logo" hint="Shown in the header of outbound emails." value={form.emailLogoUrl} onChange={(v) => setField("emailLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="email_logo" />
-            <ImageUploadField label="Website Logo" hint="Optional — for embedding on your own website." value={form.websiteLogoUrl} onChange={(v) => setField("websiteLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="website_logo" />
-            <ImageUploadField label="Background Image" hint="Optional — used behind the public lead form and login showcase." value={form.backgroundImageUrl} onChange={(v) => setField("backgroundImageUrl", v)} uploadUrl="/api/core/company-branding/upload" category="background" />
+            <ImageUploadField label="Favicon" hint="Shown in the browser tab while inside the workspace." value={form.faviconUrl} onChange={(v) => setField("faviconUrl", v)} uploadUrl="/api/core/company-branding/upload" category="favicon" locked={locked} />
+            <ImageUploadField label="Sidebar Logo Override" hint="Optional — leave blank to reuse the company logo." value={form.sidebarLogoUrl} onChange={(v) => setField("sidebarLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="sidebar_logo" locked={locked} />
+            <ImageUploadField label="Watermark Logo" hint="Faint background mark on printed reports." value={form.watermarkLogoUrl} onChange={(v) => setField("watermarkLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="watermark" locked={locked} />
+            <ImageUploadField label="Login Page Logo" hint="Optional — leave blank to reuse the company logo." value={form.loginLogoUrl} onChange={(v) => setField("loginLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="login_logo" locked={locked} />
+            {!isChildCompany && (
+              <ImageUploadField label="Email Logo" hint="Shown in the header of outbound emails." value={form.emailLogoUrl} onChange={(v) => setField("emailLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="email_logo" />
+            )}
+            <ImageUploadField label="Website Logo" hint="Optional — for embedding on your own website." value={form.websiteLogoUrl} onChange={(v) => setField("websiteLogoUrl", v)} uploadUrl="/api/core/company-branding/upload" category="website_logo" locked={locked} />
+            <ImageUploadField label="Background Image" hint="Optional — used behind the public lead form and login showcase." value={form.backgroundImageUrl} onChange={(v) => setField("backgroundImageUrl", v)} uploadUrl="/api/core/company-branding/upload" category="background" locked={locked} />
           </div>
         </section>
 
@@ -71,24 +74,28 @@ export default function CompanyBrandingSettingsForm({ initial }) {
           </div>
         </section>
 
-        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-foreground font-medium">Contact &amp; Support</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Website"><input className={inputClass} value={form.website} onChange={(e) => setField("website", e.target.value)} /></Field>
-            <Field label="Contact Email"><input type="email" className={inputClass} value={form.contactEmail} onChange={(e) => setField("contactEmail", e.target.value)} /></Field>
-            <Field label="Contact Phone"><input className={inputClass} value={form.contactPhone} onChange={(e) => setField("contactPhone", e.target.value)} /></Field>
-            <Field label="Support Email" hint="Shown to your team as the help contact."><input type="email" className={inputClass} value={form.supportEmail} onChange={(e) => setField("supportEmail", e.target.value)} /></Field>
-            <Field label="Support Phone"><input className={inputClass} value={form.supportPhone} onChange={(e) => setField("supportPhone", e.target.value)} /></Field>
-            <Field label="Address"><input className={inputClass} value={form.address} onChange={(e) => setField("address", e.target.value)} /></Field>
-          </div>
-        </section>
+        {!isChildCompany && (
+          <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <p className="text-foreground font-medium">Contact &amp; Support</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Website"><input className={inputClass} value={form.website} onChange={(e) => setField("website", e.target.value)} /></Field>
+              <Field label="Contact Email"><input type="email" className={inputClass} value={form.contactEmail} onChange={(e) => setField("contactEmail", e.target.value)} /></Field>
+              <Field label="Contact Phone"><input className={inputClass} value={form.contactPhone} onChange={(e) => setField("contactPhone", e.target.value)} /></Field>
+              <Field label="Support Email" hint="Shown to your team as the help contact."><input type="email" className={inputClass} value={form.supportEmail} onChange={(e) => setField("supportEmail", e.target.value)} /></Field>
+              <Field label="Support Phone"><input className={inputClass} value={form.supportPhone} onChange={(e) => setField("supportPhone", e.target.value)} /></Field>
+              <Field label="Address"><input className={inputClass} value={form.address} onChange={(e) => setField("address", e.target.value)} /></Field>
+            </div>
+          </section>
+        )}
 
-        <section className="bg-card border border-border rounded-xl p-5 space-y-4">
-          <p className="text-foreground font-medium">Workspace Personalization</p>
-          <Field label="Dashboard Greeting" hint="Shown at the top of the workspace dashboard. Leave blank for the default welcome message."><input className={inputClass} value={form.dashboardGreeting} onChange={(e) => setField("dashboardGreeting", e.target.value)} /></Field>
-          <Field label="Company Description"><textarea rows={2} className={inputClass} value={form.companyDescription} onChange={(e) => setField("companyDescription", e.target.value)} /></Field>
-          <Field label="Report/Email Footer Text"><input className={inputClass} value={form.footerText} onChange={(e) => setField("footerText", e.target.value)} /></Field>
-        </section>
+        {!isChildCompany && (
+          <section className="bg-card border border-border rounded-xl p-5 space-y-4">
+            <p className="text-foreground font-medium">Workspace Personalization</p>
+            <Field label="Dashboard Greeting" hint="Shown at the top of the workspace dashboard. Leave blank for the default welcome message."><input className={inputClass} value={form.dashboardGreeting} onChange={(e) => setField("dashboardGreeting", e.target.value)} /></Field>
+            <Field label="Company Description"><textarea rows={2} className={inputClass} value={form.companyDescription} onChange={(e) => setField("companyDescription", e.target.value)} /></Field>
+            <Field label="Report/Email Footer Text"><input className={inputClass} value={form.footerText} onChange={(e) => setField("footerText", e.target.value)} /></Field>
+          </section>
+        )}
 
         <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save Branding

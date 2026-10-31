@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { UploadCloud, X, Loader2, ImageIcon } from "lucide-react";
+import { UploadCloud, X, Loader2, ImageIcon, Lock } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
@@ -13,10 +13,33 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
  * existing Save button persists the URL like any other field — "preview
  * before save" falls out naturally from that split.
  */
-export default function ImageUploadField({ label, hint, value, onChange, uploadUrl, category }) {
+export default function ImageUploadField({ label, hint, value, onChange, uploadUrl, category, locked = false }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
+
+  // Managed centrally (e.g. a school's branding is forced to the parent
+  // company's own values) — show the current image with no way to change
+  // it, instead of the normal drag-drop/browse/remove controls.
+  if (locked) {
+    return (
+      <div>
+        <label className="flex items-center gap-1.5 text-sm text-foreground mb-1">{label} <Lock className="h-3 w-3 text-muted-foreground" /></label>
+        <div className="flex items-center gap-3 rounded-lg border border-border p-3 bg-muted/40">
+          <div className="h-14 w-14 shrink-0 rounded-lg bg-muted border border-border flex items-center justify-center overflow-hidden">
+            {value ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={value} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <ImageIcon className="h-5 w-5 text-muted-foreground" />
+            )}
+          </div>
+          <p className="text-muted-foreground text-xs">Locked — managed centrally</p>
+        </div>
+        {hint && <p className="text-muted-foreground text-xs mt-1">{hint}</p>}
+      </div>
+    );
+  }
 
   async function handleFile(file) {
     if (!file) return;

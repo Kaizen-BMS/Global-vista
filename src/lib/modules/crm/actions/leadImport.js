@@ -2,13 +2,25 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
-import { createLead, updateLead, assignLead, findDuplicateLead } from "@/lib/modules/crm/actions/leads";
+import { createLead, updateLead, updateLeadStage, assignLead, findDuplicateLead } from "@/lib/modules/crm/actions/leads";
 import { addLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 import { createFollowupFromImport } from "@/lib/modules/crm/actions/leadFollowups";
+import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
+import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { zonedTimeToUtc } from "@/lib/helpers/dateRange";
 import { LEAD_PRIORITIES, FOLLOWUP_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { getLeadImportFields } from "@/lib/modules/crm/constants/leadImportFields";
+
+// record.<key> -> that company's lead_custom_fields.field_key — only
+// consulted for child companies (see SUB_COMPANY_ONLY_KEYS), so a stray
+// mapping on a non-child company's import is already stripped before this
+// is ever read.
+const CUSTOM_FIELD_IMPORT_KEYS = {
+  stream: "stream", district: "district", schoolName: "school_name",
+  academicYear: "academic_year", class: "class", subjects: "subjects", parentMobile: "parent_mobile",
+  parentName: "parent_name", registrationNumber: "registration_number",
+};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[0-9+\-\s()]{7,20}$/;
@@ -54,6 +66,28 @@ export function autoMapColumns(headers, isChildCompany = false) {
   return mapping;
 }
 
+/** Applies the two new re-import-only behaviors (stage move, custom-field
+ * values) — called after every createLead/updateLead in commitLeadImportChunk
+ * below. A no-op for non-child companies and for rows that didn't map these
+ * columns at all (record.stage/record[key] simply undefined). */
+async function applyImportExtras(session, leadId, record, importedBy) {
+  if (!session.is_child_company) return;
+  if (record.stage) {
+    const [[lead]] = await pool.query(`SELECT stage FROM leads WHERE id = ? AND company_id = ?`, [leadId, session.company_id]);
+    if (lead && lead.stage !== record.stage) await updateLeadStage(session, leadId, record.stage, importedBy);
+  }
+  const mapped = Object.entries(CUSTOM_FIELD_IMPORT_KEYS).filter(([recordKey]) => record[recordKey]);
+  if (mapped.length === 0) return;
+  const fields = await listLeadCustomFields(session, { activeOnly: true });
+  const byKey = new Map(fields.map((f) => [f.field_key, f]));
+  const values = {};
+  for (const [recordKey, fieldKey] of mapped) {
+    const field = byKey.get(fieldKey);
+    if (field) values[field.id] = record[recordKey];
+  }
+  if (Object.keys(values).length) await saveLeadCustomFieldValues(session, leadId, values, importedBy, { context: "lead_form" });
+}
+
 async function loadLeadLookupMaps(companyId) {
   const [sources] = await pool.query(`SELECT id, name FROM lead_sources WHERE company_id=? AND is_deleted=0`, [companyId]);
   const [services] = await pool.query(`SELECT id, name FROM services WHERE company_id=? AND is_deleted=0`, [companyId]);
@@ -87,6 +121,7 @@ export async function validateLeadImportRows(session, dataRows, mapping, { defau
   const { timezone } = await getSettingsByGroup(session, "system");
   const seenPhones = new Map();
   const seenEmails = new Map();
+  const companyStages = session.is_child_company ? await getLeadPipelineStages(session) : [];
 
   const results = [];
   for (let i = 0; i < dataRows.length; i++) {
@@ -95,13 +130,21 @@ export async function validateLeadImportRows(session, dataRows, mapping, { defau
     if (row.every((cell) => !cell || !String(cell).trim())) continue; // silently skip fully empty rows
 
     const record = rowToRecord(row, mapping);
-    // Real server-side enforcement, not just UI hiding — note/followup
-    // fields are a sub-company-only feature; strip them before any
-    // further processing so even a stray/forged mapping can never make a
-    // regular company's import create a note or follow-up. leadId is
+    // Real server-side enforcement, not just UI hiding — note/followup/
+    // stage/custom-field columns are a sub-company-only feature; strip them
+    // before any further processing so even a stray/forged mapping can
+    // never make a regular company's import touch any of this. leadId is
     // left alone — exact-ID matching is universal.
-    if (!session.is_child_company) { delete record.noteContent; delete record.noteDate; delete record.followupType; delete record.followupDate; }
+    if (!session.is_child_company) {
+      delete record.noteContent; delete record.noteDate; delete record.followupType; delete record.followupDate;
+      delete record.stage;
+      for (const key of Object.keys(CUSTOM_FIELD_IMPORT_KEYS)) delete record[key];
+    }
     const errors = [];
+
+    if (record.stage && !companyStages.includes(record.stage)) {
+      errors.push(`Stage "${record.stage}" doesn't match any of this company's configured stages: ${companyStages.join(", ")}.`);
+    }
 
     // An explicit ID is authoritative and never second-guessed by the
     // phone/email heuristics below — either it resolves to a real record
@@ -250,6 +293,7 @@ export async function commitLeadImportChunk(session, { rows, duplicateStrategy, 
         if (session.is_child_company && row.resolved.followupResolved) {
           await createFollowupFromImport(session, row.duplicateOfId, { type: row.resolved.followupResolved.type, scheduledAt: new Date(row.resolved.followupResolved.scheduledAt), notes: row.raw.noteContent || null }, importedBy);
         }
+        await applyImportExtras(session, row.duplicateOfId, row.raw, importedBy);
         updatedCount++;
       } catch (err) {
         failedCount++;
@@ -276,6 +320,7 @@ export async function commitLeadImportChunk(session, { rows, duplicateStrategy, 
           if (session.is_child_company && row.resolved.followupResolved) {
             await createFollowupFromImport(session, row.duplicateOfId, { type: row.resolved.followupResolved.type, scheduledAt: new Date(row.resolved.followupResolved.scheduledAt), notes: row.raw.noteContent || null }, importedBy);
           }
+          await applyImportExtras(session, row.duplicateOfId, row.raw, importedBy);
           updatedCount++;
         } catch (err) {
           failedCount++;
@@ -304,6 +349,7 @@ export async function commitLeadImportChunk(session, { rows, duplicateStrategy, 
       if (session.is_child_company && row.resolved.followupResolved) {
         await createFollowupFromImport(session, leadId, { type: row.resolved.followupResolved.type, scheduledAt: new Date(row.resolved.followupResolved.scheduledAt), notes: row.raw.noteContent || null }, importedBy);
       }
+      await applyImportExtras(session, leadId, row.raw, importedBy);
       importedCount++;
     } catch (err) {
       failedCount++;

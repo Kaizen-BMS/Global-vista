@@ -471,9 +471,15 @@ export async function provisionCompany(input, operatorId) {
       }
 
       const studentInfoFields = [
-        { key: "stream", label: "Stream", type: "select", options: ["Science", "Commerce", "Arts", "Vocational"] },
-        { key: "registration_number", label: "Registration Number", type: "text", options: null },
-        { key: "parent_name", label: "Parent Name", type: "text", options: null },
+        { key: "stream", label: "Stream", type: "select", options: ["Science", "Commerce", "Arts", "Vocational"], required: true },
+        { key: "registration_number", label: "Registration Number", type: "text", options: null, required: false },
+        { key: "parent_name", label: "Parent Name", type: "text", options: null, required: true },
+        { key: "parent_mobile", label: "Parent Mobile Number", type: "text", options: null, required: true },
+        { key: "class", label: "Class", type: "select", options: ["9th", "10th", "11th", "12th"], required: true },
+        { key: "subjects", label: "Subjects", type: "text", options: null, required: true },
+        { key: "district", label: "District", type: "select", options: ["Amritsar", "Ferozpur", "SBS Nagar", "Shri Muktsar Sahib", "Bathinda"], required: false },
+        { key: "school_name", label: "School", type: "select", options: ["PSEB Adarsh SSS. Dhardeo Buttar", "PSEB Adarsh SSS. Shahzada Sant Singh", "PSEB Adarsh SSS. Khatkar Kalan", "PSEB Adarsh SSS. Kot Bhai", "PSEB Adarsh SSS. Nandgarh"], required: false },
+        { key: "academic_year", label: "Academic Year", type: "select", options: ["2026-27"], required: false },
       ];
       for (let i = 0; i < studentInfoFields.length; i++) {
         const f = studentInfoFields[i];
@@ -483,10 +489,65 @@ export async function provisionCompany(input, operatorId) {
             show_on_lead_form, show_on_lead_detail, show_on_query_form, is_required_on_lead_form, is_required_on_query_form,
             display_order, status, created_by, updated_by)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [companyId, "Student Information", f.key, f.label, f.type, f.options ? JSON.stringify(f.options) : null, 1, 1, 0, 0, 0, i, "active", operatorId, operatorId]
+          [companyId, "Student Information", f.key, f.label, f.type, f.options ? JSON.stringify(f.options) : null, 1, 1, 0, f.required ? 1 : 0, 0, i, "active", operatorId, operatorId]
         );
       }
+
+      // "Prefilled" Lead Source / Service per the Add Student spec — a real,
+      // editable row (not a hidden constant), so StudentIntakeForm can just
+      // default-select it by name the same way every other lead source/
+      // service already works for this company.
+      await conn.query(`INSERT INTO lead_sources (company_id, name, slug, created_by, updated_by) VALUES (?,?,?,?,?)`, [companyId, "Project UDAAN", "project-udaan", operatorId, operatorId]);
+      await conn.query(`INSERT INTO services (company_id, name, slug, created_by, updated_by) VALUES (?,?,?,?,?)`, [companyId, "Career Counselling", "career-counselling", operatorId, operatorId]);
+
       stepLog.record("school_pipeline_defaults_seeded", "success");
+
+      // -----------------------------------------------------------
+      // Predefined school roles — plain company-scoped roles (is_system=0,
+      // same shape createRole() in src/lib/actions/roles.js produces), with
+      // role_permissions inserted directly from a slug->id lookup. Not a
+      // company_id IS NULL template (those get cloned into EVERY company by
+      // the step above) — these are school-specific, so they're seeded only
+      // here, under the same parentCompanyId gate.
+      // -----------------------------------------------------------
+      const counsellorPerms = [
+        "dashboard.view", "leads.view", "leads.create", "leads.update", "leads.notes.manage",
+        "leads.followups.manage", "leads.tasks.manage", "leads.calls.make", "leads.calls.view", "leads.documents.manage",
+      ];
+      const chairPerms = [...counsellorPerms, "leads.assign", "leads.export", "leads.delete", "users.view", "activity_logs.view"];
+      const principalPerms = [...chairPerms, "users.manage", "users.unlock", "employee_documents.manage", "settings.manage"];
+
+      const schoolRoles = [
+        { name: "Principal", slug: "principal", permSlugs: principalPerms },
+        { name: "Career Counselling Chair", slug: "career-counselling-chair", permSlugs: chairPerms },
+        { name: "Arts Career Counsellor", slug: "arts-career-counsellor", permSlugs: counsellorPerms },
+        { name: "Commerce Career Counsellor", slug: "commerce-career-counsellor", permSlugs: counsellorPerms },
+        { name: "Non-Medical Career Counsellor", slug: "non-medical-career-counsellor", permSlugs: counsellorPerms },
+        { name: "Medical Career Counsellor", slug: "medical-career-counsellor", permSlugs: counsellorPerms },
+      ];
+
+      const allPermSlugs = [...new Set(schoolRoles.flatMap((r) => r.permSlugs))];
+      const [permRows] = await conn.query(`SELECT id, slug FROM permissions WHERE slug IN (${allPermSlugs.map(() => "?").join(",")})`, allPermSlugs);
+      const permIdBySlug = Object.fromEntries(permRows.map((p) => [p.slug, p.id]));
+
+      for (const role of schoolRoles) {
+        const [[existingSchoolRole]] = await conn.query(`SELECT id FROM roles WHERE company_id=? AND slug=? LIMIT 1`, [companyId, role.slug]);
+        let schoolRoleId;
+        if (existingSchoolRole) {
+          schoolRoleId = existingSchoolRole.id;
+        } else {
+          const [roleInsert] = await conn.query(
+            `INSERT INTO roles (company_id, name, slug, description, is_system, created_by, updated_by) VALUES (?,?,?,?,0,?,?)`,
+            [companyId, role.name, role.slug, `Predefined school role: ${role.name}`, operatorId, operatorId]
+          );
+          schoolRoleId = roleInsert.insertId;
+        }
+        for (const permSlug of role.permSlugs) {
+          const permId = permIdBySlug[permSlug];
+          if (permId) await conn.query(`INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)`, [schoolRoleId, permId]);
+        }
+      }
+      stepLog.record("school_roles_seeded", "success");
     }
 
     // -------------------------------------------------------------

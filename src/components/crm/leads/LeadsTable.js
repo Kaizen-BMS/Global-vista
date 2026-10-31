@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle, StickyNote, PencilLine } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
@@ -12,8 +12,10 @@ import DataTable from "@/components/shared/DataTable";
 import { apiFetch } from "@/components/shared/apiClient";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import BulkNoteModal from "@/components/crm/leads/BulkNoteModal";
+import NotesPopover from "@/components/crm/leads/NotesPopover";
+import BulkPreviewEditModal from "@/components/crm/leads/BulkPreviewEditModal";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [] }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [] }) {
   const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const pathname = usePathname();
@@ -25,6 +27,9 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [releasingId, setReleasingId] = useState(null);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [stageBusyId, setStageBusyId] = useState(null);
+  const [notesLead, setNotesLead] = useState(null);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const streamOptions = customFields.find((f) => f.field_key === "stream")?.options || [];
 
   function nextStageFor(stage) {
     const idx = stages.indexOf(stage);
@@ -73,6 +78,18 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved to their next stage.`);
       setSelected([]); router.refresh();
     } catch { toast.error("Bulk move failed."); } finally { setBulkBusy(false); }
+  }
+
+  async function submitBulkPreviewUpdate(rows) {
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "bulkPreviewUpdate", rows }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Bulk update failed.");
+      const failed = data.errors?.length || 0;
+      if (failed) toast.error(`${failed} student${failed === 1 ? "" : "s"} could not be updated.`);
+      if (rows.length - failed > 0) toast.success(`${rows.length - failed} student${rows.length - failed === 1 ? "" : "s"} updated.`);
+      setShowBulkEditModal(false); setSelected([]); router.refresh();
+    } catch (err) { toast.error(err.message); }
   }
 
   function toggleSelect(id) { setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
@@ -155,6 +172,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   const columns = [
     { key: "lead_number", label: `${terms.singular} #`, width: 110, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
+    ...(isChildCompany ? [{ key: "student_code", label: "Student ID", width: 130, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{l.student_code || "—"}</span> }] : []),
     {
       key: "name", label: "Name", width: 200, sortable: true, hideable: false,
       render: (l) => (
@@ -241,6 +259,14 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       },
     }] : []),
     { key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> },
+    {
+      key: "notes_quick", label: "Notes", width: 90, hideable: false,
+      render: (l) => (
+        <button onClick={(e) => { e.stopPropagation(); setNotesLead({ id: l.id, name: l.name }); }} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted hover:bg-indigo-500/10 text-muted-foreground hover:text-indigo-400 cursor-pointer transition">
+          <StickyNote className="h-3.5 w-3.5" /> Notes
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -289,6 +315,9 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
             <button disabled={bulkBusy} onClick={bulkStageMove} className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">
               <ArrowRightCircle className="h-3.5 w-3.5" /> Move to Next Stage
             </button>
+            <button disabled={bulkBusy} onClick={() => setShowBulkEditModal(true)} className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 cursor-pointer disabled:opacity-60">
+              <PencilLine className="h-3.5 w-3.5" /> Bulk Edit
+            </button>
           </>)}
           <button onClick={() => setSelected([])} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
         </div>
@@ -296,6 +325,20 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
       {showNoteModal && (
         <BulkNoteModal count={selected.length} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowNoteModal(false)} onSubmit={bulkAddNote} />
+      )}
+
+      {notesLead && (
+        <NotesPopover leadId={notesLead.id} leadName={notesLead.name} canManageNotes={canManageNotes} onClose={() => setNotesLead(null)} />
+      )}
+
+      {showBulkEditModal && (
+        <BulkPreviewEditModal
+          students={leads.filter((l) => selected.includes(l.id)).map((l) => ({ id: l.id, name: l.name, stage: l.stage }))}
+          stages={stages}
+          streamOptions={streamOptions}
+          onClose={() => setShowBulkEditModal(false)}
+          onSubmit={submitBulkPreviewUpdate}
+        />
       )}
 
       <div className="hidden md:block">

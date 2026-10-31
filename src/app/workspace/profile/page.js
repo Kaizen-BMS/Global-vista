@@ -89,10 +89,12 @@ export default async function ProfilePage() {
         <SessionsPanel />
       </div>
 
-      <div>
-        <h2 className="text-foreground font-medium mb-3">My Documents</h2>
-        <EmployeeDocumentsPanel userId={session.id} isSelf />
-      </div>
+      {!session.is_child_company && (
+        <div>
+          <h2 className="text-foreground font-medium mb-3">My Documents</h2>
+          <EmployeeDocumentsPanel userId={session.id} isSelf />
+        </div>
+      )}
     </div>
   );
 }
