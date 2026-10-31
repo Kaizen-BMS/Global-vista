@@ -7,7 +7,8 @@ import {
   AlertTriangle, Loader2, Copy, X,
 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
-import { LEAD_IMPORT_FIELDS } from "@/lib/modules/crm/constants/leadImportFields";
+import { getLeadImportFields } from "@/lib/modules/crm/constants/leadImportFields";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 const STEPS = ["Upload", "Map Columns", "Preview", "Import"];
 const CHUNK_SIZE = 25;
@@ -16,9 +17,12 @@ const STATUS_STYLES = {
   valid: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
   invalid: "bg-red-500/10 text-red-400 border-red-500/30",
   duplicate: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  update: "bg-sky-500/10 text-sky-400 border-sky-500/30",
 };
 
-export default function ImportWizard({ sources, services }) {
+export default function ImportWizard({ sources, services, isChildCompany = false }) {
+  const terms = getCrmTerms(isChildCompany);
+  const importFields = getLeadImportFields(isChildCompany);
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [file, setFile] = useState(null);
@@ -78,7 +82,7 @@ export default function ImportWizard({ sources, services }) {
       toast.error("Map at least Name and Phone before continuing.");
       return;
     }
-    if (!mappedFields.has("leadSourceName") && !defaultLeadSourceId) { toast.error("Map a Lead Source column or pick a default."); return; }
+    if (!mappedFields.has("leadSourceName") && !defaultLeadSourceId) { toast.error(`Map a ${terms.singular} Source column or pick a default.`); return; }
     if (!mappedFields.has("serviceName") && !defaultServiceId) { toast.error("Map a Service column or pick a default."); return; }
 
     setBusy(true);
@@ -219,7 +223,7 @@ export default function ImportWizard({ sources, services }) {
                     <td className="px-4 py-3">
                       <select value={mapping[i] || ""} onChange={(e) => setColumnMapping(i, e.target.value)} className="px-2.5 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs cursor-pointer">
                         <option value="">Don't import</option>
-                        {LEAD_IMPORT_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                        {importFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
                       </select>
                     </td>
                   </tr>
@@ -230,7 +234,7 @@ export default function ImportWizard({ sources, services }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">Default Lead Source (used when no column is mapped)</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">Default {terms.singular} Source (used when no column is mapped)</label>
               <select value={defaultLeadSourceId} onChange={(e) => setDefaultLeadSourceId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
                 <option value="">None</option>
                 {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -256,8 +260,9 @@ export default function ImportWizard({ sources, services }) {
 
       {step === 2 && validation && (
         <div>
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className={`grid gap-3 mb-6 ${validation.update > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
             <SummaryCard label="Valid" value={validation.valid} color="text-emerald-400" />
+            {validation.update > 0 && <SummaryCard label="Will Update (by ID)" value={validation.update} color="text-sky-400" />}
             <SummaryCard label="Duplicates" value={validation.duplicate} color="text-amber-400" />
             <SummaryCard label="Invalid" value={validation.invalid} color="text-red-400" />
           </div>
@@ -289,7 +294,10 @@ export default function ImportWizard({ sources, services }) {
                     <td className="px-4 py-3 text-foreground">{r.raw.name || "—"}</td>
                     <td className="px-4 py-3 text-foreground">{r.raw.phone || "—"}</td>
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-md border ${STATUS_STYLES[r.status]}`}>{r.status}</span></td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{r.status === "invalid" ? r.errors.join("; ") : r.duplicateReason || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {r.status === "invalid" ? r.errors.join("; ") : r.status === "update" ? `Will update ${terms.singularLower} #${r.duplicateOfId}` : r.duplicateReason || "—"}
+                      {r.warnings?.length > 0 && <span className="block text-amber-400 mt-0.5">{r.warnings.join("; ")}</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -298,8 +306,8 @@ export default function ImportWizard({ sources, services }) {
 
           <div className="flex justify-between">
             <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer"><ArrowLeft className="h-4 w-4" /> Back</button>
-            <button onClick={runImport} disabled={busy || validation.valid + validation.duplicate === 0} className="btn-brand flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-40 cursor-pointer">
-              Import {validation.valid + validation.duplicate} Leads <ArrowRight className="h-4 w-4" />
+            <button onClick={runImport} disabled={busy || validation.valid + validation.duplicate + validation.update === 0} className="btn-brand flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-40 cursor-pointer">
+              Import {validation.valid + validation.duplicate + validation.update} {terms.plural} <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -350,7 +358,7 @@ export default function ImportWizard({ sources, services }) {
               )}
               <div className="flex items-center gap-3">
                 <button onClick={reset} className="px-4 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">Import Another File</button>
-                <a href="/workspace/lead-management" className="btn-brand px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">View Leads</a>
+                <a href="/workspace/lead-management" className="btn-brand px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer">View {terms.plural}</a>
               </div>
             </div>
           )}

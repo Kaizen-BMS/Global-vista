@@ -1,18 +1,69 @@
 "use client";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import { Phone, User, UserPlus, UserMinus, Loader2 } from "lucide-react";
-import { LEAD_STAGES, STAGE_COLORS, PRIORITY_COLORS } from "@/lib/modules/crm/constants/leadStages";
+import { Phone, User, UserPlus, UserMinus, Loader2, Plus } from "lucide-react";
+import { STAGE_COLORS, PRIORITY_COLORS } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import LeadPreviewDrawer from "@/components/crm/leads/LeadPreviewDrawer";
 
-export default function KanbanBoard({ initialLeads, currentUserId, canClaim, canManageAssignment }) {
+function AddStageColumn({ onAdd }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    const success = await onAdd(name.trim());
+    setSaving(false);
+    if (success) { setName(""); setEditing(false); }
+  }
+
+  if (!editing) {
+    return (
+      <button onClick={() => setEditing(true)} className="shrink-0 w-72 h-12 self-start rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-indigo-500 text-sm flex items-center justify-center gap-1.5 cursor-pointer transition">
+        <Plus className="h-4 w-4" /> Add Stage
+      </button>
+    );
+  }
+  return (
+    <form onSubmit={submit} className="shrink-0 w-72 rounded-xl border border-border bg-background/50 p-3 space-y-2">
+      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="New stage name" className="w-full px-2.5 py-1.5 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving || !name.trim()} className="btn-brand flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-medium disabled:opacity-60 cursor-pointer">
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Add
+        </button>
+        <button type="button" onClick={() => { setEditing(false); setName(""); }} className="px-3 py-1.5 rounded-lg bg-card border border-border text-foreground text-xs cursor-pointer">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+export default function KanbanBoard({ initialLeads, stages, currentUserId, canClaim, canManageAssignment, isChildCompany = false }) {
+  const terms = getCrmTerms(isChildCompany);
   const [leads, setLeads] = useState(initialLeads);
+  const [stageList, setStageList] = useState(stages);
   const [dragId, setDragId] = useState(null);
   const [dragOverStage, setDragOverStage] = useState(null);
   const [previewId, setPreviewId] = useState(null);
   const [assignBusyId, setAssignBusyId] = useState(null);
   const savingRef = useRef(new Set());
+
+  async function addStage(name) {
+    try {
+      const res = await apiFetch("/api/leads/pipeline-stages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to add stage.");
+      setStageList((prev) => [...prev, name]);
+      toast.success(`Stage "${name}" added.`);
+      return true;
+    } catch (err) {
+      toast.error(err.message);
+      return false;
+    }
+  }
 
   async function claimCard(e, lead) {
     e.stopPropagation();
@@ -20,30 +71,30 @@ export default function KanbanBoard({ initialLeads, currentUserId, canClaim, can
     try {
       const res = await apiFetch(`/api/leads/${lead.id}/claim`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "This lead has already been assigned.");
-      toast.success("Lead claimed.");
+      if (!res.ok) throw new Error(data.error || `This ${terms.singularLower} has already been assigned.`);
+      toast.success(`${terms.singular} claimed.`);
       setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assigned_to: currentUserId, assigned_name: data.lead?.assigned_name || "You" } : l)));
     } catch (err) { toast.error(err.message); } finally { setAssignBusyId(null); }
   }
 
   async function releaseCard(e, lead) {
     e.stopPropagation();
-    if (!confirm("Release this lead back to the unassigned pool?")) return;
+    if (!confirm(`Release this ${terms.singularLower} back to the unassigned pool?`)) return;
     setAssignBusyId(lead.id);
     try {
       const res = await apiFetch(`/api/leads/${lead.id}/release`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to release lead.");
-      toast.success("Lead released.");
+      if (!res.ok) throw new Error(data.error || `Failed to release ${terms.singularLower}.`);
+      toast.success(`${terms.singular} released.`);
       setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assigned_to: null, assigned_name: null } : l)));
     } catch (err) { toast.error(err.message); } finally { setAssignBusyId(null); }
   }
 
   const columns = useMemo(() => {
-    const map = new Map(LEAD_STAGES.map((s) => [s, []]));
+    const map = new Map(stageList.map((s) => [s, []]));
     for (const lead of leads) { if (map.has(lead.stage)) map.get(lead.stage).push(lead); }
     return map;
-  }, [leads]);
+  }, [leads, stageList]);
 
   async function moveLead(leadId, newStage) {
     const lead = leads.find((l) => l.id === leadId);
@@ -66,7 +117,7 @@ export default function KanbanBoard({ initialLeads, currentUserId, canClaim, can
   return (
     <>
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {LEAD_STAGES.map((stage) => {
+        {stageList.map((stage) => {
           const items = columns.get(stage) || [];
           const isOver = dragOverStage === stage;
           return (
@@ -82,7 +133,7 @@ export default function KanbanBoard({ initialLeads, currentUserId, canClaim, can
                 <span className="text-muted-foreground text-xs font-medium">{items.length}</span>
               </div>
               <div className="p-2 space-y-2 min-h-[80px] max-h-[calc(100vh-260px)] overflow-y-auto">
-                {items.length === 0 && <p className="text-muted-foreground text-xs text-center py-6 select-none">No leads</p>}
+                {items.length === 0 && <p className="text-muted-foreground text-xs text-center py-6 select-none">No {terms.pluralLower}</p>}
                 {items.map((lead) => (
                   <div
                     key={lead.id}
@@ -126,8 +177,9 @@ export default function KanbanBoard({ initialLeads, currentUserId, canClaim, can
             </div>
           );
         })}
+        {isChildCompany && <AddStageColumn onAdd={addStage} />}
       </div>
-      {previewId && <LeadPreviewDrawer leadId={previewId} onClose={() => setPreviewId(null)} />}
+      {previewId && <LeadPreviewDrawer leadId={previewId} onClose={() => setPreviewId(null)} isChildCompany={isChildCompany} />}
     </>
   );
 }

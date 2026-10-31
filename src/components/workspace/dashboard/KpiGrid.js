@@ -39,15 +39,15 @@ export function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
   );
 }
 
-export function CrmKpiGrid({ crm }) {
+export function CrmKpiGrid({ crm, isChildCompany = false }) {
   const cards = [
-    { label: "Total Leads", value: crm.totalLeads, icon: "contact", accent: "indigo", href: "/workspace/lead-management" },
-    { label: "Assigned to Me", value: crm.myLeads, icon: "users", accent: "blue", href: "/workspace/lead-management?assignedTo=me" },
+    { label: isChildCompany ? "Total Students" : "Total Leads", value: crm.totalLeads, icon: "contact", accent: "indigo", href: "/workspace/lead-management" },
+    ...(isChildCompany ? [] : [{ label: "Assigned to Me", value: crm.myLeads, icon: "users", accent: "blue", href: "/workspace/lead-management?assignedTo=me" }]),
     { label: "Unassigned", value: crm.unassignedLeads, icon: "sparkles", accent: crm.unassignedLeads > 0 ? "yellow" : "neutral", href: "/workspace/lead-management?assignedTo=unassigned" },
     { label: "Today's Follow-ups", value: crm.todaysFollowups, icon: "calendar", accent: "yellow", href: "/workspace/followups" },
-    { label: "Conversion Rate", value: `${crm.conversionRate}%`, icon: "trending", accent: "green", href: "/workspace/lead-management" },
+    ...(isChildCompany ? [] : [{ label: "Conversion Rate", value: `${crm.conversionRate}%`, icon: "trending", accent: "green", href: "/workspace/lead-management" }]),
   ];
-  return <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
+  return <div className={`grid grid-cols-2 sm:grid-cols-3 gap-3 ${isChildCompany ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
 }
 
 /** Platform subscription billing — what THIS company has actually paid the

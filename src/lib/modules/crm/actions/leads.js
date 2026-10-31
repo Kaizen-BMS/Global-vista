@@ -74,8 +74,21 @@ export async function listLeads(session, {
   if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
   if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
   if (search) {
-    where.push("(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?)");
+    // Registration Number / Parent Name live as custom fields (schools
+    // only) — matched via EXISTS against the EAV value table rather than a
+    // JOIN, so a student with neither value set is still found by name/
+    // phone. Only added to the query for child companies; every other
+    // company's search is unchanged.
+    const customFieldSearch = session.is_child_company
+      ? ` OR EXISTS (
+          SELECT 1 FROM lead_custom_field_values v
+          JOIN lead_custom_fields f ON f.id = v.custom_field_id
+          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name') AND v.value LIKE ?
+        )`
+      : "";
+    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?${customFieldSearch})`);
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    if (session.is_child_company) params.push(`%${search}%`);
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
@@ -368,8 +381,14 @@ export async function updateLead(session, id, data, updatedBy) {
 }
 
 export async function updateLeadStage(session, id, stage, updatedBy) {
-  await pool.query(`UPDATE leads SET stage = ?, updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [stage, updatedBy, id, session.company_id]);
-  await logActivity({ userId: updatedBy, module: "leads", action: "stage_change", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} stage set to ${stage}` });
+  const [[current]] = await pool.query(`SELECT stage FROM leads WHERE id = ? AND company_id = ?`, [id, session.company_id]);
+  // A stage change always starts "in progress" in its new stage — carrying
+  // over a stale completed flag from the old stage would make the new
+  // stage look already-done before anyone touched it (see
+  // leadStageProgress.js for the Mark Complete / Move to Next flow this
+  // flag drives, schools only).
+  await pool.query(`UPDATE leads SET stage = ?, stage_completed_at = NULL, updated_by = ? WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [stage, updatedBy, id, session.company_id]);
+  await logActivity({ userId: updatedBy, module: "leads", action: "stage_change", entityType: "lead", entityId: id, companyId: session.company_id, description: `Lead #${id} stage set to ${stage}`, meta: { from: current?.stage || null, to: stage } });
 }
 
 export async function updateLeadStatus(session, id, status, updatedBy) {

@@ -4,25 +4,45 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, CornerDownLeft, Plus } from "lucide-react";
 import { ICON_MAP, PLATFORM_NAV_ITEMS, ALL_NAV_ITEMS } from "@/lib/constants/navItems";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
 
 const PLATFORM_CREATE_ITEMS = [
   { href: "/platform/companies", label: "New Company", icon: "Building2", group: "Create" },
 ];
+// "New Query Form" is filtered out below for a child company, the same
+// way "Query Forms" is hidden from the real sidebar — Query Forms isn't
+// relevant to a school's counselling workflow.
 const WORKSPACE_CREATE_ITEMS = [
   { href: "/workspace/lead-management/new", label: "New Lead", icon: "Contact2", group: "Create" },
   { href: "/workspace/lead-forms/new", label: "New Query Form", icon: "ClipboardList", group: "Create" },
   { href: "/workspace/users", label: "New Employee", icon: "Users", group: "Create" },
 ];
 
-export default function CommandPalette({ scope }) {
+export default function CommandPalette({ scope, isChildCompany = false }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const terms = getCrmTerms(isChildCompany);
 
-  const navItems = scope === "platform" ? PLATFORM_NAV_ITEMS : ALL_NAV_ITEMS;
-  const createItems = scope === "platform" ? PLATFORM_CREATE_ITEMS : WORKSPACE_CREATE_ITEMS;
+  // CommandPalette reads ALL_NAV_ITEMS directly (not getVisibleNavItems),
+  // so both the Query Forms hide and the Lead→Student relabel need their
+  // own overrides here, same as Breadcrumbs.
+  const navItems = useMemo(() => {
+    const base = scope === "platform" ? PLATFORM_NAV_ITEMS : ALL_NAV_ITEMS;
+    if (scope === "platform" || !isChildCompany) return base;
+    return base
+      .filter((i) => i.href !== "/workspace/lead-forms")
+      .map((i) => (i.href === "/workspace/lead-management" ? { ...i, label: terms.plural } : i));
+  }, [scope, isChildCompany, terms.plural]);
+  const createItems = useMemo(() => {
+    const base = scope === "platform" ? PLATFORM_CREATE_ITEMS : WORKSPACE_CREATE_ITEMS;
+    if (scope === "platform" || !isChildCompany) return base;
+    return base
+      .filter((i) => i.href !== "/workspace/lead-forms/new")
+      .map((i) => (i.href === "/workspace/lead-management/new" ? { ...i, label: `New ${terms.singular}` } : i));
+  }, [scope, isChildCompany, terms.singular]);
   const allItems = useMemo(
     () => [...createItems, ...navItems.map((i) => ({ ...i, group: "Go to" }))],
     [navItems, createItems]

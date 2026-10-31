@@ -4,14 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2 } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import DataTable from "@/components/shared/DataTable";
 import { apiFetch } from "@/components/shared/apiClient";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
+import BulkNoteModal from "@/components/crm/leads/BulkNoteModal";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC" }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [] }) {
+  const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -20,6 +23,57 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [claimingId, setClaimingId] = useState(null);
   const [releasingId, setReleasingId] = useState(null);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [stageBusyId, setStageBusyId] = useState(null);
+
+  function nextStageFor(stage) {
+    const idx = stages.indexOf(stage);
+    return idx >= 0 ? stages[idx + 1] || null : null;
+  }
+
+  async function markStageComplete(id) {
+    setStageBusyId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/stage-complete`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      toast.success("Marked complete.");
+      router.refresh();
+    } catch { toast.error("Failed to mark complete."); } finally { setStageBusyId(null); }
+  }
+
+  async function moveStageNext(id) {
+    setStageBusyId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/stage-move`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to move to next stage.");
+      toast.success("Moved to next stage.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setStageBusyId(null); }
+  }
+
+  async function bulkStageComplete() {
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageComplete", ids: selected }) });
+      if (!res.ok) throw new Error();
+      toast.success(`${selected.length} marked complete.`);
+      setSelected([]); router.refresh();
+    } catch { toast.error("Bulk mark complete failed."); } finally { setBulkBusy(false); }
+  }
+
+  async function bulkStageMove() {
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMove", ids: selected }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error();
+      const failed = data.errors?.length || 0;
+      if (failed) toast.error(`${failed} could not be moved (already on the last stage).`);
+      if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved to their next stage.`);
+      setSelected([]); router.refresh();
+    } catch { toast.error("Bulk move failed."); } finally { setBulkBusy(false); }
+  }
 
   function toggleSelect(id) { setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
   function toggleAll() { setSelected(selected.length === leads.length ? [] : leads.map((l) => l.id)); }
@@ -52,45 +106,55 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     } catch { toast.error("Bulk assignment failed."); } finally { setBulkBusy(false); }
   }
 
+  async function bulkAddNote(content) {
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "note", ids: selected, content }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to add note.");
+      toast.success(`Note added to ${data.addedCount} ${data.addedCount === 1 ? terms.singularLower : terms.pluralLower}.`);
+      setShowNoteModal(false); setSelected([]); router.refresh();
+    } catch (err) { toast.error(err.message); }
+  }
+
   async function claimLead(id) {
     setClaimingId(id);
     try {
       const res = await apiFetch(`/api/leads/${id}/claim`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "This lead has already been assigned.");
-      toast.success("Lead claimed.");
+      if (!res.ok) throw new Error(data.error || `This ${terms.singularLower} has already been assigned.`);
+      toast.success(`${terms.singular} claimed.`);
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setClaimingId(null); }
   }
 
   async function releaseLead(id) {
-    if (!confirm("Release this lead back to the unassigned pool?")) return;
+    if (!confirm(`Release this ${terms.singularLower} back to the unassigned pool?`)) return;
     setReleasingId(id);
     try {
       const res = await apiFetch(`/api/leads/${id}/release`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to release lead.");
-      toast.success("Lead released.");
+      if (!res.ok) throw new Error(data.error || `Failed to release ${terms.singularLower}.`);
+      toast.success(`${terms.singular} released.`);
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setReleasingId(null); }
   }
 
   async function bulkRelease() {
-    if (!confirm(`Release ${selected.length} lead${selected.length === 1 ? "" : "s"} back to the unassigned pool?`)) return;
+    if (!confirm(`Release ${selected.length} ${selected.length === 1 ? terms.singularLower : terms.pluralLower} back to the unassigned pool?`)) return;
     setBulkBusy(true);
     try {
       const results = await Promise.allSettled(selected.map((id) => apiFetch(`/api/leads/${id}/release`, { method: "POST" })));
       const failed = results.filter((r) => r.status === "rejected" || !r.value.ok).length;
-      if (failed) toast.error(`${failed} lead${failed === 1 ? "" : "s"} could not be released.`);
-      if (failed < selected.length) toast.success(`${selected.length - failed} lead${selected.length - failed === 1 ? "" : "s"} released.`);
+      if (failed) toast.error(`${failed} ${failed === 1 ? terms.singularLower : terms.pluralLower} could not be released.`);
+      if (failed < selected.length) toast.success(`${selected.length - failed} ${selected.length - failed === 1 ? terms.singularLower : terms.pluralLower} released.`);
       setSelected([]); router.refresh();
     } finally { setBulkBusy(false); }
   }
 
-  if (leads.length === 0) return <EmptyState icon={Contact2} title="No leads found" description="Try adjusting your filters or add a new lead." />;
+  if (leads.length === 0) return <EmptyState icon={Contact2} title={`No ${terms.pluralLower} found`} description={`Try adjusting your filters or add a new ${terms.singularLower}.`} />;
 
   const columns = [
-    { key: "lead_number", label: "Lead #", width: 110, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
+    { key: "lead_number", label: `${terms.singular} #`, width: 110, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
     {
       key: "name", label: "Name", width: 200, sortable: true, hideable: false,
       render: (l) => (
@@ -129,7 +193,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
               disabled={claimingId === l.id}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 cursor-pointer transition disabled:opacity-60"
             >
-              {claimingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take Lead
+              {claimingId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Take {terms.singular}
             </button>
           ) : "Unassigned";
         }
@@ -155,12 +219,33 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       },
     },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
+    ...(isChildCompany ? [{
+      key: "stage_status", label: "Stage Status", width: 190,
+      render: (l) => {
+        const completed = !!l.stage_completed_at;
+        const next = nextStageFor(l.stage);
+        const busy = stageBusyId === l.id;
+        if (!completed) {
+          return (
+            <button onClick={(e) => { e.stopPropagation(); markStageComplete(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 cursor-pointer transition disabled:opacity-60">
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Mark Complete
+            </button>
+          );
+        }
+        if (!next) return <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3 w-3" /> Completed</span>;
+        return (
+          <button onClick={(e) => { e.stopPropagation(); moveStageNext(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer transition disabled:opacity-60">
+              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightCircle className="h-3 w-3" />} Move to {next}
+            </button>
+        );
+      },
+    }] : []),
     { key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> },
   ];
 
   return (
     <div>
-      {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim) && (
+      {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim || canManageNotes) && (
         <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm flex-wrap">
           <span className="text-indigo-300 shrink-0">{selected.length} selected</span>
           {canBulkUpdate && (<>
@@ -190,12 +275,27 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
                 onClick={bulkAssignTo}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer disabled:opacity-50 transition"
               >
-                {bulkBusy && <Loader2 className="h-3 w-3 animate-spin" />} Assign {selected.length} Lead{selected.length === 1 ? "" : "s"}
+                {bulkBusy && <Loader2 className="h-3 w-3 animate-spin" />} Assign {selected.length} {selected.length === 1 ? terms.singular : terms.plural}
               </button>
             </div>
           )}
+          {canManageNotes && (
+            <button disabled={bulkBusy} onClick={() => setShowNoteModal(true)} className="text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">Add Note</button>
+          )}
+          {isChildCompany && canBulkUpdate && (<>
+            <button disabled={bulkBusy} onClick={bulkStageComplete} className="flex items-center gap-1 text-amber-400 hover:text-amber-300 cursor-pointer disabled:opacity-60">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Mark Complete
+            </button>
+            <button disabled={bulkBusy} onClick={bulkStageMove} className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">
+              <ArrowRightCircle className="h-3.5 w-3.5" /> Move to Next Stage
+            </button>
+          </>)}
           <button onClick={() => setSelected([])} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
         </div>
+      )}
+
+      {showNoteModal && (
+        <BulkNoteModal count={selected.length} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowNoteModal(false)} onSubmit={bulkAddNote} />
       )}
 
       <div className="hidden md:block">

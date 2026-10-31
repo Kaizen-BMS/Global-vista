@@ -450,6 +450,46 @@ export async function provisionCompany(input, operatorId) {
     stepLog.record("services_seeded", "success");
 
     // -------------------------------------------------------------
+    // Seed a school's own pipeline stages + "Student Information"
+    // custom fields (Stream, Registration Number, Parent Name).
+    // Only child companies (schools) get these — a company with zero
+    // rows in lead_pipeline_stages / no custom fields renders exactly
+    // as every existing company does today (see
+    // src/lib/modules/crm/actions/leadPipelineStages.js).
+    // display_order is a fixed literal per field here (not a MAX+1
+    // query) deliberately — this only ever runs once, against a
+    // brand-new, empty section, so there's no existing-rows ordering
+    // to compute.
+    // -------------------------------------------------------------
+    if (parentCompanyId) {
+      const defaultStages = ["Group Workshop 1", "Micro Group Session", "Group Workshop 2", "1 to 1 Session 1"];
+      for (let i = 0; i < defaultStages.length; i++) {
+        await conn.query(
+          `INSERT IGNORE INTO lead_pipeline_stages (company_id, name, display_order, created_by, updated_by) VALUES (?,?,?,?,?)`,
+          [companyId, defaultStages[i], i, operatorId, operatorId]
+        );
+      }
+
+      const studentInfoFields = [
+        { key: "stream", label: "Stream", type: "select", options: ["Science", "Commerce", "Arts", "Vocational"] },
+        { key: "registration_number", label: "Registration Number", type: "text", options: null },
+        { key: "parent_name", label: "Parent Name", type: "text", options: null },
+      ];
+      for (let i = 0; i < studentInfoFields.length; i++) {
+        const f = studentInfoFields[i];
+        await conn.query(
+          `INSERT INTO lead_custom_fields
+           (company_id, section, field_key, label, field_type, options_json,
+            show_on_lead_form, show_on_lead_detail, show_on_query_form, is_required_on_lead_form, is_required_on_query_form,
+            display_order, status, created_by, updated_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [companyId, "Student Information", f.key, f.label, f.type, f.options ? JSON.stringify(f.options) : null, 1, 1, 0, 0, 0, i, "active", operatorId, operatorId]
+        );
+      }
+      stepLog.record("school_pipeline_defaults_seeded", "success");
+    }
+
+    // -------------------------------------------------------------
     // Seed CRM Settings
     // crm_settings columns used: company_id, key, value, group,
     // created_by, updated_by — 6 columns, 6 placeholders, 6 params.

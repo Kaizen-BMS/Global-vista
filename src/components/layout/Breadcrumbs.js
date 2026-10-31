@@ -3,16 +3,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, Home } from "lucide-react";
 import { PLATFORM_NAV_ITEMS, ALL_NAV_ITEMS } from "@/lib/constants/navItems";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 function humanize(segment) {
   if (/^[0-9a-f-]{8,}$/i.test(segment) || /^\d+$/.test(segment)) return "Details";
   return segment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function Breadcrumbs({ scope }) {
+export default function Breadcrumbs({ scope, isChildCompany = false }) {
   const pathname = usePathname();
   const navItems = scope === "platform" ? PLATFORM_NAV_ITEMS : ALL_NAV_ITEMS;
   const rootHref = scope === "platform" ? "/platform" : "/workspace/dashboard";
+  const terms = getCrmTerms(isChildCompany);
 
   const segments = pathname.split("/").filter(Boolean).filter((s) => s !== scope);
   if (segments.length === 0 || pathname === rootHref) return null;
@@ -22,7 +24,10 @@ export default function Breadcrumbs({ scope }) {
     acc += `/${seg}`;
     const known = navItems.find((n) => n.href === acc);
     const isLast = i === segments.length - 1;
-    return { href: acc, label: known?.label || humanize(seg), isLast };
+    // Breadcrumbs reads ALL_NAV_ITEMS directly (not getVisibleNavItems),
+    // so the Lead→Student relabel needs its own override here too.
+    const label = known?.href === "/workspace/lead-management" ? terms.plural : known?.label || humanize(seg);
+    return { href: acc, label, isLast };
   });
 
   return (

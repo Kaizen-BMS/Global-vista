@@ -97,6 +97,30 @@ export async function getTeamPerformance(session) {
   return rows;
 }
 
+/**
+ * School-only variant of getTeamPerformance — breaks each counsellor's
+ * students down by "Stream" (a per-school custom field, see
+ * src/lib/modules/crm/actions/leadCustomFields.js) and by stage, instead
+ * of a single converted/total count. Flat rows; the dashboard component
+ * groups them client-side into counsellor -> stream -> stage.
+ */
+export async function getTeamPerformanceByStream(session) {
+  const { where, params } = await getVisibleLeadFilter(session);
+  const [rows] = await pool.query(
+    `SELECT u.id AS counsellor_id, u.name AS counsellor_name,
+            COALESCE(v.value, 'Unspecified') AS stream, l.stage, COUNT(*) AS student_count
+     FROM leads l
+     JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN lead_custom_fields f ON f.company_id = l.company_id AND f.field_key = 'stream' AND f.is_deleted = 0
+     LEFT JOIN lead_custom_field_values v ON v.lead_id = l.id AND v.custom_field_id = f.id
+     WHERE l.${NOT_DELETED} AND ${where} AND u.is_deleted = 0 AND u.status = 'active'
+     GROUP BY u.id, u.name, stream, l.stage
+     ORDER BY u.name, stream, l.stage`,
+    params
+  );
+  return rows;
+}
+
 export async function getRecentLeads(session, limit = 6) {
   const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(

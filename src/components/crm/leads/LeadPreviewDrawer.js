@@ -9,17 +9,31 @@ import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import ModalFocusTrap from "@/components/shared/ModalFocusTrap";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
-export default function LeadPreviewDrawer({ leadId, onClose }) {
+export default function LeadPreviewDrawer({ leadId, onClose, isChildCompany = false }) {
+  const terms = getCrmTerms(isChildCompany);
   const timezone = useTimezone();
   const [lead, setLead] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [stageHistory, setStageHistory] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch(`/api/leads/${leadId}`).then((r) => r.json()).then((d) => { if (!cancelled) setLead(d.lead); });
     return () => { cancelled = true; };
   }, [leadId]);
+
+  useEffect(() => {
+    if (!isChildCompany) return;
+    let cancelled = false;
+    apiFetch(`/api/leads/${leadId}/timeline`).then((r) => r.json()).then((d) => {
+      if (cancelled) return;
+      const rows = (d.timeline || []).filter((r) => r.action === "stage_change" || r.action === "stage_mark_complete");
+      setStageHistory(rows);
+    });
+    return () => { cancelled = true; };
+  }, [leadId, isChildCompany]);
 
   useEffect(() => {
     function onKey(e) { if (e.key === "Escape") onClose(); }
@@ -41,9 +55,9 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={onClose} />
       <ModalFocusTrap>
-      <div role="dialog" aria-modal="true" aria-label="Lead Preview" className="relative w-full max-w-sm h-full bg-background border-l border-border shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
+      <div role="dialog" aria-modal="true" aria-label={`${terms.singular} Preview`} className="relative w-full max-w-sm h-full bg-background border-l border-border shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
-          <p className="text-foreground font-medium">Lead Preview</p>
+          <p className="text-foreground font-medium">{terms.singular} Preview</p>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"><X className="h-5 w-5" /></button>
         </div>
 
@@ -84,6 +98,26 @@ export default function LeadPreviewDrawer({ leadId, onClose }) {
                 {LEAD_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
+
+            {isChildCompany && (
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">Stage History</label>
+                {!stageHistory ? (
+                  <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+                ) : stageHistory.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">No stage activity yet.</p>
+                ) : (
+                  <div className="space-y-2 border-l border-border pl-3">
+                    {stageHistory.map((h) => (
+                      <div key={h.id}>
+                        <p className="text-foreground text-sm">{h.description}</p>
+                        <p className="text-muted-foreground text-xs">{h.user_name || "System"} · {formatDateTime(h.created_at, timezone)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <Link href={`/workspace/lead-management/${lead.id}`} className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition cursor-pointer">
               Open Full Profile <ExternalLink className="h-3.5 w-3.5" />

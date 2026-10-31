@@ -61,6 +61,11 @@ export async function createLeadCustomField(session, data, actorId) {
     key = `${baseKey}_${i}`;
   }
 
+  // mysql2 decodes this aggregate as a string once the section already has
+  // rows (vs. a plain JS number from the -1 literal fallback when it's
+  // empty) — `maxOrder + 1` without the cast silently string-concatenates
+  // ("1" + 1 -> "11") instead of adding, inflating display_order every time
+  // a section already has 2+ fields.
   const [[{ maxOrder }]] = await pool.query(`SELECT COALESCE(MAX(display_order), -1) AS maxOrder FROM lead_custom_fields WHERE company_id=? AND section=?`, [session.company_id, data.section || "Custom Information"]);
 
   const [result] = await pool.query(
@@ -75,7 +80,7 @@ export async function createLeadCustomField(session, data, actorId) {
       OPTION_TYPES.has(data.fieldType) ? JSON.stringify(data.options.filter((o) => o && String(o).trim())) : null,
       data.showOnLeadForm !== false ? 1 : 0, data.showOnLeadDetail !== false ? 1 : 0, data.showOnQueryForm ? 1 : 0,
       data.isRequiredOnLeadForm ? 1 : 0, data.isRequiredOnQueryForm ? 1 : 0,
-      maxOrder + 1, data.status || "active", actorId, actorId,
+      Number(maxOrder) + 1, data.status || "active", actorId, actorId,
     ]
   );
   await logActivity({ userId: actorId, module: "leads", action: "custom_field_create", entityType: "lead_custom_field", entityId: result.insertId, companyId: session.company_id, description: `Created lead custom field "${data.label}"` });

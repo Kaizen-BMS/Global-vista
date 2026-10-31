@@ -12,12 +12,7 @@ import ReportPrintHeader from "@/components/shared/ReportPrintHeader";
 import RangeFilter from "@/components/shared/RangeFilter";
 import { CrmKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
 import { WorkspaceCrmChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
-
-const COLUMNS = [
-  ["lead_number", "Lead #"], ["name", "Name"], ["phone", "Phone"], ["status", "Status"],
-  ["stage", "Stage"], ["priority", "Priority"], ["source_name", "Source"], ["service_name", "Service"],
-  ["assigned_name", "Assigned To"], ["created_at", "Created At"],
-];
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 export default async function LeadsReportPage({ searchParams }) {
   const session = await getSession();
@@ -25,6 +20,12 @@ export default async function LeadsReportPage({ searchParams }) {
   if (!(await isModuleEnabledForCompany(session.company_id, "reports"))) {
     return <ForbiddenState message="Reports isn't included in your company's current plan. Contact the platform team to enable it." />;
   }
+  const terms = getCrmTerms(session.is_child_company);
+  const COLUMNS = [
+    ["lead_number", `${terms.singular} #`], ["name", "Name"], ["phone", "Phone"], ["status", "Status"],
+    ["stage", "Stage"], ["priority", "Priority"], ["source_name", "Source"], ["service_name", "Service"],
+    ["assigned_name", "Assigned To"], ["created_at", "Created At"],
+  ];
 
   const sp = await searchParams;
   const rangeKey = sp?.range || "financial-year";
@@ -44,11 +45,11 @@ export default async function LeadsReportPage({ searchParams }) {
 
   return (
     <div>
-      <ReportPrintHeader session={session} title="Leads Report" subtitle={`${leads.length} lead${leads.length === 1 ? "" : "s"}`} timezone={timezone} />
+      <ReportPrintHeader session={session} title={`${terms.plural} Report`} subtitle={`${leads.length} ${leads.length === 1 ? terms.singularLower : terms.pluralLower}`} timezone={timezone} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Leads Report</h1>
-          <p className="text-muted-foreground text-sm">{leads.length} lead{leads.length === 1 ? "" : "s"} — broken down by how your team actually captures and works them: source, service, and stage.</p>
+          <h1 className="text-xl font-semibold text-foreground">{terms.plural} Report</h1>
+          <p className="text-muted-foreground text-sm">{leads.length} {leads.length === 1 ? terms.singularLower : terms.pluralLower} — broken down by how your team actually captures and works them: source, service, and stage.</p>
         </div>
         <div className="flex items-center gap-3">
           <RangeFilter
@@ -63,7 +64,7 @@ export default async function LeadsReportPage({ searchParams }) {
       </div>
 
       <div className="print:hidden space-y-4 mb-8">
-        <CrmKpiGrid crm={crmStats} />
+        <CrmKpiGrid crm={crmStats} isChildCompany={session.is_child_company} />
         <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />
       </div>
 

@@ -9,7 +9,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 
 const ADVANCED_KEYS = ["assignedTo", "country", "tag", "createdFrom", "createdTo", "followupFrom", "followupTo"];
 
-export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true }) {
+export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true, stages = LEAD_STAGES, isChildCompany = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -74,33 +74,37 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           />
         </div>
 
-        <select defaultValue={searchParams.get("stage") || ""} onChange={(e) => setParam("stage", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
-          <option value="">All Stages</option>
-          {[...LEAD_STAGES, ...LEAD_TERMINAL_STAGES].map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {!isChildCompany && (
+          <>
+            <select defaultValue={searchParams.get("stage") || ""} onChange={(e) => setParam("stage", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
+              <option value="">All Stages</option>
+              {[...stages, ...LEAD_TERMINAL_STAGES].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
 
-        <select defaultValue={searchParams.get("priority") || ""} onChange={(e) => setParam("priority", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
-          <option value="">All Priorities</option>
-          {LEAD_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+            <select defaultValue={searchParams.get("priority") || ""} onChange={(e) => setParam("priority", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
+              <option value="">All Priorities</option>
+              {LEAD_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
 
-        <select defaultValue={searchParams.get("sourceId") || ""} onChange={(e) => setParam("sourceId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
-          <option value="">All Sources</option>
-          {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+            <select defaultValue={searchParams.get("sourceId") || ""} onChange={(e) => setParam("sourceId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
+              <option value="">All Sources</option>
+              {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
 
-        <select defaultValue={searchParams.get("serviceId") || ""} onChange={(e) => setParam("serviceId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
-          <option value="">All Services</option>
-          {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+            <select defaultValue={searchParams.get("serviceId") || ""} onChange={(e) => setParam("serviceId", e.target.value)} className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer">
+              <option value="">All Services</option>
+              {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
 
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((o) => !o)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition cursor-pointer ${advancedOpen || activeAdvancedCount > 0 ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300" : "bg-card border-border text-foreground hover:text-foreground"}`}
-        >
-          <SlidersHorizontal className="h-4 w-4" /> Advanced {activeAdvancedCount > 0 && `(${activeAdvancedCount})`}
-        </button>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((o) => !o)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition cursor-pointer ${advancedOpen || activeAdvancedCount > 0 ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300" : "bg-card border-border text-foreground hover:text-foreground"}`}
+            >
+              <SlidersHorizontal className="h-4 w-4" /> Advanced {activeAdvancedCount > 0 && `(${activeAdvancedCount})`}
+            </button>
+          </>
+        )}
 
         <div className="relative">
           <button type="button" onClick={() => setSavedOpen((o) => !o)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer">
@@ -122,7 +126,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           )}
         </div>
 
-        {allowImportExport && (
+        {!isChildCompany && allowImportExport && (
           <>
             <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=xlsx`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to Excel">
               <Download className="h-4 w-4" /> Excel
@@ -134,7 +138,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
         )}
       </div>
 
-      {advancedOpen && (
+      {!isChildCompany && advancedOpen && (
         <div className="mt-2 p-4 bg-card border border-border rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Assigned To</label>

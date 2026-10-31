@@ -7,6 +7,10 @@ import { buildExportResponse } from "@/lib/helpers/export";
 import { assertImportExportAllowed } from "@/lib/platform/tenant";
 
 const COLUMNS = [
+  // Re-importing this exact export (e.g. after adding counselling notes
+  // in the sheet) can match each row back to the right record by this ID
+  // instead of guessing from phone/email — see leadImportFields.js.
+  ["id", "Lead/Student ID"],
   ["lead_number", "Lead Number"], ["name", "Name"], ["email", "Email"], ["phone", "Phone"],
   ["whatsapp", "WhatsApp"], ["status", "Status"], ["stage", "Stage"], ["priority", "Priority"],
   ["source_name", "Source"], ["service_name", "Service"], ["assigned_name", "Assigned To"],

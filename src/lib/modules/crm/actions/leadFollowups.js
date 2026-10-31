@@ -134,6 +134,40 @@ export async function createFollowup(session, leadId, data, createdBy) {
   return result.insertId;
 }
 
+/**
+ * Creates a Scheduled follow-up during a bulk Excel import — same core
+ * INSERT shape as createFollowup() above, but deliberately WITHOUT its
+ * notification/email side-effects. createFollowup() unconditionally
+ * notifies the lead's assignee in-app AND attempts an email on every
+ * single call; looping that across a multi-row import (e.g. 50 rows,
+ * each creating a follow-up for the same counsellor) would spam them
+ * with up to 50 notifications/emails in seconds. This function exists so
+ * that bulk-import follow-ups stay silent (the import's own summary/
+ * history is the record of what happened), while createFollowup() itself
+ * — and every one of its other existing callers — keeps notifying
+ * exactly as before; nothing about manual single-follow-up scheduling
+ * changes.
+ *
+ * `scheduledAt` must already be a resolved Date (the import pipeline
+ * computes this itself via zonedTimeToUtc, unlike createFollowup's own
+ * toStoredDateTime, which parses an HTML datetime-local string) — passed
+ * straight through as a query parameter, never re-stringified. No
+ * next_follow_up concept here — that's a single-scheduling idea, not
+ * something a bulk historical import needs.
+ */
+export async function createFollowupFromImport(session, leadId, { type, scheduledAt, notes }, createdBy) {
+  const [result] = await pool.query(
+    `INSERT INTO lead_followups (company_id, lead_id, type, status, scheduled_at, notes, created_by, updated_by)
+     VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)`,
+    [session.company_id, leadId, type, scheduledAt, notes || null, createdBy, createdBy]
+  );
+  await logActivity({
+    userId: createdBy, module: "leads", action: "followup_scheduled", entityType: "lead", entityId: leadId, companyId: session.company_id,
+    description: `Scheduled ${type} follow-up (import)`, meta: { followupId: result.insertId },
+  });
+  return result.insertId;
+}
+
 /** Reschedule an existing Scheduled follow-up to a new date/time — sends a
  * "rescheduled" email (never re-sends the original confirmation). */
 export async function rescheduleFollowup(session, id, leadId, newScheduledAt, updatedBy) {

@@ -7,9 +7,9 @@ import { LEAD_STAGES } from "@/lib/modules/crm/constants/leadStages";
  * is, how much engagement it has, and how recently it was touched.
  * Always label this in the UI as computed, not a stored field.
  */
-export function computeLeadScore(lead, { notesCount = 0, tasksCount = 0, followupsCount = 0 } = {}) {
-  const stageIndex = LEAD_STAGES.indexOf(lead.stage);
-  const stageScore = stageIndex >= 0 ? Math.round((stageIndex / (LEAD_STAGES.length - 1)) * 40) : 0;
+export function computeLeadScore(lead, { notesCount = 0, tasksCount = 0, followupsCount = 0, stages = LEAD_STAGES } = {}) {
+  const stageIndex = stages.indexOf(lead.stage);
+  const stageScore = stageIndex >= 0 ? Math.round((stageIndex / (stages.length - 1)) * 40) : 0;
 
   const engagement = notesCount + tasksCount + followupsCount;
   const engagementScore = Math.min(30, engagement * 5);

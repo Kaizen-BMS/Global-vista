@@ -15,6 +15,7 @@ import { getAvailablePaymentMethods } from "@/lib/payments/providers";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import { listLeadDocumentTypes } from "@/lib/modules/crm/actions/leadDocumentTypes";
 import { getLeadDetailFieldGroups } from "@/lib/modules/crm/actions/leadFieldLayout";
+import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
 import { hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
 import { ListChecks } from "lucide-react";
 import LeadHeader from "@/components/crm/leads/LeadHeader";
@@ -48,7 +49,7 @@ export default async function LeadDetailsPage({ params }) {
     notes, followups, meetings, tasks, documents, timeline, paymentPlans, services, availableMethods,
     canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment,
     fieldGroups, documentTypes, employeesResult,
-    calls, canMakeCalls, canViewCalls, callingSettings,
+    calls, canMakeCalls, canViewCalls, callingSettings, stages,
   ] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadMeetings(session, id), listLeadTasks(session, id),
     listLeadDocuments(session, id), getLeadTimeline(session, id),
@@ -62,6 +63,7 @@ export default async function LeadDetailsPage({ params }) {
     listUsers(session, { status: "active", pageSize: 100 }),
     listLeadCalls(session, id), can(session, "leads.calls.make"), can(session, "leads.calls.view"),
     getCallingSettings(session),
+    getLeadPipelineStages(session),
   ]);
 
   // The "active" plan is the most recent one that isn't Cancelled/Refunded —
@@ -70,7 +72,7 @@ export default async function LeadDetailsPage({ params }) {
   const activePlan = paymentPlans.find((p) => !["Cancelled", "Refunded"].includes(p.status)) || paymentPlans[0] || null;
   const activePlanDetail = paymentsEnabled && activePlan ? await getPaymentPlanDetail(session, activePlan.id) : null;
 
-  const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length });
+  const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length, stages });
   const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
 
   return (

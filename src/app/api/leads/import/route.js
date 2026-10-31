@@ -23,7 +23,7 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   const { headers, dataRows } = parseSpreadsheet(buffer, file.size);
 
   if (action === "parse") {
-    return ok({ headers, previewRows: dataRows.slice(0, 10), totalRows: dataRows.length, suggestedMapping: autoMapColumns(headers) });
+    return ok({ headers, previewRows: dataRows.slice(0, 10), totalRows: dataRows.length, suggestedMapping: autoMapColumns(headers, session.is_child_company) });
   }
 
   const mappingRaw = formData.get("mapping");

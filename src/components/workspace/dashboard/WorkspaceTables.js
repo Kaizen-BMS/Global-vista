@@ -70,6 +70,50 @@ export function TeamPerformanceTable({ team }) {
   );
 }
 
+/**
+ * School-only variant of TeamPerformanceTable — groups the flat
+ * counsellor/stream/stage rows from getTeamPerformanceByStream into
+ * counsellor -> stream -> per-stage counts.
+ */
+export function TeamPerformanceByStreamTable({ team }) {
+  const byCounsellor = new Map();
+  for (const row of team) {
+    if (!byCounsellor.has(row.counsellor_id)) byCounsellor.set(row.counsellor_id, { name: row.counsellor_name, total: 0, streams: new Map() });
+    const c = byCounsellor.get(row.counsellor_id);
+    c.total += row.student_count;
+    if (!c.streams.has(row.stream)) c.streams.set(row.stream, []);
+    c.streams.get(row.stream).push({ stage: row.stage, count: row.student_count });
+  }
+  const counsellors = Array.from(byCounsellor.values());
+
+  return (
+    <TableCard title="Team Performance" empty={!counsellors.length} emptyLabel="No assigned students yet.">
+      <div className="divide-y divide-border">
+        {counsellors.map((c) => (
+          <div key={c.name} className="py-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-foreground text-sm font-medium">{c.name}</p>
+              <p className="text-muted-foreground text-xs">{c.total} student{c.total === 1 ? "" : "s"}</p>
+            </div>
+            <div className="space-y-1.5">
+              {Array.from(c.streams.entries()).map(([stream, stages]) => (
+                <div key={stream} className="flex items-center justify-between text-xs gap-2">
+                  <span className="text-muted-foreground shrink-0">{stream}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {stages.map((s) => (
+                      <span key={s.stage} className="px-1.5 py-0.5 rounded-md bg-muted text-foreground border border-border whitespace-nowrap">{s.stage}: {s.count}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </TableCard>
+  );
+}
+
 export function RecentActivityTable({ logs, timezone }) {
   return (
     <TableCard title="Recent Activity" empty={!logs.length}>

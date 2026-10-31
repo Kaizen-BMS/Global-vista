@@ -8,6 +8,7 @@ import { listLeadCustomFields, getLeadCustomFieldValues } from "@/lib/modules/cr
 import { getFullLeadFormLayout } from "@/lib/modules/crm/actions/leadFieldLayout";
 import { leadRowToFormValues } from "@/lib/modules/crm/constants/builtinLeadFields";
 import { hasLeadCustomFieldsSchema } from "@/lib/db/schemaFlags";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import LeadForm from "@/components/modules/crm/forms/LeadForm";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import WorkspaceNotFound from "@/app/workspace/not-found";
@@ -15,6 +16,7 @@ import WorkspaceNotFound from "@/app/workspace/not-found";
 export default async function EditLeadPage({ params }) {
   const session = await getSession();
   if (!(await can(session, "leads.update"))) return <ForbiddenState />;
+  const terms = getCrmTerms(session.is_child_company);
 
   const { id } = await params;
   const schemaReady = await hasLeadCustomFieldsSchema();
@@ -32,12 +34,12 @@ export default async function EditLeadPage({ params }) {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Edit Lead</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Edit {terms.singular}</h1>
       <p className="text-muted-foreground text-sm mb-6">{lead.lead_number}</p>
       <LeadForm
         sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags}
         initialData={{ ...leadRowToFormValues(lead), id: lead.id }} customFields={customFields} initialCustomValues={initialCustomValues}
-        groups={groups}
+        groups={groups} isChildCompany={session.is_child_company}
       />
     </div>
   );

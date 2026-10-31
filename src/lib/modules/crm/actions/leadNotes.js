@@ -22,22 +22,58 @@ export async function listLeadNotes(session, leadId) {
 
 /** `type` is one of general/call/meeting/follow_up/internal — silently
  * dropped (falls back to the column default) if the migration adding the
- * column hasn't landed yet on this environment, never a hard failure. */
-export async function addLeadNote(session, leadId, { content, visibility = "public", isPinned = false, type = "general" }, createdBy) {
+ * column hasn't landed yet on this environment, never a hard failure.
+ *
+ * `createdAt` is optional, used only by the Excel import's "backdated
+ * note" feature (a school's counsellor filling in an offline tracking
+ * sheet, then importing it later with the note's real original date) —
+ * omitted, this is byte-for-byte the same INSERT as before (the column's
+ * own DEFAULT CURRENT_TIMESTAMP applies). Pass a JS Date (a UTC instant)
+ * when provided, same as every other datetime param in this pool. */
+export async function addLeadNote(session, leadId, { content, visibility = "public", isPinned = false, type = "general", createdAt = null }, createdBy) {
   const withType = await hasLeadNoteTypeColumn();
+  const columns = ["company_id", "lead_id", "content", "visibility"];
+  const values = [session.company_id, leadId, content, visibility];
+  if (withType) { columns.push("type"); values.push(type); }
+  columns.push("is_pinned"); values.push(isPinned ? 1 : 0);
+  columns.push("created_by"); values.push(createdBy);
+  if (createdAt) { columns.push("created_at"); values.push(createdAt); }
+
   const [result] = await pool.query(
-    withType
-      ? `INSERT INTO lead_notes (company_id, lead_id, content, visibility, type, is_pinned, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`
-      : `INSERT INTO lead_notes (company_id, lead_id, content, visibility, is_pinned, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-    withType
-      ? [session.company_id, leadId, content, visibility, type, isPinned ? 1 : 0, createdBy]
-      : [session.company_id, leadId, content, visibility, isPinned ? 1 : 0, createdBy]
+    `INSERT INTO lead_notes (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+    values
   );
   await logActivity({
     userId: createdBy, module: "leads", action: "note_add", entityType: "lead", entityId: leadId, companyId: session.company_id,
     description: "Added a note", meta: { noteId: result.insertId, type },
   });
   return result.insertId;
+}
+
+/**
+ * Multi-select "add counselling note to several students at once" — the
+ * bulk-UI counterpart to the Excel-import note feature, for when you
+ * don't want to prepare a whole file for a handful of selections.
+ * Validates every id belongs to THIS company before writing anything
+ * (never trusts the client's id list alone), then reuses addLeadNote()
+ * per lead — no new side-effects to worry about, since addLeadNote
+ * itself never notifies/emails anyone (unlike follow-ups).
+ */
+export async function bulkAddLeadNote(session, leadIds, { content }, createdBy) {
+  const ids = [...new Set((leadIds || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) { const e = new Error("No students were selected."); e.status = 400; throw e; }
+  if (!content?.trim()) { const e = new Error("Note content is required."); e.status = 400; throw e; }
+
+  const [rows] = await pool.query(`SELECT id FROM leads WHERE id IN (?) AND company_id = ? AND is_deleted = 0`, [ids, session.company_id]);
+  const validIds = new Set(rows.map((r) => r.id));
+
+  let addedCount = 0;
+  for (const id of ids) {
+    if (!validIds.has(id)) continue;
+    await addLeadNote(session, id, { content, type: "general" }, createdBy);
+    addedCount++;
+  }
+  return { addedCount, skippedCount: ids.length - addedCount };
 }
 
 /** Edits an existing note's content/visibility/pin state. Whoever the

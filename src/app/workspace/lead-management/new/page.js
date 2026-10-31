@@ -6,12 +6,16 @@ import { listDistinctTags } from "@/lib/modules/crm/actions/leads";
 import { listLeadCustomFields } from "@/lib/modules/crm/actions/leadCustomFields";
 import { getFullLeadFormLayout } from "@/lib/modules/crm/actions/leadFieldLayout";
 import { hasLeadCustomFieldsSchema } from "@/lib/db/schemaFlags";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import LeadForm from "@/components/modules/crm/forms/LeadForm";
+import StudentIntakeForm from "@/components/modules/crm/forms/StudentIntakeForm";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 
 export default async function NewLeadPage() {
   const session = await getSession();
   if (!(await can(session, "leads.create"))) return <ForbiddenState />;
+  const terms = getCrmTerms(session.is_child_company);
+  const isChildCompany = session.is_child_company;
 
   const schemaReady = await hasLeadCustomFieldsSchema();
   const [sources, services, counsellorsResult, tags, customFields, groups] = await Promise.all([
@@ -22,9 +26,13 @@ export default async function NewLeadPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Add Lead</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-1">Add {terms.singular}</h1>
       <p className="text-muted-foreground text-sm mb-6">Fill in as much detail as you have — you can complete the rest later.</p>
-      <LeadForm sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags} customFields={customFields} groups={groups} />
+      {isChildCompany ? (
+        <StudentIntakeForm sources={sources} services={services} customFields={customFields} />
+      ) : (
+        <LeadForm sources={sources} services={services} counsellors={counsellorsResult.users} tagSuggestions={tags} customFields={customFields} groups={groups} isChildCompany={isChildCompany} />
+      )}
     </div>
   );
 }

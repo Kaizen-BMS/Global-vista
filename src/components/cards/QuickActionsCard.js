@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { UserPlus, ShieldCheck, Settings, Contact2 } from "lucide-react";
-const ACTIONS = [{ href: "/workspace/lead-management/new", label: "Add Lead", icon: Contact2 }, { href: "/workspace/users", label: "Add User", icon: UserPlus }, { href: "/workspace/roles", label: "Manage Roles", icon: ShieldCheck }, { href: "/workspace/settings/organization", label: "Settings", icon: Settings }];
-export default function QuickActionsCard() {
+export default function QuickActionsCard({ isChildCompany = false }) {
+  const ACTIONS = [{ href: "/workspace/lead-management/new", label: isChildCompany ? "Add Student" : "Add Lead", icon: Contact2 }, { href: "/workspace/users", label: "Add User", icon: UserPlus }, { href: "/workspace/roles", label: "Manage Roles", icon: ShieldCheck }, { href: "/workspace/settings/organization", label: "Settings", icon: Settings }];
   return (
     <div className="bg-card border border-border rounded-xl p-5">
       <p className="text-foreground font-medium mb-4">Quick Actions</p>

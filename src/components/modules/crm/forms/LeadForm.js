@@ -8,6 +8,7 @@ import { Loader2, AlertTriangle } from "lucide-react";
 import CustomFieldInput from "@/components/crm/leads/CustomFieldInput";
 import BuiltinFieldInput from "@/components/crm/leads/BuiltinFieldInput";
 import { apiFetch } from "@/components/shared/apiClient";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 function Field({ label, children }) {
   return (
@@ -39,8 +40,9 @@ const BUILTIN_DEFAULTS = {
  */
 export default function LeadForm({
   sources = [], services = [], counsellors = [], tagSuggestions = [], initialData = null,
-  customFields = [], initialCustomValues = {}, groups = [],
+  customFields = [], initialCustomValues = {}, groups = [], isChildCompany = false,
 }) {
+  const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const [activeSection, setActiveSection] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -84,7 +86,7 @@ export default function LeadForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || "Failed to save lead.");
+        toast.error(data.error || `Failed to save ${terms.singularLower}.`);
         setSaving(false);
         return;
       }
@@ -100,11 +102,11 @@ export default function LeadForm({
           const cfRes = await apiFetch(`/api/leads/${targetId}/custom-field-values`, {
             method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values: customValues }),
           });
-          if (!cfRes.ok) { const cfData = await cfRes.json().catch(() => ({})); toast.error(cfData.error || "Lead saved, but custom fields failed to save."); }
-        } catch { toast.error("Lead saved, but custom fields failed to save."); }
+          if (!cfRes.ok) { const cfData = await cfRes.json().catch(() => ({})); toast.error(cfData.error || `${terms.singular} saved, but custom fields failed to save.`); }
+        } catch { toast.error(`${terms.singular} saved, but custom fields failed to save.`); }
       }
 
-      toast.success(isEdit ? "Lead updated." : "Lead created.");
+      toast.success(isEdit ? `${terms.singular} updated.` : `${terms.singular} created.`);
 
       // Explicit navigation + refresh so the toast is followed by a real
       // redirect into the lead's details page and a fresh server render
@@ -209,7 +211,7 @@ export default function LeadForm({
             className="btn-brand flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "Saving..." : initialData?.id ? "Update Lead" : "Create Lead"}
+            {saving ? "Saving..." : initialData?.id ? `Update ${terms.singular}` : `Create ${terms.singular}`}
           </button>
         )}
       </div>

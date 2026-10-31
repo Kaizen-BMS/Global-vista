@@ -10,7 +10,7 @@ import { formatDate } from "@/lib/helpers/dateFormat";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import {
   getLeadDashboardStats, getLeadsBySource, getLeadsByService, getLeadsByStage,
-  getMonthlyLeadTrend, getTeamPerformance, getRecentLeads,
+  getMonthlyLeadTrend, getTeamPerformance, getTeamPerformanceByStream, getRecentLeads,
 } from "@/lib/modules/crm/actions/dashboard";
 import {
   getWorkspaceOrgStats, getUpcomingWorkAnniversaries, getRecentLogins,
@@ -22,23 +22,25 @@ import {
 import { getStorageUsage } from "@/lib/actions/storage";
 import { getEmployeePaymentDashboard, getSuperAdminPaymentDashboard } from "@/lib/modules/crm/actions/payments";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
-import { isModuleEnabledForCompany, getSubscriptionDetails } from "@/lib/platform/tenant";
+import { isModuleEnabledForCompany, getSubscriptionDetails, getCurrentCompany } from "@/lib/platform/tenant";
 import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
 import AnnouncementBanner from "@/components/workspace/dashboard/AnnouncementBanner";
+import SchoolBanner from "@/components/workspace/dashboard/SchoolBanner";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
 import RangeFilter from "@/components/shared/RangeFilter";
 import { CrmKpiGrid, OrgKpiGrid, SubscriptionKpiGrid } from "@/components/workspace/dashboard/KpiGrid";
 import { EmployeePaymentKpiGrid, SuperAdminPaymentKpiGrid, RecentPaymentsTable, CollectionsBreakdown } from "@/components/workspace/dashboard/PaymentWidgets";
 import { WorkspaceCrmChartsSection, WorkspaceOrgChartsSection } from "@/components/workspace/dashboard/DynamicWorkspaceCharts";
 import {
-  RecentLeadsTable, TeamPerformanceTable, RecentActivityTable,
+  RecentLeadsTable, TeamPerformanceTable, TeamPerformanceByStreamTable, RecentActivityTable,
   UpcomingAnniversariesTable, RecentLoginsTable,
   MissingDocumentsTable, PendingApprovalDocumentsTable, ExpiringDocumentsTable, RecentlyUploadedDocumentsTable,
 } from "@/components/workspace/dashboard/WorkspaceTables";
 
 export default async function DashboardPage({ searchParams }) {
   const session = await getSession();
+  const isChildCompany = session.is_child_company;
   const sp = await searchParams;
   // "year" removed from this dashboard's own UI (Financial Year replaces
   // it) — the default preset on first load matches.
@@ -68,6 +70,7 @@ export default async function DashboardPage({ searchParams }) {
     recentActivity, unreadNotifications, branding, announcement, parentAnnouncement,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
     employeePayments, superAdminPayments, subscriptionDetails, subscriptionPayments,
+    schoolCompany,
   ] = await Promise.all([
     getDashboardStats(session),
     getLeadDashboardStats(session),
@@ -75,7 +78,7 @@ export default async function DashboardPage({ searchParams }) {
     getLeadsByService(session),
     getLeadsByStage(session),
     getMonthlyLeadTrend(session, range),
-    getTeamPerformance(session),
+    isChildCompany ? getTeamPerformanceByStream(session) : getTeamPerformance(session),
     getRecentLeads(session, 6),
     getWorkspaceOrgStats(session),
     getUpcomingWorkAnniversaries(session),
@@ -98,6 +101,7 @@ export default async function DashboardPage({ searchParams }) {
     paymentsEnabled && isAdmin ? getSuperAdminPaymentDashboard(session) : null,
     isAdmin ? getSubscriptionDetails(session.company_id) : null,
     isAdmin ? listSubscriptionPayments(session) : [],
+    isChildCompany ? getCurrentCompany(session.company_id) : null,
   ]);
 
   // Platform subscription billing — what THIS company has paid the
@@ -110,6 +114,7 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="space-y-8">
+      {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} />}
       {parentAnnouncement && <AnnouncementBanner announcement={parentAnnouncement} label={parentAnnouncement.companyName || "Parent Company"} accent="indigo" />}
       <AnnouncementBanner announcement={announcement} />
 
@@ -129,12 +134,16 @@ export default async function DashboardPage({ searchParams }) {
 
       <section className="space-y-4">
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
-        <CrmKpiGrid crm={crmStats} />
-        <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <RecentLeadsTable leads={recentLeads} />
-          <TeamPerformanceTable team={teamPerformance} />
-        </div>
+        <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} />
+        {!isChildCompany && <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />}
+        {isChildCompany ? (
+          <TeamPerformanceByStreamTable team={teamPerformance} />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <RecentLeadsTable leads={recentLeads} />
+            <TeamPerformanceTable team={teamPerformance} />
+          </div>
+        )}
       </section>
 
       {isAdmin && subscriptionDetails?.hasSubscription && (
@@ -154,7 +163,7 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
 
-      {paymentsEnabled && employeePayments && (
+      {!isChildCompany && paymentsEnabled && employeePayments && (
         <section className="space-y-4">
           <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Payments</p>
           <EmployeePaymentKpiGrid data={employeePayments} currency={branding.currency} />
@@ -173,26 +182,33 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
 
-      <section className="space-y-4">
-        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
-        <OrgKpiGrid
-          activeUsers={stats.activeUsers}
-          roles={stats.roles}
-          lockedAccounts={stats.lockedAccounts}
-          org={orgStats}
-          anniversaryCount={anniversaries.length}
-          unreadNotifications={unreadNotifications.length}
-          recentLoginCount={recentLogins.length}
-        />
-        <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {isChildCompany ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <RecentActivityTable logs={recentActivity} timezone={timezone} />
-          <UpcomingAnniversariesTable people={anniversaries} />
           <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
-      </section>
+      ) : (
+        <section className="space-y-4">
+          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
+          <OrgKpiGrid
+            activeUsers={stats.activeUsers}
+            roles={stats.roles}
+            lockedAccounts={stats.lockedAccounts}
+            org={orgStats}
+            anniversaryCount={anniversaries.length}
+            unreadNotifications={unreadNotifications.length}
+            recentLoginCount={recentLogins.length}
+          />
+          <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <RecentActivityTable logs={recentActivity} timezone={timezone} />
+            <UpcomingAnniversariesTable people={anniversaries} />
+            <RecentLoginsTable logins={recentLogins} timezone={timezone} />
+          </div>
+        </section>
+      )}
 
-      {canManageDocuments && (
+      {!isChildCompany && canManageDocuments && (
         <section className="space-y-4">
           <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Employee Documents</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -205,7 +221,7 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
 
-      <QuickActionsCard />
+      <QuickActionsCard isChildCompany={isChildCompany} />
     </div>
   );
 }
