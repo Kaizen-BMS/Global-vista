@@ -143,6 +143,38 @@ export async function resetUserPassword(session, id, newPassword, updatedBy) {
   await logActivity({ userId: updatedBy, module: "users", action: "reset_password", entityType: "user", entityId: id, description: `Password reset for #${id}`, companyId: session.company_id });
 }
 
+/**
+ * "Resend Login Details" — for when the original welcome email never
+ * arrived (the usual cause, confirmed via email_logs, is the server's
+ * own SMTP credentials failing, not anything about this specific
+ * employee). The ORIGINAL password can never be resent — it's hashed,
+ * not stored — so this generates a fresh one, same pattern createUser
+ * uses, and actually re-sends the welcome email with it (awaited, not
+ * fire-and-forget, so the caller can tell the admin whether it really
+ * went out this time). Returns the new password either way so the UI
+ * can show/share it directly regardless of whether the email succeeds —
+ * same fallback this app already uses for the Create School flow.
+ */
+export async function resendLoginDetails(session, id, updatedBy) {
+  const [[user]] = await pool.query(
+    `SELECT u.id, u.name, u.email, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.company_id = ? AND u.is_deleted = 0`,
+    [id, session.company_id]
+  );
+  if (!user) { const e = new Error("Employee not found."); e.status = 404; throw e; }
+
+  const tempPassword = crypto.randomBytes(6).toString("hex");
+  await resetUserPassword(session, id, tempPassword, updatedBy);
+
+  const emailResult = await sendWelcomeEmail({
+    to: user.email, userId: user.id, name: user.name, email: user.email,
+    tempPassword, roleName: user.role_name || "Employee", createdBy: updatedBy, companyId: session.company_id,
+  });
+
+  await logActivity({ userId: updatedBy, module: "users", action: "resend_login_details", entityType: "user", entityId: id, description: `Resent login details for ${user.name}`, companyId: session.company_id });
+
+  return { email: user.email, tempPassword, emailSent: !!emailResult.success };
+}
+
 export async function deleteUser(session, id, deletedBy) {
   // FIX: previously called softDelete("users", id, deletedBy) with no
   // ownership check — every other mutating function in this file scopes

@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { can, assertSuperAdmin } from "@/lib/helpers/permissions";
 import { ok, forbidden, notFound, withErrorHandling } from "@/lib/helpers/response";
-import { getUserById, updateUser, deleteUser, restoreUser, setUserStatus, resetUserPassword } from "@/lib/actions/users";
+import { getUserById, updateUser, deleteUser, restoreUser, setUserStatus, resetUserPassword, resendLoginDetails } from "@/lib/actions/users";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request, ctx) => {
@@ -20,6 +20,7 @@ export const PUT = withCsrf(withErrorHandling(async (request, ctx) => {
   if (!(await can(session, "users.manage"))) return forbidden();
   if (body.action === "set_status") { await setUserStatus(session, id, body.status, session.id); return ok(); }
   if (body.action === "reset_password") { await resetUserPassword(session, id, body.newPassword, session.id); return ok(); }
+  if (body.action === "resend_login_details") { return ok(await resendLoginDetails(session, id, session.id)); }
   return ok({ user: await updateUser(session, id, body, session.id) });
 }));
 export const DELETE = withCsrf(withErrorHandling(async (request, ctx) => {
