@@ -78,7 +78,7 @@ export default function UserMenu({ session, scope = "workspace" }) {
         <span className="hidden lg:block text-sm text-foreground/80 group-hover:text-foreground transition-colors max-w-[140px] truncate">{session?.name}</span>
       </button>
 
-      <FloatingPanel anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} width={224}>
+      <FloatingPanel anchorRef={anchorRef} open={open} onClose={() => setOpen(false)} width={264}>
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-popover-foreground text-sm font-medium truncate">{session?.name}</p>
           {session?.email && <p className="text-muted-foreground text-xs truncate mt-0.5">{session.email}</p>}
@@ -92,13 +92,11 @@ export default function UserMenu({ session, scope = "workspace" }) {
                 key={r.role_id}
                 onClick={() => switchRole(r.role_id)}
                 disabled={switching !== null}
-                className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer disabled:opacity-60"
+                className="w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer disabled:opacity-60 text-left"
               >
-                <span className="flex items-center gap-2">
-                  {r.role_id === session?.role_id ? <Check className="h-3.5 w-3.5 text-indigo-400 shrink-0" /> : <span className="w-3.5 shrink-0" />}
-                  {r.name}
-                </span>
-                {switching === r.role_id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {r.role_id === session?.role_id ? <Check className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" /> : <span className="w-3.5 shrink-0" />}
+                <span className="flex-1 min-w-0 text-left">{r.name}</span>
+                {switching === r.role_id && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 mt-0.5" />}
               </button>
             ))}
           </div>
