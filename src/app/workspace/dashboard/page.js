@@ -25,6 +25,7 @@ import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { isModuleEnabledForCompany, getSubscriptionDetails, getCurrentCompany } from "@/lib/platform/tenant";
 import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
+import CollapsibleLogGroup from "@/components/shared/CollapsibleLogGroup";
 import AnnouncementBanner from "@/components/workspace/dashboard/AnnouncementBanner";
 import SchoolBanner from "@/components/workspace/dashboard/SchoolBanner";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
@@ -52,6 +53,7 @@ export default async function DashboardPage({ searchParams }) {
   // inside the Promise.all.
   const systemSettings = await getSettingsByGroup(session, "system");
   const timezone = systemSettings.timezone || "UTC";
+  const hour12 = systemSettings.time_format !== "24h";
   // 1-12, month the company's financial year starts in. No dedicated column
   // for this — reuses the same crm_settings key/value store `timezone` and
   // `date_format` already live in, so this needed no schema change. Not
@@ -184,7 +186,7 @@ export default async function DashboardPage({ searchParams }) {
 
       {isChildCompany ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <RecentActivityTable logs={recentActivity} timezone={timezone} />
+          <CollapsibleLogGroup title="Recent Activity" logs={recentActivity} timezone={timezone} hour12={hour12} />
           <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
       ) : (
@@ -221,7 +223,7 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
 
-      <QuickActionsCard isChildCompany={isChildCompany} />
+      {!isChildCompany && <QuickActionsCard isChildCompany={isChildCompany} />}
     </div>
   );
 }

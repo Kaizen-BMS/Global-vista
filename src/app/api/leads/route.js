@@ -5,6 +5,7 @@ import { validate, leadValidators } from "@/lib/helpers/validation";
 import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/modules/crm/actions/leads";
 import { bulkAddLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 import { bulkMarkStageComplete, bulkMoveToNextStage, applyBulkPreviewUpdates } from "@/lib/modules/crm/actions/leadStageProgress";
+import { bulkSendLeadEmail } from "@/lib/modules/crm/actions/leadBulkEmail";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request) => {
@@ -46,6 +47,10 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
       return ok(result);
     } else if (body.bulkAction === "bulkPreviewUpdate") {
       const result = await applyBulkPreviewUpdates(session, body.rows || [], session.id);
+      return ok(result);
+    } else if (body.bulkAction === "sendEmail") {
+      if (!(await can(session, "leads.notes.manage"))) return forbidden();
+      const result = await bulkSendLeadEmail(session, body.ids || [], { subject: body.subject, message: body.message }, session.id);
       return ok(result);
     }
     return ok();

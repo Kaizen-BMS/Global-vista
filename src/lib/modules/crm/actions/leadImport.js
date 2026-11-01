@@ -6,7 +6,7 @@ import { createLead, updateLead, updateLeadStage, assignLead, findDuplicateLead 
 import { addLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 import { createFollowupFromImport } from "@/lib/modules/crm/actions/leadFollowups";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
-import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
+import { listLeadCustomFields, saveLeadCustomFieldValues, OPTION_TYPES } from "@/lib/modules/crm/actions/leadCustomFields";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { zonedTimeToUtc } from "@/lib/helpers/dateRange";
 import { LEAD_PRIORITIES, FOLLOWUP_TYPES } from "@/lib/modules/crm/constants/leadStages";
@@ -56,10 +56,14 @@ export function autoMapColumns(headers, isChildCompany = false) {
   const mapping = {};
   headers.forEach((header, index) => {
     const h = normalize(header);
-    const match = fields.find((f) => {
+    // Exact match (label or key) wins outright — only fall back to loose
+    // substring containment when nothing matched exactly, so a renamed or
+    // lightly-edited header can't silently bind to the wrong field just
+    // because it happens to contain another field's shorter name.
+    const exact = fields.find((f) => h === normalize(f.label.replace(/\(.*\)/, "")) || h === normalize(f.key));
+    const match = exact || fields.find((f) => {
       const label = normalize(f.label.replace(/\(.*\)/, ""));
-      const key = normalize(f.key);
-      return h === label || h === key || h.includes(label) || label.includes(h);
+      return h.includes(label) || label.includes(h);
     });
     if (match) mapping[index] = match.key;
   });
@@ -122,6 +126,18 @@ export async function validateLeadImportRows(session, dataRows, mapping, { defau
   const seenPhones = new Map();
   const seenEmails = new Map();
   const companyStages = session.is_child_company ? await getLeadPipelineStages(session) : [];
+  // Keyed by the CUSTOM_FIELD_IMPORT_KEYS record key (stream/district/...),
+  // only for option-type fields (select/radio/multiselect) — free-text
+  // fields like academicYear/parentMobile are never checked against options.
+  const optionFieldsByRecordKey = new Map();
+  if (session.is_child_company) {
+    const customFields = await listLeadCustomFields(session, { activeOnly: true });
+    const byFieldKey = new Map(customFields.map((f) => [f.field_key, f]));
+    for (const [recordKey, fieldKey] of Object.entries(CUSTOM_FIELD_IMPORT_KEYS)) {
+      const field = byFieldKey.get(fieldKey);
+      if (field && OPTION_TYPES.has(field.field_type) && field.options?.length) optionFieldsByRecordKey.set(recordKey, field);
+    }
+  }
 
   const results = [];
   for (let i = 0; i < dataRows.length; i++) {
@@ -142,8 +158,42 @@ export async function validateLeadImportRows(session, dataRows, mapping, { defau
     }
     const errors = [];
 
-    if (record.stage && !companyStages.includes(record.stage)) {
-      errors.push(`Stage "${record.stage}" doesn't match any of this company's configured stages: ${companyStages.join(", ")}.`);
+    if (record.stage) {
+      // Case-insensitive, same leniency as source/service/assignedTo/priority
+      // below — a stage renamed between export and re-import (same letters,
+      // different case) shouldn't hard-fail every row that still carries the
+      // old casing. Normalized to the DB's exact casing so downstream
+      // comparisons (applyImportExtras) match correctly.
+      const matchedStage = companyStages.find((s) => s.toLowerCase() === record.stage.toLowerCase());
+      if (!matchedStage) errors.push(`Stage "${record.stage}" doesn't match any of this company's configured stages: ${companyStages.join(", ")}.`);
+      else record.stage = matchedStage;
+    }
+
+    // Dropdown-like custom fields (Stream/District/School/Class, and
+    // Subjects if configured as multiselect) are validated the same way —
+    // today these were silently accepted verbatim, so a stale or hand-typed
+    // value saved without error and only surfaced later as something the
+    // live form's <select> didn't recognize.
+    for (const [recordKey, field] of optionFieldsByRecordKey) {
+      const value = record[recordKey];
+      if (!value) continue;
+      const options = field.options;
+      if (field.field_type === "multiselect") {
+        const tokens = value.split(",").map((t) => t.trim()).filter(Boolean);
+        const resolved = [];
+        let bad = null;
+        for (const token of tokens) {
+          const match = options.find((o) => o.toLowerCase() === token.toLowerCase());
+          if (!match) { bad = token; break; }
+          resolved.push(match);
+        }
+        if (bad) errors.push(`"${field.label}" value "${bad}" doesn't match any of: ${options.join(", ")}.`);
+        else record[recordKey] = resolved.join(", ");
+      } else {
+        const match = options.find((o) => o.toLowerCase() === value.toLowerCase());
+        if (!match) errors.push(`"${field.label}" value "${value}" doesn't match any of: ${options.join(", ")}.`);
+        else record[recordKey] = match;
+      }
     }
 
     // An explicit ID is authoritative and never second-guessed by the

@@ -38,7 +38,7 @@ export default async function ActivityLogsPage() {
             const groups = groupByDay(logs);
             return (
               <>
-                <CollapsibleLogGroup title="Today" logs={groups.Today} timezone={timezone} hour12={hour12} defaultOpen />
+                <CollapsibleLogGroup title="Today" logs={groups.Today} timezone={timezone} hour12={hour12} />
                 <CollapsibleLogGroup title="Yesterday" logs={groups.Yesterday} timezone={timezone} hour12={hour12} />
                 <CollapsibleLogGroup title="Earlier" logs={groups.Earlier} timezone={timezone} hour12={hour12} />
               </>

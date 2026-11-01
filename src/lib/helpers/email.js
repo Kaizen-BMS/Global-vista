@@ -116,3 +116,24 @@ export async function sendLeadFormNotificationEmail({ to, formName, leadName, le
   });
   return send({ to, subject: `New lead: ${leadName}`, html, template: "lead_form_notification" });
 }
+
+// Turns a typed message (e.g. a shared note or a pasted meeting link) into
+// safe-ish HTML: newlines become <br/>, bare URLs become clickable. The
+// message is plain text typed by a staff member into the Bulk Email modal,
+// not user-submitted HTML, but it's still escaped first so a stray "<" or
+// "&" in a pasted link/note can't break the surrounding markup.
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function linkify(text) {
+  return escapeHtml(text).replace(/\n/g, "<br/>").replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}" style="color:#818cf8;">${url}</a>`);
+}
+export async function sendLeadBulkEmail({ to, subject, message, companyId, createdBy }) {
+  const branding = await getBranding(companyId);
+  const html = wrap({
+    title: subject,
+    bodyFn: () => `<p style="white-space:pre-wrap;">${linkify(message)}</p>`,
+    branding,
+  });
+  return send({ to, subject, html, template: "lead_bulk_email", createdBy });
+}

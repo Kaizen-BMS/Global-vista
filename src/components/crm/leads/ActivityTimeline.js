@@ -296,10 +296,10 @@ export default function ActivityTimeline({ leadId, events, followups = [], meeti
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(new Set());
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [openGroups, setOpenGroups] = useState(new Set());
 
   function toggleGroup(label) {
-    setCollapsedGroups((prev) => {
+    setOpenGroups((prev) => {
       const next = new Set(prev);
       if (next.has(label)) next.delete(label); else next.add(label);
       return next;
@@ -372,7 +372,7 @@ export default function ActivityTimeline({ leadId, events, followups = [], meeti
       ) : (
         <div className="space-y-6">
           {groups.map((group) => {
-            const isGroupOpen = !collapsedGroups.has(group.label);
+            const isGroupOpen = openGroups.has(group.label);
             return (
               <div key={group.label}>
                 <button onClick={() => toggleGroup(group.label)} className="flex items-center gap-1.5 mb-3 cursor-pointer group/header">

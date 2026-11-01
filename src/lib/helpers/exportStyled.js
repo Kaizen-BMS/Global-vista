@@ -58,16 +58,41 @@ export async function buildStyledExportResponse(rows, columns, {
     });
   }
 
-  for (const [key, options] of Object.entries(dropdowns)) {
+  // Rows a counsellor appends by hand below the exported data (never
+  // written by the loop above, so they'd otherwise fall back to Excel's
+  // locked-by-default cell state) still need the same unlocked columns —
+  // and, below, the same dropdowns — as every exported row.
+  const lastDataRow = Math.max(rows.length + 500, 1000);
+  for (const key of unlockedKeys) {
     const colIndex = allColumns.findIndex(([k]) => k === key);
-    if (colIndex === -1 || !options?.length) continue;
+    if (colIndex === -1) continue;
     const colLetter = sheet.getColumn(colIndex + 1).letter;
-    for (let r = 2; r <= rows.length + 1; r++) {
-      sheet.getCell(`${colLetter}${r}`).dataValidation = {
-        type: "list", allowBlank: true, formulae: [`"${options.join(",")}"`],
-        showErrorMessage: true, errorTitle: "Invalid value", error: `Pick one of: ${options.join(", ")}`,
-      };
-    }
+    for (let r = rows.length + 2; r <= lastDataRow; r++) sheet.getCell(`${colLetter}${r}`).protection = { locked: false };
+  }
+
+  // Dropdown options are written to a hidden reference sheet and referenced
+  // by a defined name, rather than inlined as a quoted comma-list — an
+  // inline list silently breaks (truncates past Excel's ~255-char limit, or
+  // splits wrong) the moment an option value itself contains a comma or a
+  // quote, which is a real occurrence for school/district names.
+  const dropdownEntries = Object.entries(dropdowns).filter(([key, options]) => options?.length && allColumns.some(([k]) => k === key));
+  if (dropdownEntries.length) {
+    const listsSheet = workbook.addWorksheet("Lists", { state: "veryHidden" });
+    dropdownEntries.forEach(([key, options], listIndex) => {
+      const listColLetter = listsSheet.getColumn(listIndex + 1).letter;
+      options.forEach((opt, i) => { listsSheet.getCell(`${listColLetter}${i + 1}`).value = String(opt); });
+      const definedName = `List_${listIndex}`;
+      workbook.definedNames.add(`Lists!$${listColLetter}$1:$${listColLetter}$${options.length}`, definedName);
+
+      const colIndex = allColumns.findIndex(([k]) => k === key);
+      const colLetter = sheet.getColumn(colIndex + 1).letter;
+      for (let r = 2; r <= lastDataRow; r++) {
+        sheet.getCell(`${colLetter}${r}`).dataValidation = {
+          type: "list", allowBlank: true, formulae: [`=${definedName}`],
+          showErrorMessage: true, errorTitle: "Invalid value", error: "Pick a value from the dropdown.",
+        };
+      }
+    });
   }
 
   await sheet.protect(SHEET_PASSWORD, { selectLockedCells: true, selectUnlockedCells: true });

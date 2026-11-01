@@ -121,7 +121,7 @@ export default function DataTable({
                 key={row[rowKey]}
                 onContextMenu={(e) => handleContextMenu(e, row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(row); } : undefined}
+                onKeyDown={onRowClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(row); } } : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
                 className={`border-b border-border/60 hover:bg-muted/30 transition-colors ${onRowClick ? "cursor-pointer focus-visible:bg-muted/30" : ""}`}
               >

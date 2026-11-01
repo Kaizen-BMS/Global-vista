@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle, StickyNote, PencilLine } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle, StickyNote, PencilLine, Send } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
@@ -14,6 +14,7 @@ import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import BulkNoteModal from "@/components/crm/leads/BulkNoteModal";
 import NotesPopover from "@/components/crm/leads/NotesPopover";
 import BulkPreviewEditModal from "@/components/crm/leads/BulkPreviewEditModal";
+import BulkEmailModal from "@/components/crm/leads/BulkEmailModal";
 
 export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [] }) {
   const terms = getCrmTerms(isChildCompany);
@@ -26,6 +27,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [claimingId, setClaimingId] = useState(null);
   const [releasingId, setReleasingId] = useState(null);
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [stageBusyId, setStageBusyId] = useState(null);
   const [notesLead, setNotesLead] = useState(null);
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
@@ -130,6 +132,19 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       if (!res.ok) throw new Error(data.error || "Failed to add note.");
       toast.success(`Note added to ${data.addedCount} ${data.addedCount === 1 ? terms.singularLower : terms.pluralLower}.`);
       setShowNoteModal(false); setSelected([]); router.refresh();
+    } catch (err) { toast.error(err.message); }
+  }
+
+  async function bulkSendEmail(subject, message) {
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "sendEmail", ids: selected, subject, message }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to send email.");
+      const parts = [`${data.sentCount} emailed`];
+      if (data.skippedCount) parts.push(`${data.skippedCount} skipped (no email on file)`);
+      if (data.failedCount) parts.push(`${data.failedCount} failed`);
+      toast.success(parts.join(", ") + ".");
+      setShowEmailModal(false); setSelected([]); router.refresh();
     } catch (err) { toast.error(err.message); }
   }
 
@@ -305,9 +320,12 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
               </button>
             </div>
           )}
-          {canManageNotes && (
+          {canManageNotes && (<>
             <button disabled={bulkBusy} onClick={() => setShowNoteModal(true)} className="text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">Add Note</button>
-          )}
+            <button disabled={bulkBusy} onClick={() => setShowEmailModal(true)} className="flex items-center gap-1 text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">
+              <Send className="h-3.5 w-3.5" /> Send Email
+            </button>
+          </>)}
           {isChildCompany && canBulkUpdate && (<>
             <button disabled={bulkBusy} onClick={bulkStageComplete} className="flex items-center gap-1 text-amber-400 hover:text-amber-300 cursor-pointer disabled:opacity-60">
               <CheckCircle2 className="h-3.5 w-3.5" /> Mark Complete
@@ -329,6 +347,10 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
       {notesLead && (
         <NotesPopover leadId={notesLead.id} leadName={notesLead.name} canManageNotes={canManageNotes} onClose={() => setNotesLead(null)} />
+      )}
+
+      {showEmailModal && (
+        <BulkEmailModal count={selected.length} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowEmailModal(false)} onSubmit={bulkSendEmail} />
       )}
 
       {showBulkEditModal && (

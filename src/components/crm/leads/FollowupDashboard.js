@@ -22,7 +22,7 @@ const SECTIONS = [
 export default function FollowupDashboard({ data, isChildCompany = false }) {
   const router = useRouter();
   const timezone = useTimezone();
-  const [collapsed, setCollapsed] = useState({});
+  const [collapsed, setCollapsed] = useState(() => Object.fromEntries(SECTIONS.map((s) => [s.key, true])));
   const [local, setLocal] = useState(data);
   const [completingFollowup, setCompletingFollowup] = useState(null);
 

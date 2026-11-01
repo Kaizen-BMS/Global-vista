@@ -67,7 +67,7 @@ export default function UserGuideClient() {
             <h2 className="text-foreground font-medium mb-3">{group.title}</h2>
             <div className="space-y-2">
               {group.sections.map((section, i) => (
-                <GuideSection key={section.id} title={section.title} body={section.body} defaultOpen={group.id === "everyone" && i === 0} />
+                <GuideSection key={section.id} title={section.title} body={section.body} />
               ))}
             </div>
           </div>

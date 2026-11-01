@@ -6,6 +6,7 @@ import { NOT_DELETED, paginate } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 import { generateLeadNumber } from "@/lib/modules/crm/leadNumber";
 import { generateStudentCode } from "@/lib/modules/crm/studentCode";
+import { listLeadCustomFields } from "@/lib/modules/crm/actions/leadCustomFields";
 import { enforceLeadLimit } from "@/lib/platform/tenant";
 
 // Correlated subquery, not a JOIN: a lead can have more than one
@@ -117,11 +118,6 @@ export async function listLeads(session, {
   return { leads: rows, total, page: p, pageSize: size };
 }
 
-// Exported for schools only — re-importing this same export (see
-// commitLeadImportChunk's applyImportExtras) can write straight back to
-// these by field_key, so the export must offer exactly these values.
-export const SCHOOL_EXPORT_CUSTOM_FIELD_KEYS = ["stream", "district", "school_name", "academic_year", "class", "subjects", "parent_mobile", "parent_name", "registration_number"];
-
 export async function listLeadsForExport(session, {
   status = null, stage = null, sourceId = null, serviceId = null, search = null,
   priority = null, assignedTo = null, country = null, tag = null,
@@ -146,16 +142,20 @@ export async function listLeadsForExport(session, {
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
 
-  // Schools only — each Student Information custom field gets its own
-  // field-definition + value LEFT JOIN pair (field_key is a fixed,
-  // hardcoded list above, never user input, so inlining it is safe), same
-  // pattern as getTeamPerformanceByStream's existing Stream join.
+  // Schools only — every one of this company's own active Student
+  // Information custom fields gets its own field-definition + value LEFT
+  // JOIN pair, derived live from lead_custom_fields instead of a hardcoded
+  // key list, so a field added/renamed in Settings shows up here with no
+  // code change. field_key is restricted to [a-z0-9_] at creation time
+  // (slugifyKey in leadCustomFields.js) — the regex filter below is a
+  // second guarantee before it's inlined into SQL.
   let customFieldSelect = "";
   let customFieldJoins = "";
   if (session.is_child_company) {
-    customFieldSelect = SCHOOL_EXPORT_CUSTOM_FIELD_KEYS.map((key, i) => `, cfv${i}.value AS cf_${key}`).join("");
-    customFieldJoins = SCHOOL_EXPORT_CUSTOM_FIELD_KEYS.map((key, i) => `
-     LEFT JOIN lead_custom_fields cff${i} ON cff${i}.company_id = l.company_id AND cff${i}.field_key = '${key}' AND cff${i}.is_deleted = 0
+    const fields = (await listLeadCustomFields(session, { activeOnly: true })).filter((f) => /^[a-z0-9_]+$/.test(f.field_key));
+    customFieldSelect = fields.map((f, i) => `, cfv${i}.value AS cf_${f.field_key}`).join("");
+    customFieldJoins = fields.map((f, i) => `
+     LEFT JOIN lead_custom_fields cff${i} ON cff${i}.company_id = l.company_id AND cff${i}.field_key = '${f.field_key}' AND cff${i}.is_deleted = 0
      LEFT JOIN lead_custom_field_values cfv${i} ON cfv${i}.lead_id = l.id AND cfv${i}.custom_field_id = cff${i}.id`).join("");
   }
 

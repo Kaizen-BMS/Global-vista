@@ -204,7 +204,7 @@ export default function LeadDocuments({ leadId, documents: initialDocuments, can
         <div className="space-y-2">
           {documentTypes.map((t) => {
             const docs = byTypeId.get(String(t.id)) || [];
-            return <TypeGroup key={t.id} type={t} docs={docs} leadId={leadId} canManage={canManage} timezone={timezone} onChanged={reload} defaultOpen={docs.length > 0} />;
+            return <TypeGroup key={t.id} type={t} docs={docs} leadId={leadId} canManage={canManage} timezone={timezone} onChanged={reload} defaultOpen={false} />;
           })}
           {unmatched.length > 0 && (
             <div className="pt-2">
