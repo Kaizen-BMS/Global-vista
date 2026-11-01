@@ -126,9 +126,16 @@ export async function reissueSessionWithCompany(payload, { companyId, roleId, ro
   const { iat, exp, ...rest } = payload;
   const alreadySwitched = !!rest.home_company_id;
   const home = alreadySwitched
-    ? { home_company_id: rest.home_company_id, home_role_id: rest.home_role_id, home_role_slug: rest.home_role_slug }
-    : { home_company_id: rest.company_id, home_role_id: rest.role_id, home_role_slug: rest.role_slug };
-  const token = await new SignJWT({ ...rest, ...home, company_id: companyId, role_id: roleId, role_slug: roleSlug })
+    ? { home_company_id: rest.home_company_id, home_role_id: rest.home_role_id, home_role_slug: rest.home_role_slug, home_is_super_admin: rest.home_is_super_admin }
+    : { home_company_id: rest.company_id, home_role_id: rest.role_id, home_role_slug: rest.role_slug, home_is_super_admin: rest.is_super_admin };
+  // switchIntoChildCompany always hands you the child's own super-admin
+  // role — the acting session must actually BE a super-admin for that
+  // company (isSuperAdmin() checks the permanent flag too, not just
+  // role_slug), or every isSuperAdmin()-gated page/action in the app
+  // would wrongly deny an employee who switched in via the companies.switch
+  // permission rather than the literal super-admin account. Stashed as
+  // home_is_super_admin above so exiting restores the real identity exactly.
+  const token = await new SignJWT({ ...rest, ...home, company_id: companyId, role_id: roleId, role_slug: roleSlug, is_super_admin: true })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
   const cookieStore = await cookies();
   const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
@@ -140,9 +147,9 @@ export async function reissueSessionWithCompany(payload, { companyId, roleId, ro
 // resulting session is indistinguishable from one that was never
 // switched at all. A no-op if the session isn't currently switched.
 export async function reissueSessionExitingToHome(payload) {
-  const { iat, exp, home_company_id, home_role_id, home_role_slug, ...rest } = payload;
+  const { iat, exp, home_company_id, home_role_id, home_role_slug, home_is_super_admin, ...rest } = payload;
   if (!home_company_id) return;
-  const token = await new SignJWT({ ...rest, company_id: home_company_id, role_id: home_role_id, role_slug: home_role_slug })
+  const token = await new SignJWT({ ...rest, company_id: home_company_id, role_id: home_role_id, role_slug: home_role_slug, is_super_admin: home_is_super_admin })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
   const cookieStore = await cookies();
   const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));

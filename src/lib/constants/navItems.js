@@ -1,5 +1,5 @@
-import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake } from "lucide-react";
-export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake };
+import { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake, BookOpen } from "lucide-react";
+export const ICON_MAP = { Users, ShieldCheck, Settings, ScrollText, UserCircle, Building2, LayoutDashboard, FileText, Bell, Contact2, BarChart3, CalendarClock, ClipboardList, Package, Activity, CreditCard, MessageSquare, MessageSquareWarning, Lightbulb, Newspaper, Megaphone, Tag, Handshake, BookOpen };
 
 export const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Dashboard", icon: "LayoutDashboard" },
@@ -38,5 +38,8 @@ export const ALL_NAV_ITEMS = [
   { href: "/workspace/support", label: "Support & Feedback", icon: "MessageSquareWarning", permission: null },
   { href: "/workspace/notifications", label: "Notifications", icon: "Bell", permission: null },
   { href: "/workspace/activity-logs", label: "Activity Logs", icon: "ScrollText", permission: "activity_logs.view" },
+  // Schools-only — see getVisibleNavItems (menu.js), which hides this for
+  // every non-child company.
+  { href: "/workspace/guide", label: "User Guide", icon: "BookOpen", permission: null },
   { href: "/workspace/profile", label: "Profile", icon: "UserCircle", permission: null },
 ];

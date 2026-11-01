@@ -1,7 +1,14 @@
 import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
-import { isSuperAdminAccount } from "@/lib/helpers/permissions";
+import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
+
+// The permanent super-admin account can always switch (unchanged default);
+// any other role can be granted the same ability via the "Switch to Child
+// Company" (companies.switch) permission in Roles & Permissions.
+async function canSwitchCompanies(session) {
+  return isSuperAdminAccount(session) || (await can(session, "companies.switch"));
+}
 import { provisionCompany } from "@/lib/platform/actions/provisioning";
 
 /**
@@ -11,13 +18,13 @@ import { provisionCompany } from "@/lib/platform/actions/provisioning";
  * with no children, or a child company itself (grandchildren are
  * disallowed), simply gets an empty list / a 403 on every call below.
  *
- * Gated on the PERMANENT is_super_admin account flag (isSuperAdminAccount),
- * not the currently-active role — same precedent as the existing
- * available-roles/switchActiveRole code, so switching your own active
- * role away and back never locks you out of this feature either.
+ * Gated on the PERMANENT is_super_admin account flag, OR the
+ * "companies.switch" permission on whichever role is currently active —
+ * so a regular employee can be granted this ability per-role via Roles &
+ * Permissions, without needing the literal super-admin account flag.
  */
 export async function listChildCompanies(session) {
-  if (!isSuperAdminAccount(session)) return [];
+  if (!(await canSwitchCompanies(session))) return [];
   const [rows] = await pool.query(
     `SELECT id, name, short_name, status FROM companies WHERE parent_company_id = ? AND status != 'deleted' ORDER BY name`,
     [session.company_id]
@@ -28,8 +35,8 @@ export async function listChildCompanies(session) {
 // Re-validates everything server-side — the client's targetCompanyId is
 // never trusted on its own, mirroring switchActiveRole's own discipline.
 export async function switchIntoChildCompany(session, targetCompanyId) {
-  if (!isSuperAdminAccount(session)) {
-    const e = new Error("Only a Super Admin can switch into a child company.");
+  if (!(await canSwitchCompanies(session))) {
+    const e = new Error("You don't have permission to switch into a child company.");
     e.status = 403;
     throw e;
   }
