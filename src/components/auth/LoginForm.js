@@ -41,6 +41,10 @@ export default function LoginForm({ onNavigate }) {
       if (!res.ok) { setError(data.error || "Login failed."); toast.error(data.error || "Login failed."); setLoading(false); return; }
 
       toast.success(`Welcome, ${data.user.name}`);
+      // Read by OnboardingTour.js once it mounts on the dashboard after this
+      // redirect — same "flag in localStorage, picked up by whatever mounts
+      // next" convention as this app's other client-only state.
+      if (data.isFirstLogin) { try { localStorage.setItem("gv:tour:pending", "1"); } catch { /* ignore */ } }
       setSuccess(true);
       // Brief, purely cosmetic pause so the success state is visible before navigating away.
       await new Promise((r) => setTimeout(r, 600));

@@ -43,6 +43,7 @@ function NavLink({ href, label, icon, active, collapsed, primaryColor, onNavigat
     <Link
       href={href}
       onClick={onNavigate}
+      data-tour-target={href}
       className={`group/link relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer ${collapsed ? "justify-center" : ""} ${active ? "text-indigo-400 dark:text-indigo-400" : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground hover:translate-x-0.5"}`}
       style={active ? { backgroundColor: `${primaryColor}1a`, border: `1px solid ${primaryColor}4d` } : undefined}
     >

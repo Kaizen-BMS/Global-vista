@@ -1,0 +1,52 @@
+/* Re-skins driver.js's default (white-popover) look to match this app's
+   own theme tokens, in both light and dark mode. */
+.driver-popover {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.35);
+}
+.driver-popover-title {
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.driver-popover-description {
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.driver-popover-progress-text {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.driver-popover-footer button {
+  text-shadow: none;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+.driver-popover-footer .driver-popover-next-btn {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
+}
+.driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+.driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--card);
+}
+.driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--card);
+}
+.driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--card);
+}
+.driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--card);
+}

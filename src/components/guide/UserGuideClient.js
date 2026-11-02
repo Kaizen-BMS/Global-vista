@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronDown, Languages } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Languages, Compass } from "lucide-react";
 import { USER_GUIDE_LANGUAGES, USER_GUIDE_CONTENT, USER_GUIDE_FOOTER } from "@/lib/content/userGuide";
 
 const STORAGE_KEY = "gv:guide:lang";
@@ -27,6 +28,7 @@ function GuideSection({ title, body, defaultOpen = false }) {
  * (Chair & Principal). Content lives in src/lib/content/userGuide/, this
  * component just renders + switches language, persisted per-browser. */
 export default function UserGuideClient() {
+  const router = useRouter();
   const [lang, setLang] = useState("en");
 
   useEffect(() => {
@@ -44,8 +46,23 @@ export default function UserGuideClient() {
   const groups = USER_GUIDE_CONTENT[lang] || USER_GUIDE_CONTENT.en;
   const footer = USER_GUIDE_FOOTER[lang] || USER_GUIDE_FOOTER.en;
 
+  // The tour's own sidebar targets exist on every workspace page, but the
+  // dashboard is the one predictable, always-the-same starting point —
+  // same reasoning a first-time login always lands there too.
+  function restartTour() {
+    router.push("/workspace/dashboard");
+    setTimeout(() => window.dispatchEvent(new Event("gv:start-onboarding-tour")), 300);
+  }
+
   return (
     <div>
+      <button
+        onClick={restartTour}
+        className="w-full sm:w-fit flex items-center justify-center gap-2 mb-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium cursor-pointer transition"
+      >
+        <Compass className="h-4 w-4" /> Tour Shuru Karo
+      </button>
+
       <div className="flex items-center gap-2 mb-6">
         <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
         <div className="flex items-center gap-1.5 rounded-full border border-border p-1 w-fit">

@@ -17,6 +17,10 @@ export async function POST(request) {
 
     const user = await getUserByEmail(email.trim().toLowerCase());
     if (!user || user.status !== "active") return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
+    // Captured before the UPDATE below overwrites it — NULL here means this
+    // is genuinely this user's first successful login ever, no separate
+    // "onboarding done" column needed.
+    const isFirstLogin = !user.last_login_at;
     if (await isAccountLocked(user)) return NextResponse.json({ error: "Account locked. Try again in 15 minutes." }, { status: 423 });
 
     if (user.company_id && !user.is_platform_operator) {
@@ -42,6 +46,7 @@ export async function POST(request) {
       success: true,
       user: { id: user.id, name: user.name, email: user.email, role: user.role_slug, is_super_admin: !!user.is_super_admin, is_platform_operator: !!user.is_platform_operator, company_id: user.company_id },
       mustChangePassword: !!user.must_change_password,
+      isFirstLogin,
     });
   } catch (err) {
     console.error("Login error:", err);
