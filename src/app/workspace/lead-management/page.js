@@ -75,7 +75,7 @@ export default async function LeadManagementPage({ searchParams }) {
             </>
           )}
           {canCreate && (
-            <Link href="/workspace/lead-management/new" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
+            <Link href="/workspace/lead-management/new" data-tour-target="students-add-btn" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium cursor-pointer hover:-translate-y-0.5">
               <Plus className="h-4 w-4" /> Add {terms.singular}
             </Link>
           )}

@@ -106,6 +106,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           <button
             ref={filtersBtnRef}
             type="button"
+            data-tour-target="students-filters-btn"
             onClick={() => setFiltersOpen((o) => !o)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition cursor-pointer ${activeFilterCount > 0 ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-300" : "bg-card border-border text-foreground hover:text-foreground"}`}
           >

@@ -525,7 +525,7 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
       <div className={`w-full md:w-80 shrink-0 border-r border-border flex-col ${mobilePane === "chat" ? "hidden md:flex" : "flex"}`}>
         <div className="p-3 border-b border-border space-y-2">
           {canSeeExternal && (
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border w-fit">
+            <div data-tour-target="messages-channel-tabs" className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border w-fit">
               {[["internal", "Internal"], ["external", "External"]].map(([key, label]) => (
                 <button key={key} onClick={() => setChannelTab(key)} className={`px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition ${channelTab === key ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
               ))}
@@ -542,7 +542,7 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
               </button>
             ) : null
           ) : (
-            <button onClick={() => setShowNew(true)} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
+            <button onClick={() => setShowNew(true)} data-tour-target="messages-new-btn" className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
               <Plus className="h-4 w-4" /> New Conversation
             </button>
           )}

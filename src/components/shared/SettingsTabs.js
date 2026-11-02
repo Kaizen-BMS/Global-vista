@@ -28,7 +28,7 @@ export default function SettingsTabs({ session }) {
   const tabs = session?.can_create_child_companies ? [...baseTabs, { href: "/workspace/settings/schools", label: "Schools" }] : baseTabs;
   return (
     <div className="flex flex-wrap gap-2 mb-6 border-b border-border pb-3">
-      {tabs.map((t) => <Link key={t.href} href={t.href} className={`text-sm px-3 py-1.5 rounded-md whitespace-nowrap transition ${pathname === t.href ? "bg-indigo-600/10 text-indigo-400 border border-indigo-600/30" : "text-muted-foreground hover:text-foreground hover:bg-card"}`}>{t.label}</Link>)}
+      {tabs.map((t) => <Link key={t.href} href={t.href} data-tour-target={`settings-tab-${t.href.split("/").pop()}`} className={`text-sm px-3 py-1.5 rounded-md whitespace-nowrap transition ${pathname === t.href ? "bg-indigo-600/10 text-indigo-400 border border-indigo-600/30" : "text-muted-foreground hover:text-foreground hover:bg-card"}`}>{t.label}</Link>)}
     </div>
   );
 }

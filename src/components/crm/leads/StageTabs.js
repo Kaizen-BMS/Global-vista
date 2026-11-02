@@ -47,7 +47,7 @@ export default function StageTabs({ stages, counts, total }) {
   }
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-lg bg-card border border-border w-fit mb-4 flex-wrap">
+    <div data-tour-target="students-stage-tabs" className="flex items-center gap-1 p-1 rounded-lg bg-card border border-border w-fit mb-4 flex-wrap">
       <button
         onClick={() => select("")}
         className={`px-3 py-1.5 rounded-md text-sm transition cursor-pointer ${active === "" ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}

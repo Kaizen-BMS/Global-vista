@@ -97,7 +97,7 @@ export default function StudentIntakeForm({ sources = [], services = [], customF
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} data-tour-target="student-form" className="space-y-6">
       <div className="bg-card border border-border rounded-xl p-6">
         <label className="block text-sm text-foreground mb-1">Student ID</label>
         <input disabled value="Auto-generated on save" className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-muted-foreground text-sm" />
@@ -138,7 +138,7 @@ export default function StudentIntakeForm({ sources = [], services = [], customF
       )}
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="btn-brand flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
+        <button type="submit" disabled={saving} data-tour-target="student-form-submit" className="btn-brand flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {saving ? "Saving..." : "Add Student"}
         </button>
