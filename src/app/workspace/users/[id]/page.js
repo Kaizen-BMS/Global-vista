@@ -4,6 +4,7 @@ import { getUserById, getUserLoginHistory } from "@/lib/actions/users";
 import { getActivityLogs } from "@/lib/activityLog";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import EmployeeProfileTabs from "@/components/users/EmployeeProfileTabs";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 export default async function EmployeeProfilePage({ params }) {
   const { id } = await params;
@@ -17,9 +18,9 @@ export default async function EmployeeProfilePage({ params }) {
     <div>
       <div className="flex items-center gap-4 mb-6">
         <div className="h-14 w-14 rounded-full bg-indigo-600/10 border border-indigo-600/30 flex items-center justify-center text-indigo-400 text-lg font-semibold">{user.name.charAt(0).toUpperCase()}</div>
-        <div><h1 className="text-xl font-semibold text-foreground">{user.name}</h1><p className="text-muted-foreground text-sm">{user.role_name} · {user.email}</p></div>
+        <div><h1 className="text-xl font-semibold text-foreground">{user.name}</h1><p className="text-muted-foreground text-sm">{displayRoleName(user.role_name, user.role_slug, session.is_child_company)} · {user.email}</p></div>
       </div>
-      <EmployeeProfileTabs user={user} loginHistory={loginHistory} activity={activity} isSelf={session.id === Number(id)} canManage={canManage} />
+      <EmployeeProfileTabs user={user} loginHistory={loginHistory} activity={activity} isSelf={session.id === Number(id)} canManage={canManage} isChildCompany={session.is_child_company} />
     </div>
   );
 }

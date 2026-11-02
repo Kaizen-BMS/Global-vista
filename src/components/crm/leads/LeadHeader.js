@@ -117,7 +117,7 @@ export default function LeadHeader({ lead, leadId, score, tags, session, canEdit
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <StageBadge stage={lead.stage} />
               <PriorityBadge priority={lead.priority} />
-              <LeadScoreBadge score={score} />
+              {!session?.is_child_company && <LeadScoreBadge score={score} />}
               {tags.map((tag) => (
                 <span key={tag} className="px-2 py-0.5 rounded-full text-[11px] border bg-muted text-foreground border-border">#{tag}</span>
               ))}

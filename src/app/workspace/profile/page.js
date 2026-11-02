@@ -7,6 +7,7 @@ import { Mail, Phone, Building2, Users as UsersIcon, Briefcase, UserCog, Calenda
 import SessionsPanel from "@/components/profile/SessionsPanel";
 import EmployeeDocumentsPanel from "@/components/users/EmployeeDocumentsPanel";
 import ProfileThemeControl from "@/components/profile/ProfileThemeControl";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 function InfoRow({ icon: Icon, label, value }) {
   if (!value) return null;
@@ -35,7 +36,7 @@ export default async function ProfilePage() {
             <h1 className="text-xl font-semibold text-foreground">{user.name}</h1>
             {admin && <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border border-gold/40 bg-gold/10 text-gold"><ShieldCheck className="h-3 w-3" /> Super Admin</span>}
           </div>
-          <p className="text-muted-foreground text-sm mt-0.5">{user.role_name} {user.employee_id ? `· ${user.employee_id}` : ""}</p>
+          <p className="text-muted-foreground text-sm mt-0.5">{displayRoleName(user.role_name, user.role_slug, session.is_child_company)} {user.employee_id ? `· ${user.employee_id}` : ""}</p>
         </div>
         <Link href="/workspace/change-password" className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-muted border border-border text-foreground text-sm font-medium hover:border-indigo-500/40 hover:bg-indigo-500/5 transition cursor-pointer">
           <KeyRound className="h-3.5 w-3.5" /> Change Password

@@ -19,7 +19,15 @@ export default function Breadcrumbs({ scope, isChildCompany = false }) {
   const segments = pathname.split("/").filter(Boolean).filter((s) => s !== scope);
   if (segments.length === 0 || pathname === rootHref) return null;
 
-  let acc = scope === "platform" ? "/platform" : "/workspace";
+  const base = scope === "platform" ? "/platform" : "/workspace";
+  // Only a crumb that matches a real top-level nav route, or the one
+  // entity-detail segment directly under one (the common list -> [id]
+  // pattern every resource page follows), is guaranteed to resolve to an
+  // actual page — a deeper nested segment (e.g. .../payments/456/receipt)
+  // has no page of its own at its own accumulated path and 404s if clicked.
+  const firstSegmentIsKnownList = navItems.some((n) => n.href === `${base}/${segments[0]}`);
+
+  let acc = base;
   const crumbs = segments.map((seg, i) => {
     acc += `/${seg}`;
     const known = navItems.find((n) => n.href === acc);
@@ -27,7 +35,8 @@ export default function Breadcrumbs({ scope, isChildCompany = false }) {
     // Breadcrumbs reads ALL_NAV_ITEMS directly (not getVisibleNavItems),
     // so the Lead→Student relabel needs its own override here too.
     const label = known?.href === "/workspace/lead-management" ? terms.plural : known?.label || humanize(seg);
-    return { href: acc, label, isLast };
+    const linkable = !!known || (i === 1 && firstSegmentIsKnownList);
+    return { href: acc, label, isLast, linkable };
   });
 
   return (
@@ -36,10 +45,10 @@ export default function Breadcrumbs({ scope, isChildCompany = false }) {
       {crumbs.map((c) => (
         <span key={c.href} className="flex items-center gap-1.5 min-w-0">
           <ChevronRight className="h-3 w-3 shrink-0" />
-          {c.isLast ? (
-            <span className="text-foreground font-medium truncate">{c.label}</span>
-          ) : (
+          {!c.isLast && c.linkable ? (
             <Link href={c.href} className="hover:text-foreground transition-colors truncate">{c.label}</Link>
+          ) : (
+            <span className={`truncate ${c.isLast ? "text-foreground font-medium" : ""}`}>{c.label}</span>
           )}
         </span>
       ))}

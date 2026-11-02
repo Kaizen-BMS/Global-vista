@@ -8,10 +8,11 @@ import EmptyState from "@/components/shared/EmptyState";
 import DataTable from "@/components/shared/DataTable";
 import EditUserDialog from "@/components/dialogs/EditUserDialog";
 import { apiFetch } from "@/components/shared/apiClient";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 const STATUS_STYLES = { active: "bg-green-500/10 text-green-400 border-green-500/30", inactive: "bg-muted/20 text-muted-foreground border-border/30", suspended: "bg-orange-500/10 text-orange-400 border-orange-500/30" };
 
-export default function UsersTable({ users, roles, canManage, canUnlock, isSuperAdmin, viewingDeleted = false }) {
+export default function UsersTable({ users, roles, canManage, canUnlock, isSuperAdmin, viewingDeleted = false, isChildCompany = false }) {
   const router = useRouter();
   const [editingUser, setEditingUser] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -50,7 +51,7 @@ export default function UsersTable({ users, roles, canManage, canUnlock, isSuper
       ),
     },
     { key: "email", label: "Email", width: 220, render: (u) => u.email },
-    { key: "role_name", label: "Role", width: 140, render: (u) => u.role_name },
+    { key: "role_name", label: "Role", width: 140, render: (u) => displayRoleName(u.role_name, u.role_slug, isChildCompany) },
     { key: "status", label: "Status", width: 110, render: (u) => <span className={`text-xs px-2 py-1 rounded-md border ${STATUS_STYLES[u.status] || STATUS_STYLES.inactive}`}>{u.status}</span> },
   ];
 

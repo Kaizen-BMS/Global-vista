@@ -12,7 +12,6 @@ import { isImportExportAllowed } from "@/lib/platform/tenant";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadFilters from "@/components/crm/leads/LeadFilters";
-import AssignedToQuickTabs from "@/components/crm/leads/AssignedToQuickTabs";
 import StageTabs from "@/components/crm/leads/StageTabs";
 import LeadsTable from "@/components/crm/leads/LeadsTable";
 import LeadViewToggle from "@/components/crm/leads/LeadViewToggle";
@@ -84,7 +83,6 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       {isChildCompany && <StageTabs stages={stages} counts={stageCounts} total={result.total} />}
-      <AssignedToQuickTabs />
       <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany} />
       <LeadsTable
         leads={result.leads}

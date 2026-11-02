@@ -390,3 +390,35 @@ export async function getLeadDetailFieldGroups(session, lead) {
 
   return order.map((name) => bySection.get(name)).filter((g) => g.fields.length > 0);
 }
+
+/**
+ * Required-field completeness for the Lead/Student Detail page's Profile
+ * Completion bar — built from the same required/visible config Add Lead
+ * already uses (getBuiltinFieldConfig, listLeadCustomFields's
+ * is_required_on_lead_form), not a separate hardcoded list, so a field
+ * made required/optional in Settings is reflected here immediately.
+ */
+export async function getLeadProfileCompletion(session, lead) {
+  const builtins = await getBuiltinFieldConfig(session);
+  const requiredBuiltins = builtins.filter((f) => f.showOnLeadForm && f.isRequiredOnLeadForm);
+  const filledBuiltins = requiredBuiltins.filter((f) => {
+    const friendlyCol = FRIENDLY_COLUMN[f.key];
+    const raw = friendlyCol ? lead[friendlyCol] : lead[f.column];
+    return raw !== null && raw !== undefined && String(raw).trim() !== "";
+  });
+
+  const customFields = (await hasLeadCustomFieldsSchema()) ? await listLeadCustomFields(session, { activeOnly: true }) : [];
+  const requiredCustom = customFields.filter((f) => f.is_required_on_lead_form);
+  const customValues = requiredCustom.length ? await getLeadCustomFieldValues(session, lead.id) : [];
+  const valueByFieldId = new Map(customValues.map((v) => [v.field_id, v.value]));
+  const filledCustom = requiredCustom.filter((f) => String(valueByFieldId.get(f.id) ?? "").trim() !== "");
+
+  const total = requiredBuiltins.length + requiredCustom.length;
+  const filled = filledBuiltins.length + filledCustom.length;
+  const missingLabels = [
+    ...requiredBuiltins.filter((f) => !filledBuiltins.includes(f)).map((f) => f.label),
+    ...requiredCustom.filter((f) => !filledCustom.includes(f)).map((f) => f.label),
+  ];
+
+  return { total, filled, percent: total > 0 ? Math.round((filled / total) * 100) : 100, missingLabels };
+}

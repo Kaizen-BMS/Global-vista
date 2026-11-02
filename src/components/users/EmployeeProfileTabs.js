@@ -6,8 +6,9 @@ import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import { apiFetch } from "@/components/shared/apiClient";
 import EmployeeDocumentsPanel from "@/components/users/EmployeeDocumentsPanel";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 const TABS = ["Overview", "Documents", "Login History", "Activity"];
-export default function EmployeeProfileTabs({ user, loginHistory, activity, isSelf = false, canManage = false }) {
+export default function EmployeeProfileTabs({ user, loginHistory, activity, isSelf = false, canManage = false, isChildCompany = false }) {
   const [active, setActive] = useState(0);
   const timezone = useTimezone();
   const [resending, setResending] = useState(false);
@@ -40,7 +41,7 @@ export default function EmployeeProfileTabs({ user, loginHistory, activity, isSe
       {active === 0 && <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="bg-card border border-border rounded-lg p-3"><p className="text-muted-foreground text-xs">Phone</p><p className="text-foreground text-sm">{user.phone || "—"}</p></div>
-          <div className="bg-card border border-border rounded-lg p-3"><p className="text-muted-foreground text-xs">Role</p><p className="text-foreground text-sm">{user.role_name}</p></div>
+          <div className="bg-card border border-border rounded-lg p-3"><p className="text-muted-foreground text-xs">Role</p><p className="text-foreground text-sm">{displayRoleName(user.role_name, user.role_slug, isChildCompany)}</p></div>
           <div className="bg-card border border-border rounded-lg p-3"><p className="text-muted-foreground text-xs">Status</p><p className="text-foreground text-sm">{user.status}</p></div>
         </div>
 

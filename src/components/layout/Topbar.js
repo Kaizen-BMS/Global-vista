@@ -18,7 +18,7 @@ export default function Topbar({ company, session }) {
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button onClick={() => setOpen(true)} aria-label="Open navigation" className="md:hidden text-muted-foreground hover:text-foreground cursor-pointer transition-colors shrink-0"><Menu className="h-5 w-5" /></button>
         <Breadcrumbs scope="workspace" isChildCompany={session?.is_child_company} />
-        <div className="hidden sm:block flex-1 max-w-md ml-auto"><GlobalSearch /></div>
+        <div className="hidden sm:block flex-1 max-w-md ml-auto"><GlobalSearch isChildCompany={session?.is_child_company} /></div>
       </div>
       {company?.name && <p className="hidden lg:block text-muted-foreground text-xs truncate max-w-[220px]">{company.name}</p>}
       <div className="flex items-center gap-2.5 shrink-0">

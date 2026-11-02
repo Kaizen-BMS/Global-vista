@@ -16,7 +16,7 @@ import { getLeadImportFields } from "@/lib/modules/crm/constants/leadImportField
 // consulted for child companies (see SUB_COMPANY_ONLY_KEYS), so a stray
 // mapping on a non-child company's import is already stripped before this
 // is ever read.
-const CUSTOM_FIELD_IMPORT_KEYS = {
+export const CUSTOM_FIELD_IMPORT_KEYS = {
   stream: "stream", district: "district", schoolName: "school_name",
   academicYear: "academic_year", class: "class", subjects: "subjects", parentMobile: "parent_mobile",
   parentName: "parent_name", registrationNumber: "registration_number",

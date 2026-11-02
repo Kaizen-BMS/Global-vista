@@ -365,7 +365,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
       <div className="hidden md:block">
         <DataTable
-          tableId="leads"
+          tableId={isChildCompany ? "students" : "leads"}
           columns={columns}
           rows={leads}
           sortKey={sortKey}

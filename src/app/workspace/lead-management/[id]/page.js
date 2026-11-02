@@ -14,7 +14,7 @@ import { listUsers } from "@/lib/actions/users";
 import { getAvailablePaymentMethods } from "@/lib/payments/providers";
 import { isModuleEnabledForCompany } from "@/lib/platform/tenant";
 import { listLeadDocumentTypes } from "@/lib/modules/crm/actions/leadDocumentTypes";
-import { getLeadDetailFieldGroups } from "@/lib/modules/crm/actions/leadFieldLayout";
+import { getLeadDetailFieldGroups, getLeadProfileCompletion } from "@/lib/modules/crm/actions/leadFieldLayout";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
 import { hasLeadDocumentTypesSchema } from "@/lib/db/schemaFlags";
 import { ListChecks } from "lucide-react";
@@ -24,6 +24,7 @@ import ActivityTimeline from "@/components/crm/leads/ActivityTimeline";
 import LeadWorkspaceTabs from "@/components/crm/leads/LeadWorkspaceTabs";
 import LeadWhatsAppPanel from "@/components/crm/leads/LeadWhatsAppPanel";
 import LeadScoreMeter from "@/components/crm/badges/LeadScoreMeter";
+import ProfileCompletionBar from "@/components/crm/leads/ProfileCompletionBar";
 import LeadFieldsDisplay from "@/components/crm/leads/LeadFieldsDisplay";
 import LeadTasks from "@/components/crm/leads/LeadTasks";
 import LeadDocuments from "@/components/crm/leads/LeadDocuments";
@@ -42,7 +43,12 @@ export default async function LeadDetailsPage({ params }) {
   const lead = await getLeadById(session, id);
   if (!lead) return <WorkspaceNotFound />;
 
-  const paymentsEnabled = await isModuleEnabledForCompany(session.company_id, "payments");
+  const paymentsEnabled = (await isModuleEnabledForCompany(session.company_id, "payments")) && !session.is_child_company;
+  // Payments and Documents aren't part of a school's counselling workflow
+  // (the equivalent Settings pages are already hidden for schools) — the
+  // whole sidebar section, and the header's matching quick actions, are
+  // dropped for schools rather than just visually hidden.
+  const showDocuments = !session.is_child_company;
   const documentTypesSchemaReady = await hasLeadDocumentTypesSchema();
 
   const [
@@ -74,9 +80,12 @@ export default async function LeadDetailsPage({ params }) {
 
   const score = computeLeadScore(lead, { notesCount: notes.length, tasksCount: tasks.length, followupsCount: followups.length, stages });
   const tags = (lead.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+  const profileCompletion = session.is_child_company ? await getLeadProfileCompletion(session, lead) : null;
 
   return (
     <div>
+      {session.is_child_company && <ProfileCompletionBar completion={profileCompletion} />}
+
       {lead.is_duplicate && lead.duplicate_of && (
         <DuplicateBanner
           leadId={id}
@@ -89,7 +98,7 @@ export default async function LeadDetailsPage({ params }) {
 
       <LeadHeader
         lead={lead} leadId={id} score={score} tags={tags} session={session}
-        canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs}
+        canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs && showDocuments}
         paymentsEnabled={paymentsEnabled} employees={employeesResult.users} callsEnabled={canViewCalls}
       />
 
@@ -112,7 +121,7 @@ export default async function LeadDetailsPage({ params }) {
 
         {/* Sidebar — supporting information, kept as existing components in compact cards */}
         <div className="space-y-6 min-w-0">
-          <LeadScoreMeter score={score} />
+          {!session.is_child_company && <LeadScoreMeter score={score} />}
 
           <LeadFieldsDisplay leadId={id} groups={fieldGroups} />
 
@@ -126,10 +135,12 @@ export default async function LeadDetailsPage({ params }) {
             </div>
           )}
 
-          <div id="documents" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
-            <p className="text-foreground font-medium mb-3">Documents</p>
-            <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
-          </div>
+          {showDocuments && (
+            <div id="documents" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">
+              <p className="text-foreground font-medium mb-3">Documents</p>
+              <LeadDocuments leadId={id} documents={documents} canManage={canManageDocs} documentTypes={documentTypes} />
+            </div>
+          )}
 
           {canViewCalls && (
             <div id="calls" className="bg-card border border-border rounded-2xl p-5 scroll-mt-6">

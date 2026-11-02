@@ -7,6 +7,7 @@ import { softDelete, paginate } from "@/lib/helpers/db";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
 import { createNotification } from "@/lib/actions/notifications";
 import { enforceUserLimit } from "@/lib/platform/tenant";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 const VALID_STATUSES = new Set(["active", "inactive", "suspended"]);
 const SORTABLE = new Set(["name", "email", "created_at", "last_login_at", "status"]);
@@ -106,8 +107,8 @@ export async function createUser(session, data, createdBy) {
   }
 
   if (sendWelcome) {
-    const [[role]] = await pool.query(`SELECT name FROM roles WHERE id = ?`, [roleId]);
-    sendWelcomeEmail({ to: email, userId: result.insertId, name, email, tempPassword, roleName: role?.name || "Employee", createdBy, companyId: session.company_id }).catch((e) => console.error("Welcome email failed:", e.message));
+    const [[role]] = await pool.query(`SELECT name, slug FROM roles WHERE id = ?`, [roleId]);
+    sendWelcomeEmail({ to: email, userId: result.insertId, name, email, tempPassword, roleName: displayRoleName(role?.name, role?.slug, session.is_child_company) || "Employee", createdBy, companyId: session.company_id }).catch((e) => console.error("Welcome email failed:", e.message));
   }
   if (reportingManagerId && reportingManagerId !== createdBy) {
     await createNotification(session.company_id, reportingManagerId, {
@@ -157,7 +158,7 @@ export async function resetUserPassword(session, id, newPassword, updatedBy) {
  */
 export async function resendLoginDetails(session, id, updatedBy) {
   const [[user]] = await pool.query(
-    `SELECT u.id, u.name, u.email, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.company_id = ? AND u.is_deleted = 0`,
+    `SELECT u.id, u.name, u.email, r.name AS role_name, r.slug AS role_slug FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.company_id = ? AND u.is_deleted = 0`,
     [id, session.company_id]
   );
   if (!user) { const e = new Error("Employee not found."); e.status = 404; throw e; }
@@ -167,7 +168,7 @@ export async function resendLoginDetails(session, id, updatedBy) {
 
   const emailResult = await sendWelcomeEmail({
     to: user.email, userId: user.id, name: user.name, email: user.email,
-    tempPassword, roleName: user.role_name || "Employee", createdBy: updatedBy, companyId: session.company_id,
+    tempPassword, roleName: displayRoleName(user.role_name, user.role_slug, session.is_child_company) || "Employee", createdBy: updatedBy, companyId: session.company_id,
   });
 
   await logActivity({ userId: updatedBy, module: "users", action: "resend_login_details", entityType: "user", entityId: id, description: `Resent login details for ${user.name}`, companyId: session.company_id });

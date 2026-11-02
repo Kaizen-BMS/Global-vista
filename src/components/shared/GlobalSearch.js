@@ -2,10 +2,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Loader2, Contact2, Users, CornerDownLeft } from "lucide-react";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 const GROUP_ICONS = { Leads: Contact2, Users: Users };
 
-export default function GlobalSearch() {
+export default function GlobalSearch({ isChildCompany = false }) {
+  const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const [query, setQuery] = useState(""); const [groups, setGroups] = useState(null);
   const [loading, setLoading] = useState(false); const [open, setOpen] = useState(false);
@@ -51,7 +53,7 @@ export default function GlobalSearch() {
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search leads, users..."
+          placeholder={`Search ${terms.pluralLower}, users...`}
           className="w-full pl-9 pr-9 py-2 rounded-lg bg-card border border-border text-foreground text-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-indigo-500/60"
         />
         {loading && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />}

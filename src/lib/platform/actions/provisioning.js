@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/helpers/email";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { hasGstinColumn } from "@/lib/db/schemaFlags";
@@ -781,7 +782,7 @@ export async function provisionCompany(input, operatorId) {
         name: adminName,
         email: adminEmail,
         tempPassword,
-        roleName: role?.name || "Company Admin",
+        roleName: (parentCompanyId ? displayRoleName(role?.name, "super-admin", true) : role?.name) || "Company Admin",
         createdBy: operatorId,
         companyId,
       }).catch((err) => {
