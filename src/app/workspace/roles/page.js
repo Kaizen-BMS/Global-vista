@@ -10,7 +10,7 @@ export default async function RolesPage() {
   return (
     <div>
       <div className="mb-6"><h1 className="text-xl font-semibold text-foreground">Roles</h1></div>
-      <RoleList roles={await listRoles(session)} />
+      <RoleList roles={await listRoles(session)} isChildCompany={session.is_child_company} />
     </div>
   );
 }

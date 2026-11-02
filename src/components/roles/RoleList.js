@@ -8,8 +8,9 @@ import RoleFormDialog from "@/components/dialogs/RoleFormDialog";
 import ReassignRoleDialog from "@/components/dialogs/ReassignRoleDialog";
 import EmptyState from "@/components/shared/EmptyState";
 import { apiFetch } from "@/components/shared/apiClient";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
-export default function RoleList({ roles }) {
+export default function RoleList({ roles, isChildCompany }) {
   const router = useRouter();
   const [dialogRole, setDialogRole] = useState(undefined);
   const [reassignTarget, setReassignTarget] = useState(null);
@@ -31,7 +32,7 @@ export default function RoleList({ roles }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {roles.map((role) => (
             <div key={role.id} className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-start justify-between mb-2"><p className="text-foreground font-medium">{role.name}</p><ShieldCheck className="h-4 w-4 text-muted-foreground" /></div>
+              <div className="flex items-start justify-between mb-2"><p className="text-foreground font-medium">{displayRoleName(role.name, role.slug, isChildCompany)}</p><ShieldCheck className="h-4 w-4 text-muted-foreground" /></div>
               <p className="flex items-center gap-1.5 text-muted-foreground text-xs mb-4"><Users className="h-3.5 w-3.5" />{role.user_count} users</p>
               <div className="flex items-center gap-3 text-sm">
                 <Link href={`/workspace/roles/${role.id}/permissions`} className="text-indigo-400 hover:text-indigo-300">Permissions</Link>
@@ -45,7 +46,7 @@ export default function RoleList({ roles }) {
         </div>
       )}
       {dialogRole !== undefined && <RoleFormDialog role={dialogRole} onClose={() => setDialogRole(undefined)} />}
-      {reassignTarget && <ReassignRoleDialog role={reassignTarget} otherRoles={roles.filter((r) => r.id !== reassignTarget.id)} onClose={() => setReassignTarget(null)} />}
+      {reassignTarget && <ReassignRoleDialog role={reassignTarget} otherRoles={roles.filter((r) => r.id !== reassignTarget.id)} isChildCompany={isChildCompany} onClose={() => setReassignTarget(null)} />}
     </div>
   );
 }
