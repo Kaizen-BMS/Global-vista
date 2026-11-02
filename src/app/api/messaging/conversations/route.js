@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { ok, created, badRequest, unauthorized, withErrorHandling } from "@/lib/helpers/response";
-import { listConversations, getOrCreateDirectConversation, createGroupConversation, getOrCreateBroadcastConversation } from "@/lib/actions/messaging";
+import { listConversations, getOrCreateDirectConversation, createGroupConversation, getOrCreateBroadcastConversation, getOrCreateExternalConversation } from "@/lib/actions/messaging";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async () => {
@@ -26,6 +26,10 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   }
   if (body.type === "broadcast") {
     const id = await getOrCreateBroadcastConversation(session);
+    return created({ id });
+  }
+  if (body.type === "external") {
+    const id = await getOrCreateExternalConversation(session, { schoolCompanyId: body.schoolCompanyId });
     return created({ id });
   }
   return badRequest("Unknown conversation type.");

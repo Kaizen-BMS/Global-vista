@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
+import { paginate } from "@/lib/helpers/db";
 
 // The permanent super-admin account can always switch (unchanged default);
 // any other role can be granted the same ability via the "Switch to Child
@@ -161,4 +162,63 @@ export async function getSchoolsOverview(session) {
     { leadCount: 0, userCount: 0 }
   );
   return { schools, totals };
+}
+
+/**
+ * The actual combined, filterable lead LIST (not just counts) across every
+ * school — a GVE-only reporting view, read-only by design. Reuses the
+ * exact same gate, same `listChildCompanies` id source, and the same
+ * "only ever the ids this parent's own children resolve to" discipline as
+ * `getSchoolsOverview` above — never a caller-supplied company_id list.
+ * GVE's OWN leads (company_id = session.company_id) are folded into the
+ * same scope so a prospect that approaches GVE directly — not through any
+ * school — still shows up here, labeled "Independent" (school_name is
+ * null for those rows; the UI renders the badge). `schoolId` narrows to
+ * one specific child company, or the sentinel "independent" for just
+ * GVE's own rows; omitted/null means every school + GVE's own, combined.
+ * Editing a specific lead still happens inside its OWNER's own session
+ * (see the "Switch to Company" flow) — this view never writes anything.
+ */
+export async function listAggregatedSchoolLeads(session, { schoolId = null, search = null, page = 1, pageSize = 20 } = {}) {
+  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+    const e = new Error("Not authorized.");
+    e.status = 403;
+    throw e;
+  }
+
+  const children = await listChildCompanies(session);
+  const childIds = children.map((c) => c.id);
+
+  let ids;
+  if (schoolId === "independent") ids = [session.company_id];
+  else if (schoolId) {
+    const requested = Number(schoolId);
+    if (!childIds.includes(requested)) { const e = new Error("That company is not one of your schools."); e.status = 403; throw e; }
+    ids = [requested];
+  } else ids = [...childIds, session.company_id];
+
+  if (ids.length === 0) return { leads: [], total: 0, page: 1, pageSize };
+
+  const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
+  const params = [ids];
+  if (search) {
+    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ?)`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
+
+  const [rows] = await pool.query(
+    `SELECT l.id, l.name, l.phone, l.email, l.stage, l.priority, l.created_at, l.company_id,
+            (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
+     FROM leads l
+     LEFT JOIN companies co ON co.id = l.company_id
+     ${whereSql}
+     ORDER BY l.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [session.company_id, ...params, limit, offset]
+  );
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l ${whereSql}`, params);
+
+  return { leads: rows, total, page: p, pageSize: size, schools: children };
 }

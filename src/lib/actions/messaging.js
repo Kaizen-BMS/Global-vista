@@ -4,7 +4,8 @@ import { logActivity } from "@/lib/activityLog";
 import { createNotification } from "@/lib/actions/notifications";
 import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { uploadFile, getFileUrl } from "@/lib/services/StorageService";
-import { hasMessageEditingSchema, hasBlockedUsersSchema, hasAnnouncementDismissalsSchema } from "@/lib/db/schemaFlags";
+import { hasMessageEditingSchema, hasBlockedUsersSchema, hasAnnouncementDismissalsSchema, hasExternalMessagingSchema } from "@/lib/db/schemaFlags";
+import { listChildCompanies } from "@/lib/actions/companySwitch";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const EDIT_WINDOW_MS = 2 * 60 * 1000;
@@ -16,10 +17,10 @@ const EDIT_WINDOW_MS = 2 * 60 * 1000;
  * choke point every messaging action below goes through. */
 async function assertParticipant(session, conversationId) {
   const [[row]] = await pool.query(
-    `SELECT c.id, c.company_id, c.type, c.title, c.created_by, cp.last_read_at
+    `SELECT c.id, c.company_id, c.counterparty_company_id, c.type, c.title, c.created_by, cp.last_read_at
      FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
-     WHERE c.id = ? AND c.company_id = ?`,
-    [session.id, conversationId, session.company_id]
+     WHERE c.id = ? AND (c.company_id = ? OR c.counterparty_company_id = ?)`,
+    [session.id, conversationId, session.company_id, session.company_id]
   );
   if (!row) { const e = new Error("Conversation not found."); e.status = 404; throw e; }
   return row;
@@ -184,20 +185,88 @@ export async function getOrCreateBroadcastConversation(session) {
   return conversationId;
 }
 
+/**
+ * GVE↔school external messaging — one shared thread per (GVE, school)
+ * pair, found-or-created regardless of which side starts it, mirroring the
+ * broadcast channel's "keep everyone synced" participant management. On
+ * GVE's side every active employee is kept in sync as a participant (so
+ * anyone can pick up a school's conversation); on the school's side only
+ * whoever currently holds the `super-admin` (Owner/Principal) role is
+ * synced in — found via user_roles/roles, the same join
+ * switchIntoChildCompany already uses, never a live session's role_slug,
+ * which only exists inside one signed-in session and isn't queryable
+ * across users. Posting is further restricted to a GVE Super Admin in
+ * sendMessage; this function only governs who can ever see the thread.
+ */
+export async function getOrCreateExternalConversation(session, { schoolCompanyId } = {}) {
+  if (!(await hasExternalMessagingSchema())) { const e = new Error("External messaging isn't available yet."); e.status = 400; throw e; }
+
+  let gveId, schoolId;
+  if (session.is_child_company) {
+    if (session.role_slug !== "super-admin") { const e = new Error("Only your school's Owner can message Global Vista Educators."); e.status = 403; throw e; }
+    if (!session.parent_company_id) { const e = new Error("Your company has no parent to message."); e.status = 400; throw e; }
+    gveId = session.parent_company_id;
+    schoolId = session.company_id;
+  } else {
+    if (!session.can_create_child_companies) { const e = new Error("Your company can't message schools."); e.status = 403; throw e; }
+    const children = await listChildCompanies(session);
+    if (!children.some((c) => c.id === Number(schoolCompanyId))) { const e = new Error("That company is not one of your schools."); e.status = 403; throw e; }
+    gveId = session.company_id;
+    schoolId = Number(schoolCompanyId);
+  }
+
+  let conversationId;
+  const [[existing]] = await pool.query(`SELECT id FROM conversations WHERE company_id = ? AND counterparty_company_id = ? AND type = 'external' LIMIT 1`, [gveId, schoolId]);
+  if (existing) {
+    conversationId = existing.id;
+  } else {
+    // ON DUPLICATE KEY UPDATE id=id turns a race between both sides
+    // starting the same thread for the first time into a no-op on the
+    // loser, instead of two rows — uq_external_pair is a no-op for every
+    // other conversation type since MySQL treats NULL as distinct from
+    // NULL there, so this only ever constrains `external` rows.
+    const [result] = await pool.query(
+      `INSERT INTO conversations (company_id, counterparty_company_id, type, created_by) VALUES (?, ?, 'external', ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+      [gveId, schoolId, session.id]
+    );
+    conversationId = result.insertId;
+  }
+
+  const [gveUsers] = await pool.query(`SELECT id FROM users WHERE company_id = ? AND is_deleted = 0 AND status = 'active'`, [gveId]);
+  // Joined through users.role_id (the actual "current role" column — see
+  // auth.js's own login query), NOT user_roles: that side table only holds
+  // EXTRA grants for the multi-role switcher and is empty for most users,
+  // who carry their one role solely on users.role_id (confirmed live —
+  // most of this database's users have zero user_roles rows at all).
+  const [schoolOwners] = await pool.query(
+    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+     WHERE u.company_id = ? AND u.is_deleted = 0 AND u.status = 'active' AND r.company_id = ? AND r.slug = 'super-admin' AND r.is_deleted = 0 AND r.status = 'active'`,
+    [schoolId, schoolId]
+  );
+  const [existingParticipants] = await pool.query(`SELECT user_id FROM conversation_participants WHERE conversation_id = ?`, [conversationId]);
+  const already = new Set(existingParticipants.map((r) => r.user_id));
+  const missing = [...gveUsers, ...schoolOwners].filter((u) => !already.has(u.id));
+  if (missing.length) {
+    await pool.query(`INSERT INTO conversation_participants (conversation_id, user_id) VALUES ?`, [missing.map((u) => [conversationId, u.id])]);
+  }
+  return conversationId;
+}
+
 export async function listConversations(session) {
   const [rows] = await pool.query(
-    `SELECT c.id, c.type, c.title, c.created_by, c.updated_at, cp.last_read_at,
+    `SELECT c.id, c.type, c.title, c.created_by, c.updated_at, c.company_id, c.counterparty_company_id, cp.last_read_at,
             (SELECT m.body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
             (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
             (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')) AS unread_count,
             (SELECT GROUP_CONCAT(u.name SEPARATOR ', ') FROM conversation_participants op JOIN users u ON u.id = op.user_id WHERE op.conversation_id = c.id AND op.user_id != ?) AS other_participant_names,
             (SELECT op3.user_id FROM conversation_participants op3 WHERE op3.conversation_id = c.id AND op3.user_id != ? AND c.type = 'direct' LIMIT 1) AS other_participant_id,
-            (SELECT COUNT(*) FROM conversation_participants op2 WHERE op2.conversation_id = c.id) AS participant_count
+            (SELECT COUNT(*) FROM conversation_participants op2 WHERE op2.conversation_id = c.id) AS participant_count,
+            (SELECT co.name FROM companies co WHERE co.id = (CASE WHEN c.company_id = ? THEN c.counterparty_company_id ELSE c.company_id END)) AS external_company_name
      FROM conversations c
      JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
-     WHERE c.company_id = ?
+     WHERE (c.company_id = ? OR c.counterparty_company_id = ?)
      ORDER BY COALESCE(c.updated_at, c.created_at) DESC`,
-    [session.id, session.id, session.id, session.company_id]
+    [session.id, session.id, session.company_id, session.id, session.company_id, session.company_id]
   );
   return rows;
 }
@@ -225,6 +294,14 @@ export async function sendMessage(session, conversationId, { body, file } = {}, 
   if (conversation.type === "broadcast" && !isSuperAdmin(session)) {
     const e = new Error("Only a Super Admin can post in a company-wide broadcast."); e.status = 403; throw e;
   }
+  // GVE side of an external thread: anyone can read, only a Super Admin can
+  // speak "as GVE" to a school — same read-everyone/write-Super-Admin split
+  // broadcast already uses. The school side has no equivalent restriction
+  // here because only its Owner/Principal is ever synced in as a
+  // participant in the first place (see getOrCreateExternalConversation).
+  if (conversation.type === "external" && conversation.company_id === session.company_id && !isSuperAdmin(session)) {
+    const e = new Error("Only a Super Admin can post in an external conversation."); e.status = 403; throw e;
+  }
   if (!body?.trim() && !file) { const e = new Error("Message body or attachment is required."); e.status = 400; throw e; }
 
   if (conversation.type === "direct") {
@@ -241,18 +318,29 @@ export async function sendMessage(session, conversationId, { body, file } = {}, 
     fileMeta = { key, name: file.name, size: file.size };
   }
 
+  // Stamped with the CONVERSATION's own company_id (always GVE's id for an
+  // external thread), not the sender's session.company_id — otherwise the
+  // same thread would end up with two different company_id values on its
+  // messages depending on which side sent them, which the unread-count and
+  // search queries above are no longer written to tolerate.
   const [result] = await pool.query(
     `INSERT INTO messages (company_id, conversation_id, sender_id, body, file_name, file_url, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [session.company_id, conversationId, senderId, body?.trim() || "", fileMeta?.name || null, fileMeta?.key || null, fileMeta?.size || null]
+    [conversation.company_id, conversationId, senderId, body?.trim() || "", fileMeta?.name || null, fileMeta?.key || null, fileMeta?.size || null]
   );
   await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = ?`, [conversationId]);
   // Sending counts as having read up to your own message.
   await pool.query(`UPDATE conversation_participants SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?`, [conversationId, senderId]);
 
-  const [participants] = await pool.query(`SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?`, [conversationId, senderId]);
+  // Each recipient's notification is scoped to THEIR OWN company_id, not the
+  // sender's — identical for every normal single-company conversation
+  // (sender and recipient already share one company_id there), but for an
+  // external thread the two sides genuinely differ, and getUserNotifications/
+  // getSidebarBadgeCounts both filter notifications by the viewer's own
+  // company_id.
+  const [participants] = await pool.query(`SELECT cp.user_id, u.company_id FROM conversation_participants cp JOIN users u ON u.id = cp.user_id WHERE cp.conversation_id = ? AND cp.user_id != ?`, [conversationId, senderId]);
   const preview = body?.trim() ? (body.length > 80 ? `${body.slice(0, 80)}…` : body) : `Sent an attachment: ${fileMeta?.name || ""}`;
   for (const p of participants) {
-    await createNotification(session.company_id, p.user_id, {
+    await createNotification(p.company_id, p.user_id, {
       title: conversation.type === "broadcast" ? `Announcement: ${conversation.title || "Company"}` : `New message from ${session.name}`,
       message: preview,
       type: "message_received",
@@ -487,8 +575,9 @@ export async function getUnreadMessageCount(session) {
   const [[row]] = await pool.query(
     `SELECT COUNT(*) AS unread FROM messages m
      JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
-     WHERE m.company_id = ? AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
-    [session.id, session.company_id, session.id]
+     JOIN conversations c ON c.id = m.conversation_id
+     WHERE (c.company_id = ? OR c.counterparty_company_id = ?) AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
+    [session.id, session.company_id, session.company_id, session.id]
   );
   return Number(row.unread);
 }
@@ -505,9 +594,9 @@ export async function searchMessages(session, query) {
      JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
      JOIN conversations c ON c.id = m.conversation_id
      LEFT JOIN users u ON u.id = m.sender_id
-     WHERE m.company_id = ? AND MATCH(m.body) AGAINST (? IN NATURAL LANGUAGE MODE)
+     WHERE (c.company_id = ? OR c.counterparty_company_id = ?) AND MATCH(m.body) AGAINST (? IN NATURAL LANGUAGE MODE)
      ORDER BY m.created_at DESC LIMIT 30`,
-    [session.id, session.company_id, q]
+    [session.id, session.company_id, session.company_id, q]
   );
   return rows;
 }

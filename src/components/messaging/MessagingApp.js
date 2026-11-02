@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText, ArrowLeft, MoreVertical, Pencil, Check, LogOut, Ban, ShieldOff } from "lucide-react";
+import { MessageSquare, Send, Paperclip, Search, Plus, Megaphone, Users as UsersIcon, X, Loader2, FileText, ArrowLeft, MoreVertical, Pencil, Check, LogOut, Ban, ShieldOff, Building2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatRelative, formatDateTime } from "@/lib/helpers/dateFormat";
@@ -20,9 +20,62 @@ function Avatar({ name }) {
 }
 
 function conversationLabel(c) {
+  if (c.type === "external") return c.external_company_name || "External";
   if (c.type === "broadcast") return c.title || "Company Announcements";
   if (c.type === "group") return c.title || c.other_participant_names || "Group";
   return c.other_participant_names || "Conversation";
+}
+
+/** GVE side: pick which school to start/open a shared thread with. School
+ * side has nothing to pick (the target is always its one parent), so it
+ * never renders this — see the single-button path in MessagingApp instead. */
+function NewExternalConversationModal({ schools, onClose, onCreated }) {
+  const [selected, setSelected] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  async function create() {
+    if (!selected) { toast.error("Select a school."); return; }
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/messaging/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "external", schoolCompanyId: selected }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start conversation.");
+      onCreated(data.id);
+    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+  }
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <ModalFocusTrap>
+      <div role="dialog" aria-modal="true" aria-label="Message a school" className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-background border border-border rounded-xl shadow-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-foreground font-medium">Message a School</p>
+          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="max-h-64 overflow-y-auto space-y-1 border border-border rounded-lg p-2">
+          {schools.length === 0 && <p className="text-muted-foreground text-xs p-2">No schools yet.</p>}
+          {schools.map((s) => (
+            <label key={s.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted cursor-pointer">
+              <input type="radio" name="school" checked={selected === s.id} onChange={() => setSelected(s.id)} className="cursor-pointer accent-indigo-500" />
+              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-foreground text-sm">{s.name}</span>
+            </label>
+          ))}
+        </div>
+        <button onClick={create} disabled={saving} className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-lg btn-brand text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />} Start Conversation
+        </button>
+      </div>
+      </ModalFocusTrap>
+    </div>
+  );
 }
 
 function NewConversationModal({ users, isSuperAdmin, onClose, onCreated }) {
@@ -271,10 +324,13 @@ function GroupInfoPanel({ conversation, currentUserId, messageableUsers, onClose
   );
 }
 
-export default function MessagingApp({ currentUserId, isSuperAdmin, initialConversations, messageableUsers, initialConversationId }) {
+export default function MessagingApp({ currentUserId, isSuperAdmin, initialConversations, messageableUsers, initialConversationId, canSeeExternal = false, childCompanies = [], parentCompanyName = null, isChildCompany = false }) {
   const router = useRouter();
   const timezone = useTimezone();
   const [conversations, setConversations] = useState(initialConversations);
+  const [channelTab, setChannelTab] = useState("internal");
+  const [showNewExternal, setShowNewExternal] = useState(false);
+  const [startingExternal, setStartingExternal] = useState(false);
   const [activeId, setActiveId] = useState(initialConversationId || initialConversations[0]?.id || null);
   const [messages, setMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -429,6 +485,19 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
     } catch (err) { toast.error(err.message); } finally { setSending(false); }
   }
 
+  // School side only — there's nothing to pick (the target is always this
+  // company's one parent), so it's a single click rather than a modal.
+  async function startExternalDirect() {
+    setStartingExternal(true);
+    try {
+      const res = await apiFetch("/api/messaging/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "external" }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start conversation.");
+      await refreshConversations();
+      selectConversation(data.id);
+    } catch (err) { toast.error(err.message); } finally { setStartingExternal(false); }
+  }
+
   async function runSearch(q) {
     setSearch(q);
     if (!q.trim()) { setSearchResults(null); return; }
@@ -441,15 +510,42 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
 
   const active = activeConversation;
   const isBlocked = blockStatus.blockedByMe || blockStatus.blockedMe;
-  const canPost = (!active || active.type !== "broadcast" || isSuperAdmin) && !(active?.type === "direct" && isBlocked);
+  // On the school side of an external thread, participancy alone already
+  // restricts it to the Owner/Principal — no extra posting check needed
+  // there. On GVE's side, only a Super Admin may post (everyone else can
+  // still read), same split as the broadcast channel.
+  const canPost = (!active || active.type !== "broadcast" || isSuperAdmin)
+    && (!active || active.type !== "external" || isChildCompany || isSuperAdmin)
+    && !(active?.type === "direct" && isBlocked);
+
+  const filteredConversations = conversations.filter((c) => (channelTab === "external" ? c.type === "external" : c.type !== "external"));
 
   return (
     <div className="h-[calc(100vh-8rem)] flex bg-card border border-border rounded-xl overflow-hidden">
       <div className={`w-full md:w-80 shrink-0 border-r border-border flex-col ${mobilePane === "chat" ? "hidden md:flex" : "flex"}`}>
         <div className="p-3 border-b border-border space-y-2">
-          <button onClick={() => setShowNew(true)} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
-            <Plus className="h-4 w-4" /> New Conversation
-          </button>
+          {canSeeExternal && (
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border w-fit">
+              {[["internal", "Internal"], ["external", "External"]].map(([key, label]) => (
+                <button key={key} onClick={() => setChannelTab(key)} className={`px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition ${channelTab === key ? "bg-indigo-600 text-white" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>
+              ))}
+            </div>
+          )}
+          {channelTab === "external" ? (
+            childCompanies.length > 0 ? (
+              <button onClick={() => setShowNewExternal(true)} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
+                <Building2 className="h-4 w-4" /> Message a School
+              </button>
+            ) : isChildCompany ? (
+              <button onClick={startExternalDirect} disabled={startingExternal} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer disabled:opacity-60">
+                {startingExternal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Building2 className="h-4 w-4" />} Message {parentCompanyName || "Global Vista Educators"}
+              </button>
+            ) : null
+          ) : (
+            <button onClick={() => setShowNew(true)} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg btn-brand text-white text-sm font-medium cursor-pointer">
+              <Plus className="h-4 w-4" /> New Conversation
+            </button>
+          )}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input value={search} onChange={(e) => runSearch(e.target.value)} placeholder="Search messages…" className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-muted border border-border text-foreground text-xs" />
@@ -464,15 +560,16 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
                 <p className="text-muted-foreground text-xs truncate">{r.sender_name}: {r.body}</p>
               </button>
             ))
-          ) : conversations.length === 0 ? (
+          ) : filteredConversations.length === 0 ? (
             <div className="p-6 text-center">
               <MessageSquare className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground text-sm">No conversations yet.</p>
             </div>
-          ) : conversations.map((c) => (
+          ) : filteredConversations.map((c) => (
             <button key={c.id} onClick={() => selectConversation(c.id)} className={`w-full text-left px-3 py-3 border-b border-border/50 cursor-pointer transition ${activeId === c.id ? "bg-indigo-600/10" : "hover:bg-muted"}`}>
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <p className="text-foreground text-sm font-medium truncate flex items-center gap-1.5">
+                  {c.type === "external" && <Building2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" />}
                   {c.type === "broadcast" && <Megaphone className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
                   {c.type === "group" && <UsersIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                   {conversationLabel(c)}
@@ -492,6 +589,7 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
           <>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <button onClick={() => setMobilePane("list")} className="md:hidden -ml-1 text-muted-foreground hover:text-foreground cursor-pointer p-1"><ArrowLeft className="h-4 w-4" /></button>
+              {active.type === "external" && <Building2 className="h-4 w-4 text-indigo-400" />}
               {active.type === "broadcast" && <Megaphone className="h-4 w-4 text-amber-400" />}
               {active.type === "group" && <UsersIcon className="h-4 w-4 text-muted-foreground" />}
               <p className="text-foreground font-medium truncate">{conversationLabel(active)}</p>
@@ -593,6 +691,8 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
               </form>
             ) : active.type === "broadcast" ? (
               <div className="p-3 border-t border-border text-center text-muted-foreground text-xs">Only a Super Admin can post in this announcement channel.</div>
+            ) : active.type === "external" ? (
+              <div className="p-3 border-t border-border text-center text-muted-foreground text-xs">Only a Super Admin can post in this external conversation.</div>
             ) : (
               <div className="p-3 border-t border-border text-center text-muted-foreground text-xs">This conversation is blocked — no new messages can be sent.</div>
             )}
@@ -606,6 +706,14 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
           isSuperAdmin={isSuperAdmin}
           onClose={() => setShowNew(false)}
           onCreated={(id) => { setShowNew(false); refreshConversations(); selectConversation(id); }}
+        />
+      )}
+
+      {showNewExternal && (
+        <NewExternalConversationModal
+          schools={childCompanies}
+          onClose={() => setShowNewExternal(false)}
+          onCreated={(id) => { setShowNewExternal(false); refreshConversations(); selectConversation(id); }}
         />
       )}
 

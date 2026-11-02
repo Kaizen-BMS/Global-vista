@@ -49,8 +49,9 @@ export async function getSidebarBadgeCounts(session) {
     pool.query(
       `SELECT COUNT(*) AS n FROM messages m
        JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
-       WHERE m.company_id = ? AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
-      [session.id, session.company_id, session.id]
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE (c.company_id = ? OR c.counterparty_company_id = ?) AND m.sender_id != ? AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01')`,
+      [session.id, session.company_id, session.company_id, session.id]
     ),
     // Every employee's OWN actionable documents — required types they're
     // missing, or that a reviewer sent back — regardless of whether they

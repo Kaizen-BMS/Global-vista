@@ -6,6 +6,7 @@ import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 const QUERY_FORMS_HREF = "/workspace/lead-forms";
 const LEADS_NAV_HREF = "/workspace/lead-management";
+const LEADS_OVERVIEW_HREF = "/workspace/leads-overview";
 const REPORTS_HREF = "/workspace/reports";
 const GUIDE_HREF = "/workspace/guide";
 
@@ -21,6 +22,11 @@ export async function getVisibleNavItems(session) {
     // Reports is sales-CRM reporting (lead conversion, revenue, etc.) — not
     // relevant to a school's counselling workflow.
     if (item.href === REPORTS_HREF && session.is_child_company) continue;
+    // Only a company the Platform Operator has granted
+    // can_create_child_companies to (e.g. Global Vista Educators) ever
+    // sees the combined cross-school leads view — same gate
+    // getSchoolsOverview/listAggregatedSchoolLeads enforce server-side too.
+    if (item.href === LEADS_OVERVIEW_HREF && !session.can_create_child_companies) continue;
     // Inverse of every other rule here — the User Guide only exists for
     // schools, so it's hidden for every other company instead.
     if (item.href === GUIDE_HREF && !session.is_child_company) continue;

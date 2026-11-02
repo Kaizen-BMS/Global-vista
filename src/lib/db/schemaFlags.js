@@ -91,6 +91,9 @@ export async function hasPartnersSchema() { return tableExists("partners"); }
 export async function hasMessageEditingSchema() { return columnExists("messages", "edited_at"); }
 export async function hasBlockedUsersSchema() { return tableExists("blocked_users"); }
 export async function hasAnnouncementDismissalsSchema() { return tableExists("announcement_dismissals"); }
+/** GVE↔school external messaging migration — counterparty_company_id lands
+ * on conversations, type gets an 'external' value added to its ENUM. */
+export async function hasExternalMessagingSchema() { return columnExists("conversations", "counterparty_company_id"); }
 
 export async function hasLeadFieldSectionsSchema() { return tableExists("lead_field_sections"); }
 export async function hasLeadFieldLayoutSchema() { return tableExists("lead_field_layout"); }
