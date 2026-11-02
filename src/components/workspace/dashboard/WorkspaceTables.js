@@ -1,5 +1,7 @@
+"use client";
+import { useState } from "react";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, UserPlus, CheckCircle2, LogIn, Activity, AlertTriangle, Clock, UploadCloud } from "lucide-react";
+import { Plus, Pencil, Trash2, UserPlus, CheckCircle2, LogIn, Activity, AlertTriangle, Clock, UploadCloud, ChevronDown } from "lucide-react";
 import { formatDateTime, formatDate } from "@/lib/helpers/dateFormat";
 
 function actionIcon(action = "") {
@@ -149,17 +151,31 @@ export function UpcomingAnniversariesTable({ people }) {
 }
 
 export function RecentLoginsTable({ logins, timezone }) {
+  const [open, setOpen] = useState(false);
   return (
-    <TableCard title="Recent Logins" empty={!logins.length}>
-      <div className="divide-y divide-border">
-        {logins.map((l) => (
-          <div key={l.id} className="flex items-center justify-between py-2.5">
-            <p className="text-foreground text-sm">{l.name}</p>
-            <span className="text-muted-foreground text-xs">{formatDateTime(l.created_at, timezone)}</span>
-          </div>
-        ))}
-      </div>
-    </TableCard>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-5 py-3.5 cursor-pointer hover:bg-muted/40 transition">
+        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+        <p className="text-foreground font-medium flex-1 text-left">Recent Logins</p>
+        <span className="text-muted-foreground text-xs">({logins.length})</span>
+      </button>
+      {open && (
+        <div className="px-5 pb-4 border-t border-border">
+          {logins.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-6">No data yet</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {logins.map((l) => (
+                <div key={l.id} className="flex items-center justify-between py-2.5">
+                  <p className="text-foreground text-sm">{l.name}</p>
+                  <span className="text-muted-foreground text-xs">{formatDateTime(l.created_at, timezone)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

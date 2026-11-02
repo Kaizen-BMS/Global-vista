@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { LogOut, User, Settings, Check, Repeat, Loader2, Building2 } from "lucide-react";
 import { apiFetch } from "@/components/shared/apiClient";
 import FloatingPanel from "@/components/shared/FloatingPanel";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 export default function UserMenu({ session, scope = "workspace" }) {
   const [open, setOpen] = useState(false);
@@ -39,7 +40,7 @@ export default function UserMenu({ session, scope = "workspace" }) {
       const res = await apiFetch("/api/core/session/switch-role", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to switch role.");
-      toast.success(`Switched to ${data.role.roleName}.`);
+      toast.success(`Switched to ${displayRoleName(data.role.roleName, data.role.roleSlug, session?.is_child_company)}.`);
       setOpen(false);
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setSwitching(null); }
@@ -95,7 +96,7 @@ export default function UserMenu({ session, scope = "workspace" }) {
                 className="w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-sm text-popover-foreground/80 hover:bg-accent hover:text-popover-foreground transition-colors cursor-pointer disabled:opacity-60 text-left"
               >
                 {r.role_id === session?.role_id ? <Check className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" /> : <span className="w-3.5 shrink-0" />}
-                <span className="flex-1 min-w-0 text-left">{r.name}</span>
+                <span className="flex-1 min-w-0 text-left">{displayRoleName(r.name, r.slug, session?.is_child_company)}</span>
                 {switching === r.role_id && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 mt-0.5" />}
               </button>
             ))}

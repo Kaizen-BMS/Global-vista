@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount } from "@/lib/helpers/permissions";
+import { displayRoleName } from "@/lib/helpers/roleDisplay";
 
 export async function listUserRoles(session, userId) {
   const [[user]] = await pool.query(`SELECT id FROM users WHERE id=? AND company_id=? AND is_deleted=0`, [userId, session.company_id]);
@@ -100,7 +101,7 @@ export async function switchActiveRole(session, roleId) {
       userId: session.id, module: "users", action: "role_switch", entityType: "user", entityId: session.id,
       companyId: session.company_id, description: `${session.name} (Super Admin) switched active role to "${role.name}"`,
     });
-    return { roleId: role.role_id, roleSlug: role.slug, roleName: role.name };
+    return { roleId: role.role_id, roleSlug: role.slug, roleName: displayRoleName(role.name, role.slug, session.is_child_company) };
   }
 
   const [[assignment]] = await pool.query(
@@ -113,5 +114,5 @@ export async function switchActiveRole(session, roleId) {
     userId: session.id, module: "users", action: "role_switch", entityType: "user", entityId: session.id,
     companyId: session.company_id, description: `${session.name} switched active role to "${assignment.name}"`,
   });
-  return { roleId: assignment.role_id, roleSlug: assignment.slug, roleName: assignment.name };
+  return { roleId: assignment.role_id, roleSlug: assignment.slug, roleName: displayRoleName(assignment.name, assignment.slug, session.is_child_company) };
 }
