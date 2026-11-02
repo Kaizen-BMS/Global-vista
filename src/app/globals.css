@@ -62,11 +62,19 @@
  * this up automatically.
  */
 :root {
-  /* Sitewide typeface — see layout.js for the actual Manrope font-face
-     load. Aliasing these existing variable names means every component
-     already using font-body/font-display (marketing site) or the
-     inherited font-sans (CRM workspace, Platform Console) picks up
-     Manrope automatically, with no per-component class changes. */
+  /* Sitewide typeface — loaded via a plain Google Fonts <link> in
+     layout.js's <head>, not next/font/google: that loader fetches font
+     files from Google at BUILD time, which breaks the production build
+     outright on any host whose build step can't reach fonts.googleapis.com/
+     fonts.gstatic.com (confirmed failure mode, not a one-off). A <link>
+     tag instead loads both typefaces at runtime, in the browser, so the
+     build itself never depends on that network call. Aliasing these
+     existing variable names means every component already using
+     font-body/font-display (marketing site) or the inherited font-sans
+     (CRM workspace, Platform Console) picks up Manrope automatically,
+     with no per-component class changes. */
+  --font-manrope: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-source-serif: "Source Serif 4", ui-serif, Georgia, serif;
   --font-inter: var(--font-manrope);
   --font-instrument: var(--font-manrope);
   --font-sans: var(--font-manrope);

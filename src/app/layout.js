@@ -1,4 +1,3 @@
-import { Manrope, Source_Serif_4 } from "next/font/google";
 import Script from "next/script";
 import { Toaster } from "sonner";
 
@@ -9,25 +8,16 @@ import { ThemeProvider } from "@/components/shared/ThemeProvider";
 // One typeface, sitewide (marketing pages, CRM workspace, Platform Console)
 // — headings use the 700/800 weights, body copy uses 400/500, per the
 // existing component-level font-weight utility classes already in use
-// throughout the app. Exposed as --font-manrope here; globals.css aliases
-// the marketing site's existing --font-inter/--font-instrument variables
-// and the CRM's --font-sans variable to it, so no component file needed to
-// change which font-family class it applies.
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-manrope",
-  weight: ["400", "500", "700", "800"],
-});
-
+// throughout the app. Loaded below via a plain <link> (not next/font/
+// google — see globals.css for why), as --font-manrope; globals.css
+// aliases the marketing site's existing --font-inter/--font-instrument
+// variables and the CRM's --font-sans variable to it, so no component
+// file needed to change which font-family class it applies.
+//
 // Editorial serif for the KaizenBMS Platform marketing homepage's
 // document-style headlines/logotype (see PlatformHome.js) — deliberately
 // its own variable, not aliased into --font-sans, so it's opt-in per
 // element rather than changing typography anywhere else in the app.
-const sourceSerif = Source_Serif_4({
-  subsets: ["latin"],
-  variable: "--font-source-serif",
-  weight: ["400", "600", "700"],
-});
 
 export const metadata = {
   title: "Global Vista Educators | Explore • Educate • Empower",
@@ -52,7 +42,6 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
     >
     <head>
@@ -63,6 +52,11 @@ export default function RootLayout({ children }) {
       __html: `(function(){try{var t=localStorage.getItem('gv:theme')||'dark';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;if(r==='dark')document.documentElement.classList.add('dark');document.documentElement.setAttribute('data-theme',r);}catch(e){}})();`,
     }}
   />
+  {/* Manrope + Source Serif 4 — loaded at runtime in the browser, not at
+      build time (see globals.css for why next/font/google was dropped). */}
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Source+Serif+4:wght@400;600;700&display=swap" />
   {/* Google Analytics */}
   <Script
     src="https://www.googletagmanager.com/gtag/js?id=G-T71M3NLZCH"
