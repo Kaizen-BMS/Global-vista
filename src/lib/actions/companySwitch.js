@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
+import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
 
 // The permanent super-admin account can always switch (unchanged default);
@@ -9,6 +10,16 @@ import { paginate } from "@/lib/helpers/db";
 // Company" (companies.switch) permission in Roles & Permissions.
 async function canSwitchCompanies(session) {
   return isSuperAdminAccount(session) || (await can(session, "companies.switch"));
+}
+
+// Opening one lead from the combined Leads view (a "peek" — see
+// openLeadAcrossCompanies/is_peeking) only needs to be able to see that
+// combined view in the first place, not the full "switch into a whole
+// child company" privilege that companies.switch grants — that stays a
+// separate, higher-trust grant for a deliberate switch via UserMenu or
+// Settings -> Schools.
+async function canPeekIntoLead(session) {
+  return !!session.can_create_child_companies && (await can(session, "leads.view"));
 }
 import { provisionCompany } from "@/lib/platform/actions/provisioning";
 
@@ -39,7 +50,8 @@ export async function listChildCompanies(session) {
 // to reissueSessionWithCompany) — see that function's own comment for
 // what it changes.
 export async function switchIntoChildCompany(session, targetCompanyId, { isPeek = false } = {}) {
-  if (!(await canSwitchCompanies(session))) {
+  const allowed = (await canSwitchCompanies(session)) || (isPeek && (await canPeekIntoLead(session)));
+  if (!allowed) {
     const e = new Error("You don't have permission to switch into a child company.");
     e.status = 403;
     throw e;
@@ -144,7 +156,12 @@ export async function provisionChildCompany(session, { companyName, shortName, a
  * roll up alongside them.
  */
 export async function getSchoolsOverview(session) {
-  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+  // Not re-checked against isSuperAdminAccount here — callers gate that
+  // themselves when it matters (Settings -> Schools, which can create/
+  // switch, is still super-admin-only at the page level); the dashboard's
+  // own "Total Schools" card calls this ungated, same as any other
+  // company's own dashboard stats.
+  if (!session.can_create_child_companies) {
     const e = new Error("Not authorized.");
     e.status = 403;
     throw e;
@@ -168,9 +185,12 @@ export async function getSchoolsOverview(session) {
 }
 
 /** Shared by every getAggregated-prefixed function below — same gate,
- * same id list, as listAggregatedSchoolLeads/getSchoolsOverview. */
+ * same id list, as listAggregatedSchoolLeads/getSchoolsOverview. Not
+ * gated on isSuperAdminAccount — callers are the Dashboard (ungated, same
+ * as any other company's own dashboard stats) and the Leads page (already
+ * gated on the "leads.view" permission before it ever calls this). */
 async function aggregatedCompanyIds(session) {
-  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+  if (!session.can_create_child_companies) {
     const e = new Error("Not authorized.");
     e.status = 403;
     throw e;
@@ -269,7 +289,11 @@ export async function getAggregatedLeadsByStage(session) {
  * a second read-only view bolted on top.
  */
 export async function listAggregatedSchoolLeads(session, { schoolId = null, search = null, page = 1, pageSize = 20 } = {}) {
-  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+  // Not gated on isSuperAdminAccount — the Leads page (its only caller
+  // besides the Dashboard's own ungated "Recent Leads" widget) already
+  // requires "leads.view" before reaching here, same as every other role
+  // that's allowed onto that page for a regular company.
+  if (!session.can_create_child_companies) {
     const e = new Error("Not authorized.");
     e.status = 403;
     throw e;
@@ -290,6 +314,15 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
 
   const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
   const params = [ids];
+  // Below Super Admin/Admin/Management, a GVE employee only sees leads
+  // nobody's claimed yet plus whatever's assigned to them personally —
+  // same "yours, or still up for grabs" rule as a regular company's own
+  // Leads page (getVisibleLeadFilter), applied across every school's
+  // leads here instead of just one company's own.
+  if (!canViewAllRecords(session)) {
+    where.push(`(l.assigned_to = ? OR l.assigned_to IS NULL)`);
+    params.push(session.id);
+  }
   if (search) {
     where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ?)`);
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
