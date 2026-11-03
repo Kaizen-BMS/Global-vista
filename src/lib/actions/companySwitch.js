@@ -35,7 +35,10 @@ export async function listChildCompanies(session) {
 
 // Re-validates everything server-side — the client's targetCompanyId is
 // never trusted on its own, mirroring switchActiveRole's own discipline.
-export async function switchIntoChildCompany(session, targetCompanyId) {
+// `isPeek` is just carried through to the caller (the API route hands it
+// to reissueSessionWithCompany) — see that function's own comment for
+// what it changes.
+export async function switchIntoChildCompany(session, targetCompanyId, { isPeek = false } = {}) {
   if (!(await canSwitchCompanies(session))) {
     const e = new Error("You don't have permission to switch into a child company.");
     e.status = 403;
@@ -76,7 +79,7 @@ export async function switchIntoChildCompany(session, targetCompanyId) {
     companyId: session.company_id, description: `${session.name} switched into child company "${child.name}"`,
   });
 
-  return { companyId: child.id, roleId: role.id, roleSlug: "super-admin" };
+  return { companyId: child.id, roleId: role.id, roleSlug: "super-admin", isPeek };
 }
 
 export async function switchBackToHomeCompany(session) {

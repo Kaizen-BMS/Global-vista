@@ -10,8 +10,10 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
   if (!body.companyId) return badRequest("companyId is required.");
   // switchIntoChildCompany re-validates companyId against this session's
   // own parent_company_id relationship — the client's companyId is never
-  // trusted on its own.
-  const result = await switchIntoChildCompany(session, body.companyId);
+  // trusted on its own. `peek: true` is GVE opening one of its schools'
+  // leads from its own combined view (see openLeadAcrossCompanies) — a
+  // deliberate switch via UserMenu/SchoolsOverview never sends it.
+  const result = await switchIntoChildCompany(session, body.companyId, { isPeek: !!body.peek });
   await reissueSessionWithCompany(session, result);
   return ok({ company: result });
 }));

@@ -55,10 +55,22 @@ export default async function WorkspaceLayout({ children }) {
     );
   }
 
+  // GVE "peeking" into one of its schools' leads (see openLeadAcrossCompanies)
+  // is still, underneath, a real switch into that school's own session —
+  // every data query on the page below is correctly scoped to it. But the
+  // CHROME (sidebar nav, branding, the "Viewing X" banner) should keep
+  // showing GVE's own, not visibly flip to the school's, which is what
+  // navSession/brandingCompanyId below are for. A DELIBERATE switch via
+  // UserMenu/SchoolsOverview never sets is_peeking, so it's unaffected —
+  // that one is SUPPOSED to visibly show you've switched.
+  const isPeeking = !!session.is_peeking;
+  const navSession = isPeeking ? { ...session, company_id: session.home_company_id, is_child_company: false, can_create_child_companies: true } : session;
+  const brandingCompanyId = isPeeking ? session.home_company_id : session.company_id;
+
   const [navItems, baseCompany, platformBranding, extendedBranding, systemSettings, canViewLeads, guideEntries, homeCompany] = await Promise.all([
-    getVisibleNavItems(session), getCurrentCompany(session.company_id), getPlatformSettingsByGroup("branding"), getSettingsByGroup(session, "branding"),
-    getSettingsByGroup(session, "system"), can(session, "leads.view"), getVisibleGuideEntries(session),
-    session.home_company_id ? getCurrentCompany(session.home_company_id) : Promise.resolve(null),
+    getVisibleNavItems(navSession), getCurrentCompany(brandingCompanyId), getPlatformSettingsByGroup("branding"), getSettingsByGroup({ company_id: brandingCompanyId }, "branding"),
+    getSettingsByGroup(session, "system"), can(session, "leads.view"), getVisibleGuideEntries(navSession),
+    session.home_company_id && !isPeeking ? getCurrentCompany(session.home_company_id) : Promise.resolve(null),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const hour12 = systemSettings.time_format !== "24h";
@@ -78,7 +90,7 @@ export default async function WorkspaceLayout({ children }) {
           {canViewLeads && <FollowupReminderWatcher />}
           <Sidebar session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} />
           <div className="flex-1 flex flex-col min-w-0">
-            {session.home_company_id && <ChildCompanyBanner companyName={company?.name} homeCompanyName={homeCompany?.name} />}
+            {session.home_company_id && !isPeeking && <ChildCompanyBanner companyName={company?.name} homeCompanyName={homeCompany?.name} />}
             <Topbar company={company} session={session} />
             <main className="flex-1 overflow-y-auto p-4 md:p-6">
               {session.must_change_password ? <div className="max-w-md mx-auto mt-12"><h1 className="text-xl font-semibold text-foreground mb-1">Set a New Password</h1><ChangePasswordForm forced /></div> : <PageTransition>{children}</PageTransition>}
@@ -86,7 +98,7 @@ export default async function WorkspaceLayout({ children }) {
           </div>
           {!session.must_change_password && <FeatureGuideWidget entries={guideEntries} />}
           {!session.must_change_password && <OnboardingTour isChildCompany={session.is_child_company} />}
-          <PeekSchoolWatcher />
+          <PeekSchoolWatcher isPeeking={isPeeking} />
         </div>
       </MobileNavProvider>
     </TimezoneProvider>

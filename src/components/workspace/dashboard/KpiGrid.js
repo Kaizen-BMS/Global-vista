@@ -39,8 +39,12 @@ export function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
   );
 }
 
-export function CrmKpiGrid({ crm, isChildCompany = false }) {
+/** `schoolCount` is only ever passed on GVE's own dashboard (every other
+ * company omits it) — adds a "Total Schools" card up front, since that's
+ * the one number this grid otherwise has no room for. */
+export function CrmKpiGrid({ crm, isChildCompany = false, schoolCount = null }) {
   const cards = [
+    ...(schoolCount === null ? [] : [{ label: "Total Schools", value: schoolCount, icon: "building", accent: "purple", href: "/workspace/settings/schools" }]),
     { label: isChildCompany ? "Total Students" : "Total Leads", value: crm.totalLeads, icon: "contact", accent: "indigo", href: "/workspace/lead-management" },
     ...(isChildCompany ? [] : [{ label: "Assigned to Me", value: crm.myLeads, icon: "users", accent: "blue", href: "/workspace/lead-management?assignedTo=me" }]),
     { label: "Unassigned", value: crm.unassignedLeads, icon: "sparkles", accent: crm.unassignedLeads > 0 ? "yellow" : "neutral", href: "/workspace/lead-management?assignedTo=unassigned" },

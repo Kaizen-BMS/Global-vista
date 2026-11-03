@@ -30,6 +30,7 @@ import { isModuleEnabledForCompany, getSubscriptionDetails, getCurrentCompany } 
 import { listSubscriptionPayments } from "@/lib/platform/actions/subscriptionBilling";
 import QuickActionsCard from "@/components/cards/QuickActionsCard";
 import CollapsibleLogGroup from "@/components/shared/CollapsibleLogGroup";
+import CollapsibleSection from "@/components/shared/CollapsibleSection";
 import AnnouncementBanner from "@/components/workspace/dashboard/AnnouncementBanner";
 import SchoolBanner from "@/components/workspace/dashboard/SchoolBanner";
 import StorageUsageWidget from "@/components/workspace/dashboard/StorageUsageWidget";
@@ -80,7 +81,7 @@ export default async function DashboardPage({ searchParams }) {
     recentActivity, unreadNotifications, branding, announcement, parentAnnouncement,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
     employeePayments, superAdminPayments, subscriptionDetails, subscriptionPayments,
-    schoolCompany,
+    schoolCompany, parentCompany,
   ] = await Promise.all([
     getDashboardStats(session),
     isGveParent ? getAggregatedLeadDashboardStats(session) : getLeadDashboardStats(session),
@@ -113,6 +114,7 @@ export default async function DashboardPage({ searchParams }) {
     isAdmin ? getSubscriptionDetails(session.company_id) : null,
     isAdmin ? listSubscriptionPayments(session) : [],
     isChildCompany ? getCurrentCompany(session.company_id) : null,
+    isChildCompany && session.parent_company_id ? getCurrentCompany(session.parent_company_id) : null,
   ]);
 
   // Platform subscription billing — what THIS company has paid the
@@ -125,7 +127,7 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="space-y-8">
-      {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} logoUrl={branding.sidebarLogoUrl || branding.logoUrl} />}
+      {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} logoUrl={branding.sidebarLogoUrl || branding.logoUrl} parentCompanyName={parentCompany?.name} />}
       {parentAnnouncement && <AnnouncementBanner announcement={parentAnnouncement} label={parentAnnouncement.companyName || "Parent Company"} accent="indigo" />}
       <AnnouncementBanner announcement={announcement} />
 
@@ -145,13 +147,18 @@ export default async function DashboardPage({ searchParams }) {
 
       <section className="space-y-4">
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
-        <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} />
-        {!isChildCompany && (
-          <WorkspaceCrmChartsSection
-            monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService}
-            isGveParent={isGveParent} leadsBySchool={schoolsOverview?.schools}
-          />
-        )}
+        <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} schoolCount={isGveParent ? schoolsOverview?.schools?.length ?? 0 : null} />
+        {!isChildCompany && (() => {
+          const charts = (
+            <WorkspaceCrmChartsSection
+              monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService}
+              isGveParent={isGveParent} leadsBySchool={schoolsOverview?.schools?.filter((s) => s.leadCount > 0)}
+            />
+          );
+          return isGveParent ? (
+            <CollapsibleSection title="Charts" persistKey="gve-dashboard-charts">{charts}</CollapsibleSection>
+          ) : charts;
+        })()}
         {isChildCompany ? (
           <TeamPerformanceByStreamTable team={teamPerformance} />
         ) : (
@@ -237,7 +244,7 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
 
-      {!isChildCompany && <QuickActionsCard isChildCompany={isChildCompany} />}
+      {!isChildCompany && !isGveParent && <QuickActionsCard isChildCompany={isChildCompany} />}
     </div>
   );
 }

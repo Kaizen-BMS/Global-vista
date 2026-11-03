@@ -122,7 +122,7 @@ export async function reissueSessionWithRole(payload, roleId, roleSlug) {
 // at all when already switched, so multi-hop child-to-child switching
 // without returning home first is structurally impossible, not just
 // discouraged.
-export async function reissueSessionWithCompany(payload, { companyId, roleId, roleSlug }) {
+export async function reissueSessionWithCompany(payload, { companyId, roleId, roleSlug, isPeek = false }) {
   const { iat, exp, ...rest } = payload;
   const alreadySwitched = !!rest.home_company_id;
   const home = alreadySwitched
@@ -135,7 +135,15 @@ export async function reissueSessionWithCompany(payload, { companyId, roleId, ro
   // would wrongly deny an employee who switched in via the companies.switch
   // permission rather than the literal super-admin account. Stashed as
   // home_is_super_admin above so exiting restores the real identity exactly.
-  const token = await new SignJWT({ ...rest, ...home, company_id: companyId, role_id: roleId, role_slug: roleSlug, is_super_admin: true })
+  //
+  // is_peeking: true only for GVE opening one of its schools' leads from
+  // its own combined view (see openLeadAcrossCompanies) — NOT for a
+  // deliberate full switch via UserMenu/SchoolsOverview, which never
+  // passes isPeek. workspace/layout.js reads this to keep showing GVE's
+  // own sidebar/branding (and skip the "Viewing X" banner) while the data
+  // underneath is genuinely scoped to the switched-into school — placed
+  // after `...rest` so a stale value from an earlier switch never lingers.
+  const token = await new SignJWT({ ...rest, ...home, company_id: companyId, role_id: roleId, role_slug: roleSlug, is_super_admin: true, is_peeking: !!isPeek })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
   const cookieStore = await cookies();
   const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
@@ -149,7 +157,7 @@ export async function reissueSessionWithCompany(payload, { companyId, roleId, ro
 export async function reissueSessionExitingToHome(payload) {
   const { iat, exp, home_company_id, home_role_id, home_role_slug, home_is_super_admin, ...rest } = payload;
   if (!home_company_id) return;
-  const token = await new SignJWT({ ...rest, company_id: home_company_id, role_id: home_role_id, role_slug: home_role_slug, is_super_admin: home_is_super_admin })
+  const token = await new SignJWT({ ...rest, company_id: home_company_id, role_id: home_role_id, role_slug: home_role_slug, is_super_admin: home_is_super_admin, is_peeking: false })
     .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(exp).sign(getSecret());
   const cookieStore = await cookies();
   const maxAge = Math.max(1, exp - Math.floor(Date.now() / 1000));
