@@ -122,3 +122,61 @@ export const USER_GUIDE_EN = [
 ];
 
 export const USER_GUIDE_FOOTER_EN = "Need more help? Use Support & Feedback in the left-hand menu to reach us.";
+
+/** Global Vista Educators' OWN guide — the combined, cross-school view,
+ * not a school's day-to-day student workflow (that's USER_GUIDE_EN
+ * above, unchanged). One group is enough; GVE's whole team sees the
+ * same things. */
+export const GVE_GUIDE_EN = [
+  {
+    id: "everyday",
+    title: "Everyday Use — For the Global Vista Educators Team",
+    sections: [
+      {
+        id: "welcome",
+        title: "Welcome to the Global Vista Educators Workspace",
+        body: [
+          "This is where you oversee every school in the Global Vista Educators network — their students, their activity, and your own direct conversations with them, all in one place.",
+          "A specific school's own day-to-day work still happens inside that school's own workspace — this one is the combined, bird's-eye view across all of them.",
+          "Use the language buttons above to read this guide in English, Hindi, or Punjabi.",
+        ],
+      },
+      {
+        id: "dashboard",
+        title: "Your Dashboard",
+        body: [
+          "Total Schools, Total Leads, Unassigned, and Today's Follow-ups are combined across every school — not just your own.",
+          "The Charts section (collapsed by default — click to expand) shows Leads by School, by Source, and by Stage, all combined.",
+          "Recent Leads and Recent Activity are collapsed by default for the same reason — click to open whichever one you need.",
+        ],
+      },
+      {
+        id: "leads",
+        title: "Leads — Every School, Combined",
+        body: [
+          "The Leads page lists every school's leads together, plus anything that came to Global Vista Educators directly — labeled \"Direct Lead\" instead of a school's name.",
+          "Use the School dropdown next to Search to narrow the list down to one school, or to \"Direct Leads\" only.",
+          "Click any lead to open its real profile — you'll see Notes, Follow-ups, and everything else exactly as that school would, and you can add to it. You never have to manually \"switch\" into the school yourself; it happens automatically, and you're brought straight back here the moment you're done.",
+          "A lead that came to Global Vista Educators directly (not through any school) is added the exact same way as any other lead, from the \"Add Lead\" button on this same page.",
+        ],
+      },
+      {
+        id: "messages",
+        title: "Messages — Internal & External",
+        body: [
+          "\"Internal\" is for chatting with your own Global Vista Educators team.",
+          "\"External\" is for messaging a school directly — pick one or more schools and write one message; each school gets its own private reply, never a shared conversation.",
+          "A school's Principal can also message you first — their message shows up in your own External tab.",
+        ],
+      },
+      {
+        id: "schools",
+        title: "Managing Your Schools",
+        body: [
+          "Settings → Schools lists every school in your network, with its own lead and employee counts.",
+          "From there you can switch into a specific school's own workspace to manage it directly, or create a new school if you're allowed to.",
+        ],
+      },
+    ],
+  },
+];

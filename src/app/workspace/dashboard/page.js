@@ -125,8 +125,15 @@ export default async function DashboardPage({ searchParams }) {
   const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
   const lastPayment = completedPayments[0] || null; // already ORDER BY created_at DESC
 
+  // GVE's own dashboard is deliberately tighter than every other
+  // company's — fewer, more collapsed sections, since it's an overview
+  // dashboard for an org that doesn't run its own day-to-day leads.
+  const outerGap = isGveParent ? "space-y-5" : "space-y-8";
+  const sectionGap = isGveParent ? "space-y-3" : "space-y-4";
+  const gridGap = isGveParent ? "gap-3" : "gap-4";
+
   return (
-    <div className="space-y-8">
+    <div className={outerGap}>
       {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} logoUrl={branding.sidebarLogoUrl || branding.logoUrl} parentCompanyName={parentCompany?.name} />}
       {parentAnnouncement && <AnnouncementBanner announcement={parentAnnouncement} label={parentAnnouncement.companyName || "Parent Company"} accent="indigo" />}
       <AnnouncementBanner announcement={announcement} />
@@ -145,7 +152,7 @@ export default async function DashboardPage({ searchParams }) {
         />
       </div>
 
-      <section className="space-y-4">
+      <section className={sectionGap}>
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
         <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} schoolCount={isGveParent ? schoolsOverview?.schools?.length ?? 0 : null} />
         {!isChildCompany && (() => {
@@ -161,12 +168,17 @@ export default async function DashboardPage({ searchParams }) {
         })()}
         {isChildCompany ? (
           <TeamPerformanceByStreamTable team={teamPerformance} />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <RecentLeadsTable leads={recentLeads} aggregated={isGveParent} homeCompanyId={session.home_company_id} gveCompanyId={session.company_id} />
-            <TeamPerformanceTable team={teamPerformance} />
-          </div>
-        )}
+        ) : (() => {
+          const recent = (
+            <div className={`grid grid-cols-1 lg:grid-cols-2 ${gridGap}`}>
+              <RecentLeadsTable leads={recentLeads} aggregated={isGveParent} homeCompanyId={session.home_company_id} gveCompanyId={session.company_id} />
+              <TeamPerformanceTable team={teamPerformance} />
+            </div>
+          );
+          return isGveParent ? (
+            <CollapsibleSection title="Recent Leads & Team Performance" persistKey="gve-dashboard-recent-leads">{recent}</CollapsibleSection>
+          ) : recent;
+        })()}
       </section>
 
       {isAdmin && subscriptionDetails?.hasSubscription && (
@@ -211,7 +223,7 @@ export default async function DashboardPage({ searchParams }) {
           <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
       ) : (
-        <section className="space-y-4">
+        <section className={sectionGap}>
           <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
           <OrgKpiGrid
             activeUsers={stats.activeUsers}
@@ -223,8 +235,14 @@ export default async function DashboardPage({ searchParams }) {
             recentLoginCount={recentLogins.length}
           />
           <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <RecentActivityTable logs={recentActivity} timezone={timezone} />
+          <div className={`grid grid-cols-1 lg:grid-cols-3 ${gridGap}`}>
+            {isGveParent ? (
+              <CollapsibleSection title="Recent Activity" persistKey="gve-dashboard-recent-activity">
+                <RecentActivityTable logs={recentActivity} timezone={timezone} />
+              </CollapsibleSection>
+            ) : (
+              <RecentActivityTable logs={recentActivity} timezone={timezone} />
+            )}
             <UpcomingAnniversariesTable people={anniversaries} />
             <RecentLoginsTable logins={recentLogins} timezone={timezone} />
           </div>

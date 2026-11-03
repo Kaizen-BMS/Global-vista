@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Languages, Compass } from "lucide-react";
-import { USER_GUIDE_LANGUAGES, USER_GUIDE_CONTENT, USER_GUIDE_FOOTER } from "@/lib/content/userGuide";
+import { USER_GUIDE_LANGUAGES, USER_GUIDE_CONTENT, GVE_GUIDE_CONTENT, USER_GUIDE_FOOTER } from "@/lib/content/userGuide";
 
 const STORAGE_KEY = "gv:guide:lang";
 
@@ -23,11 +23,15 @@ function GuideSection({ title, body, defaultOpen = false }) {
   );
 }
 
-/** Schools-only User Guide — language-switchable (English/Hindi/Punjabi),
- * grouped into "Everyday Use" (everyone) and "Oversight & Management"
- * (Chair & Principal). Content lives in src/lib/content/userGuide/, this
- * component just renders + switches language, persisted per-browser. */
-export default function UserGuideClient() {
+/** User Guide — language-switchable (English/Hindi/Punjabi). For schools
+ * (audience="school", the default) it's grouped into "Everyday Use"
+ * (everyone) and "Oversight & Management" (Chair & Principal); for Global
+ * Vista Educators itself (audience="gve") it covers the combined,
+ * cross-school workspace instead (GVE_GUIDE_CONTENT, see
+ * src/lib/content/userGuide/en.js). Content lives in
+ * src/lib/content/userGuide/, this component just picks the right set and
+ * renders + switches language, persisted per-browser. */
+export default function UserGuideClient({ audience = "school" }) {
   const router = useRouter();
   const [lang, setLang] = useState("en");
 
@@ -43,7 +47,8 @@ export default function UserGuideClient() {
     try { localStorage.setItem(STORAGE_KEY, code); } catch { /* ignore */ }
   }
 
-  const groups = USER_GUIDE_CONTENT[lang] || USER_GUIDE_CONTENT.en;
+  const content = audience === "gve" ? GVE_GUIDE_CONTENT : USER_GUIDE_CONTENT;
+  const groups = content[lang] || content.en;
   const footer = USER_GUIDE_FOOTER[lang] || USER_GUIDE_FOOTER.en;
 
   // The tour's own sidebar targets exist on every workspace page, but the

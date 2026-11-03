@@ -18,25 +18,43 @@ const LEAD_DETAIL_RE = /^\/workspace\/lead-management\/\d+(\/|$)/;
  * from that lead, so there's no manual "Exit to Global Vista Educators"
  * click needed for the common case of just viewing/working one lead and
  * moving on.
+ *
+ * Browser back/forward (popstate) is special-cased: it always lands you
+ * on the exact combined-Leads-list URL (filters, selected school, and
+ * all) the peek started from, rather than trusting wherever the browser
+ * happens to land — a deliberate click elsewhere (Dashboard, another nav
+ * item) is NOT overridden this way, it just gets a plain refresh against
+ * the now-exited session, since that destination genuinely IS where the
+ * user chose to go.
  */
 export default function PeekSchoolWatcher({ isPeeking = false }) {
   const pathname = usePathname();
   const router = useRouter();
   const prevPathRef = useRef(pathname);
+  const viaPopStateRef = useRef(false);
+
+  useEffect(() => {
+    function onPopState() { viaPopStateRef.current = true; }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     const prev = prevPathRef.current;
+    const wasPopState = viaPopStateRef.current;
+    viaPopStateRef.current = false;
     prevPathRef.current = pathname;
     if (prev === pathname) return;
     if (!isPeeking) return;
     if (LEAD_DETAIL_RE.test(pathname)) return; // still inside the same lead (e.g. its /edit page) — stay switched
 
-    // The new page already rendered (navigation happened before this
-    // effect runs) using the still-switched session — router.refresh()
-    // re-renders it against the now-exited one, same as every other
-    // switch/exit action in this app already does.
+    let returnTo = null;
+    try { returnTo = sessionStorage.getItem("gv:peekReturnTo"); sessionStorage.removeItem("gv:peekReturnTo"); } catch { /* ignore */ }
     apiFetch("/api/core/session/switch-company", { method: "DELETE" })
-      .then(() => router.refresh())
+      .then(() => {
+        if (wasPopState && returnTo) router.push(returnTo);
+        else router.refresh();
+      })
       .catch(() => { /* manual Exit banner still covers this */ });
   }, [pathname, isPeeking, router]);
 

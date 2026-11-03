@@ -22,8 +22,9 @@ export async function getVisibleNavItems(session) {
     // relevant to a school's counselling workflow.
     if (item.href === REPORTS_HREF && session.is_child_company) continue;
     // Inverse of every other rule here — the User Guide only exists for
-    // schools, so it's hidden for every other company instead.
-    if (item.href === GUIDE_HREF && !session.is_child_company) continue;
+    // schools and for Global Vista Educators itself, so it's hidden for
+    // every other company instead.
+    if (item.href === GUIDE_HREF && !session.is_child_company && !session.can_create_child_companies) continue;
     // Relabel the Leads nav entry itself for a sub-company, same source
     // every other Lead→Student surface uses.
     if (item.href === LEADS_NAV_HREF && session.is_child_company) {

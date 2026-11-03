@@ -22,6 +22,11 @@ export async function openLeadAcrossCompanies({ router, leadId, companyId, homeC
     const res = await apiFetch("/api/core/session/switch-company", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyId, peek: true }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Failed to switch into that school.");
+    // Remembered so PeekSchoolWatcher.js can land you back on exactly
+    // this URL — filters, selected school, and all — once you leave the
+    // lead, instead of trusting wherever plain browser-back/refresh
+    // happens to go.
+    try { sessionStorage.setItem("gv:peekReturnTo", window.location.pathname + window.location.search); } catch { /* ignore */ }
   }
   router.push(`/workspace/lead-management/${leadId}`);
   router.refresh();
