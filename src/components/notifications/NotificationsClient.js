@@ -6,6 +6,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import { getNotificationCategory, CATEGORY_LABELS } from "@/lib/helpers/notificationCategories";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
 const OTHER_LABEL = "Other";
 
@@ -44,7 +45,7 @@ export default function NotificationsClient({ initialNotifications, initialPrefe
   const [savingPref, setSavingPref] = useState(null);
 
   const visibleCategoryLabels = isChildCompany
-    ? Object.fromEntries(Object.entries(CATEGORY_LABELS).filter(([k]) => !CHILD_HIDDEN_CATEGORIES.has(k)))
+    ? { ...Object.fromEntries(Object.entries(CATEGORY_LABELS).filter(([k]) => !CHILD_HIDDEN_CATEGORIES.has(k))), notify_leads: `${getCrmTerms(true).plural} & Follow-ups` }
     : CATEGORY_LABELS;
 
   const categoriesPresent = useMemo(() => {

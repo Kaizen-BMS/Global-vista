@@ -290,9 +290,15 @@ function EventCard({ event, index, leadId, timezone, canManageFollowups, canMana
   );
 }
 
-export default function ActivityTimeline({ leadId, events, followups = [], meetings = [], notes = [], documents = [], canManageFollowups, canManageNotes }) {
+// Documents/Payments are already-removed features for schools, and
+// Assignments/Status-Changes aren't relevant to a counselling workflow —
+// dead chips left over once those sections went away.
+const CHILD_HIDDEN_TIMELINE_FILTERS = new Set(["documents", "payments", "assignments", "status"]);
+
+export default function ActivityTimeline({ leadId, events, followups = [], meetings = [], notes = [], documents = [], canManageFollowups, canManageNotes, isChildCompany = false }) {
   const router = useRouter();
   const timezone = useTimezone();
+  const visibleFilters = isChildCompany ? TIMELINE_FILTERS.filter((f) => !CHILD_HIDDEN_TIMELINE_FILTERS.has(f.key)) : TIMELINE_FILTERS;
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(new Set());
@@ -357,7 +363,7 @@ export default function ActivityTimeline({ leadId, events, followups = [], meeti
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-5">
-        {TIMELINE_FILTERS.map((f) => (
+        {visibleFilters.map((f) => (
           <button
             key={f.key} onClick={() => setFilter(f.key)}
             className={`px-2.5 py-1 rounded-full text-xs border cursor-pointer transition ${filter === f.key ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300" : "bg-muted/40 border-border text-muted-foreground hover:text-foreground"}`}

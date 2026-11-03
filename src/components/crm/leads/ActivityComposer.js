@@ -3,7 +3,7 @@ import { useState, useEffect, useId, cloneElement } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Loader2, X, CalendarClock, CalendarDays, StickyNote, Phone, Mail, MessageCircle, Sparkles } from "lucide-react";
+import { Loader2, X, CalendarClock, CalendarDays, StickyNote, Phone, Mail, Sparkles } from "lucide-react";
 import { FOLLOWUP_TYPES, FOLLOWUP_DISPOSITIONS, MEETING_TYPES } from "@/lib/modules/crm/constants/leadStages";
 import { apiFetch } from "@/components/shared/apiClient";
 import { refreshSidebarBadges } from "@/components/layout/Sidebar";
@@ -176,17 +176,20 @@ function QuickLogModal({ leadId, activityType, onClose, onSaved }) {
   );
 }
 
+// WhatsApp is deliberately not in this list — LeadHeader already has a
+// WhatsApp icon that opens the real app, and the lead's own WhatsApp tab
+// (LeadWhatsAppPanel) already has its own composer; a third entry point
+// here was pure redundancy, not a school-specific thing.
 const BUTTONS = [
   { key: "followup", label: "Follow-up", icon: CalendarClock },
   { key: "meeting", label: "Meeting", icon: CalendarDays },
   { key: "note", label: "Note", icon: StickyNote },
-  { key: "call", label: "Call", icon: Phone },
+  { key: "call", label: "Call", icon: Phone, schoolHidden: true },
   { key: "email", label: "Email", icon: Mail },
-  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { key: "activity", label: "Activity", icon: Sparkles },
 ];
 
-export default function ActivityComposer({ lead, canManageFollowups, canManageNotes }) {
+export default function ActivityComposer({ lead, canManageFollowups, canManageNotes, isChildCompany = false }) {
   const router = useRouter();
   const [open, setOpen] = useState(null); // "followup" | "meeting" | "note" | "call" | "email" | "activity" | null
 
@@ -199,12 +202,6 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
   function click(key) {
     if (key === "call") { if (lead.phone) window.open(`tel:${lead.phone}`, "_self"); if (canManageFollowups) setOpen("call"); return; }
     if (key === "email") { if (lead.email) window.open(`mailto:${lead.email}`, "_self"); if (canManageFollowups) setOpen("email"); return; }
-    if (key === "whatsapp") {
-      const number = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
-      if (number) window.open(`https://wa.me/${number}`, "_blank");
-      if (canManageFollowups) setOpen("whatsapp");
-      return;
-    }
     setOpen(key);
   }
 
@@ -215,6 +212,7 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
       <p className="text-muted-foreground text-xs mb-2.5">What would you like to do?</p>
       <div className="flex flex-wrap gap-2">
         {BUTTONS.map((b, i) => {
+          if (b.schoolHidden && isChildCompany) return null;
           if ((b.key === "note" && !canManageNotes) || (b.key !== "note" && !canManageFollowups)) return null;
           const Icon = b.icon;
           return (
@@ -235,7 +233,6 @@ export default function ActivityComposer({ lead, canManageFollowups, canManageNo
       {open === "note" && <NoteModal leadId={lead.id} onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "call" && <QuickLogModal leadId={lead.id} activityType="Phone Call" onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "email" && <QuickLogModal leadId={lead.id} activityType="Email" onClose={() => setOpen(null)} onSaved={onSaved} />}
-      {open === "whatsapp" && <QuickLogModal leadId={lead.id} activityType="WhatsApp" onClose={() => setOpen(null)} onSaved={onSaved} />}
       {open === "activity" && <QuickLogModal leadId={lead.id} activityType="Custom" onClose={() => setOpen(null)} onSaved={onSaved} />}
     </div>
   );

@@ -6,6 +6,7 @@ import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadsOverviewFilters from "@/components/crm/leads/LeadsOverviewFilters";
+import OpenLeadLink from "@/components/crm/leads/OpenLeadLink";
 import Pagination from "@/components/shared/Pagination";
 import { Building2 } from "lucide-react";
 
@@ -25,7 +26,7 @@ export default async function LeadsOverviewPage({ searchParams }) {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-foreground">Leads Overview ({result.total})</h1>
-        <p className="text-muted-foreground text-sm mt-1">Every school's leads, combined — plus anything that came to Global Vista Educators directly, labeled Independent. Read-only: open a school's own Lead Management to edit one of its leads.</p>
+        <p className="text-muted-foreground text-sm mt-1">Every school's leads, combined — plus anything that came to Global Vista Educators directly, labeled Independent. Click a row to open it — you'll be switched into that school automatically.</p>
       </div>
 
       <LeadsOverviewFilters schools={result.schools} />
@@ -46,7 +47,7 @@ export default async function LeadsOverviewPage({ searchParams }) {
             {result.leads.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">No leads found.</td></tr>
             ) : result.leads.map((l) => (
-              <tr key={l.id} className="hover:bg-muted/40 transition">
+              <OpenLeadLink key={l.id} leadId={l.id} companyId={l.company_id} homeCompanyId={session.home_company_id} gveCompanyId={session.company_id}>
                 <td className="px-4 py-3 text-foreground font-medium">{l.name}</td>
                 <td className="px-4 py-3 text-muted-foreground">{l.phone || l.email || "—"}</td>
                 <td className="px-4 py-3"><StageBadge stage={l.stage} /></td>
@@ -59,7 +60,7 @@ export default async function LeadsOverviewPage({ searchParams }) {
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{formatDateTime(l.created_at)}</td>
-              </tr>
+              </OpenLeadLink>
             ))}
           </tbody>
         </table>

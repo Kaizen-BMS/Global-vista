@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle, StickyNote, PencilLine, Send } from "lucide-react";
+import { Eye, Phone, Mail, Contact2, UserPlus, UserMinus, Loader2, CheckCircle2, ArrowRightCircle, ArrowLeftCircle, StickyNote, PencilLine, Send, Trash2 } from "lucide-react";
 import StageBadge from "@/components/crm/badges/StageBadge";
 import PriorityBadge from "@/components/crm/badges/PriorityBadge";
 import EmptyState from "@/components/shared/EmptyState";
@@ -16,7 +16,7 @@ import NotesPopover from "@/components/crm/leads/NotesPopover";
 import BulkPreviewEditModal from "@/components/crm/leads/BulkPreviewEditModal";
 import BulkEmailModal from "@/components/crm/leads/BulkEmailModal";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [] }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, canBulkDelete = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [] }) {
   const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const pathname = usePathname();
@@ -38,6 +38,11 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     return idx >= 0 ? stages[idx + 1] || null : null;
   }
 
+  function prevStageFor(stage) {
+    const idx = stages.indexOf(stage);
+    return idx > 0 ? stages[idx - 1] : null;
+  }
+
   async function markStageComplete(id) {
     setStageBusyId(id);
     try {
@@ -55,6 +60,17 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to move to next stage.");
       toast.success("Moved to next stage.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setStageBusyId(null); }
+  }
+
+  async function moveStagePrev(id) {
+    setStageBusyId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/stage-move-back`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to move to previous stage.");
+      toast.success("Moved back a stage.");
       router.refresh();
     } catch (err) { toast.error(err.message); } finally { setStageBusyId(null); }
   }
@@ -80,6 +96,30 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved to their next stage.`);
       setSelected([]); router.refresh();
     } catch { toast.error("Bulk move failed."); } finally { setBulkBusy(false); }
+  }
+
+  async function bulkStageMovePrev() {
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMoveBack", ids: selected }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error();
+      const failed = data.errors?.length || 0;
+      if (failed) toast.error(`${failed} could not be moved back (already on the first stage).`);
+      if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved back a stage.`);
+      setSelected([]); router.refresh();
+    } catch { toast.error("Bulk move back failed."); } finally { setBulkBusy(false); }
+  }
+
+  async function bulkDelete() {
+    if (!confirm(`Delete ${selected.length} ${selected.length === 1 ? terms.singularLower : terms.pluralLower}? This can't be undone.`)) return;
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "delete", ids: selected }) });
+      if (!res.ok) throw new Error();
+      toast.success(`${selected.length} deleted.`);
+      setSelected([]); router.refresh();
+    } catch { toast.error("Bulk delete failed."); } finally { setBulkBusy(false); }
   }
 
   async function submitBulkPreviewUpdate(rows) {
@@ -257,23 +297,35 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       render: (l) => {
         const completed = !!l.stage_completed_at;
         const next = nextStageFor(l.stage);
+        const prev = prevStageFor(l.stage);
         const busy = stageBusyId === l.id;
+        const backBtn = prev && (
+          <button onClick={(e) => { e.stopPropagation(); moveStagePrev(l.id); }} disabled={busy} title={`Move back to ${prev}`} className="flex items-center justify-center h-6 w-6 rounded-md bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground cursor-pointer transition disabled:opacity-60 shrink-0">
+            <ArrowLeftCircle className="h-3.5 w-3.5" />
+          </button>
+        );
         if (!completed) {
           return (
-            <button onClick={(e) => { e.stopPropagation(); markStageComplete(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 cursor-pointer transition disabled:opacity-60">
-              {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Mark Complete
-            </button>
+            <span className="flex items-center gap-1.5">
+              {backBtn}
+              <button onClick={(e) => { e.stopPropagation(); markStageComplete(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 cursor-pointer transition disabled:opacity-60">
+                {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Mark Complete
+              </button>
+            </span>
           );
         }
-        if (!next) return <span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3 w-3" /> Completed</span>;
+        if (!next) return <span className="flex items-center gap-1.5">{backBtn}<span className="flex items-center gap-1 text-emerald-400 text-xs"><CheckCircle2 className="h-3 w-3" /> Completed</span></span>;
         return (
-          <button onClick={(e) => { e.stopPropagation(); moveStageNext(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer transition disabled:opacity-60">
+          <span className="flex items-center gap-1.5">
+            {backBtn}
+            <button onClick={(e) => { e.stopPropagation(); moveStageNext(l.id); }} disabled={busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer transition disabled:opacity-60">
               {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightCircle className="h-3 w-3" />} Move to {next}
             </button>
+          </span>
         );
       },
     }] : []),
-    { key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> },
+    ...(isChildCompany ? [] : [{ key: "priority", label: "Priority", width: 110, sortable: true, render: (l) => <PriorityBadge priority={l.priority} /> }]),
     {
       key: "notes_quick", label: "Notes", width: 90, hideable: false,
       render: (l) => (
@@ -286,7 +338,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   return (
     <div>
-      {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim || canManageNotes) && (
+      {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim || canManageNotes || canBulkDelete) && (
         <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm flex-wrap">
           <span className="text-indigo-300 shrink-0">{selected.length} selected</span>
           {canBulkUpdate && (<>
@@ -333,10 +385,18 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
             <button disabled={bulkBusy} onClick={bulkStageMove} className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">
               <ArrowRightCircle className="h-3.5 w-3.5" /> Move to Next Stage
             </button>
+            <button disabled={bulkBusy} onClick={bulkStageMovePrev} className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60">
+              <ArrowLeftCircle className="h-3.5 w-3.5" /> Move Back
+            </button>
             <button disabled={bulkBusy} onClick={() => setShowBulkEditModal(true)} className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 cursor-pointer disabled:opacity-60">
               <PencilLine className="h-3.5 w-3.5" /> Bulk Edit
             </button>
           </>)}
+          {canBulkDelete && (
+            <button disabled={bulkBusy} onClick={bulkDelete} className="flex items-center gap-1 text-red-400 hover:text-red-300 cursor-pointer disabled:opacity-60">
+              <Trash2 className="h-3.5 w-3.5" /> Delete Selected
+            </button>
+          )}
           <button onClick={() => setSelected([])} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
         </div>
       )}

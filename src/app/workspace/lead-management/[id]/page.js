@@ -44,17 +44,18 @@ export default async function LeadDetailsPage({ params }) {
   if (!lead) return <WorkspaceNotFound />;
 
   const paymentsEnabled = (await isModuleEnabledForCompany(session.company_id, "payments")) && !session.is_child_company;
-  // Payments and Documents aren't part of a school's counselling workflow
-  // (the equivalent Settings pages are already hidden for schools) — the
-  // whole sidebar section, and the header's matching quick actions, are
-  // dropped for schools rather than just visually hidden.
+  // Payments, Documents, and Calls aren't part of a school's counselling
+  // workflow (the equivalent Settings pages are already hidden for
+  // schools) — the whole sidebar section, and the header's matching quick
+  // actions, are dropped for schools rather than just visually hidden.
   const showDocuments = !session.is_child_company;
+  const showCalls = !session.is_child_company;
   const documentTypesSchemaReady = await hasLeadDocumentTypesSchema();
 
   const [
     notes, followups, meetings, tasks, documents, timeline, paymentPlans, services, availableMethods,
-    canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment,
-    fieldGroups, documentTypes, employeesResult,
+    canEdit, canManageNotes, canManageFollowups, canManageTasks, canManageDocs, canManageAssignment, canDelete,
+    rawFieldGroups, documentTypes, employeesResult,
     calls, canMakeCalls, canViewCalls, callingSettings, stages,
   ] = await Promise.all([
     listLeadNotes(session, id), listLeadFollowups(session, id), listLeadMeetings(session, id), listLeadTasks(session, id),
@@ -64,13 +65,24 @@ export default async function LeadDetailsPage({ params }) {
     paymentsEnabled ? getAvailablePaymentMethods(session) : [],
     can(session, "leads.update"), can(session, "leads.notes.manage"), can(session, "leads.followups.manage"),
     can(session, "leads.tasks.manage"), can(session, "leads.documents.manage"), can(session, "leads.assign"),
+    can(session, "leads.delete"),
     getLeadDetailFieldGroups(session, lead),
     documentTypesSchemaReady ? listLeadDocumentTypes(session, { activeOnly: true }) : [],
     listUsers(session, { status: "active", pageSize: 100 }),
-    listLeadCalls(session, id), can(session, "leads.calls.make"), can(session, "leads.calls.view"),
-    getCallingSettings(session),
+    showCalls ? listLeadCalls(session, id) : [],
+    showCalls ? can(session, "leads.calls.make") : false,
+    showCalls ? can(session, "leads.calls.view") : false,
+    showCalls ? getCallingSettings(session) : Promise.resolve({ configured: false, hasCredentials: false }),
     getLeadPipelineStages(session),
   ]);
+
+  // Not hardcoded — getLeadDetailFieldGroups returns one entry per
+  // section (Lead Source/Service/Priority/Assign-To/Tags live under
+  // "Source & Assignment"), which isn't part of a school's counselling
+  // workflow (Priority especially — see LeadHeader/LeadsTable).
+  const fieldGroups = session.is_child_company
+    ? rawFieldGroups.filter((g) => g.section.name !== "Source & Assignment")
+    : rawFieldGroups;
 
   // The "active" plan is the most recent one that isn't Cancelled/Refunded —
   // older negotiations stay visible in the plan list but don't drive the
@@ -99,18 +111,18 @@ export default async function LeadDetailsPage({ params }) {
       <LeadHeader
         lead={lead} leadId={id} score={score} tags={tags} session={session}
         canEdit={canEdit} canManageAssignment={canManageAssignment} canManageDocs={canManageDocs && showDocuments}
-        paymentsEnabled={paymentsEnabled} employees={employeesResult.users} callsEnabled={canViewCalls}
+        canDelete={canDelete} paymentsEnabled={paymentsEnabled} employees={employeesResult.users} callsEnabled={canViewCalls}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={`grid grid-cols-1 lg:grid-cols-3 ${session.is_child_company ? "gap-4" : "gap-6"}`}>
         {/* Main column — the activity workspace */}
         <div className="lg:col-span-2 min-w-0">
-          <ActivityComposer lead={lead} canManageFollowups={canManageFollowups} canManageNotes={canManageNotes} />
+          <ActivityComposer lead={lead} canManageFollowups={canManageFollowups} canManageNotes={canManageNotes} isChildCompany={session.is_child_company} />
           <LeadWorkspaceTabs
             timelineSlot={
               <ActivityTimeline
                 leadId={id} events={timeline} followups={followups} meetings={meetings} notes={notes} documents={documents}
-                canManageFollowups={canManageFollowups} canManageNotes={canManageNotes}
+                canManageFollowups={canManageFollowups} canManageNotes={canManageNotes} isChildCompany={session.is_child_company}
               />
             }
             whatsappSlot={
@@ -120,7 +132,7 @@ export default async function LeadDetailsPage({ params }) {
         </div>
 
         {/* Sidebar — supporting information, kept as existing components in compact cards */}
-        <div className="space-y-6 min-w-0">
+        <div className={`${session.is_child_company ? "space-y-4" : "space-y-6"} min-w-0`}>
           {!session.is_child_company && <LeadScoreMeter score={score} />}
 
           <LeadFieldsDisplay leadId={id} groups={fieldGroups} />

@@ -26,21 +26,29 @@ function conversationLabel(c) {
   return c.other_participant_names || "Conversation";
 }
 
-/** GVE side: pick which school to start/open a shared thread with. School
- * side has nothing to pick (the target is always its one parent), so it
- * never renders this — see the single-button path in MessagingApp instead. */
+/** GVE side: pick one or more schools and write one message — each
+ * selected school gets its own private, found-or-created thread (never a
+ * shared/group one, see sendExternalMessageToSchools). School side has
+ * nothing to pick (the target is always its one parent), so it never
+ * renders this — see the single-button path in MessagingApp instead. */
 function NewExternalConversationModal({ schools, onClose, onCreated }) {
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function create() {
-    if (!selected) { toast.error("Select a school."); return; }
+  function toggle(id) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function send() {
+    if (!selected.length) { toast.error("Select at least one school."); return; }
+    if (!message.trim()) { toast.error("Write a message."); return; }
     setSaving(true);
     try {
-      const res = await apiFetch("/api/messaging/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "external", schoolCompanyId: selected }) });
+      const res = await apiFetch("/api/messaging/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "externalBulk", schoolCompanyIds: selected, body: message }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to start conversation.");
-      onCreated(data.id);
+      if (!res.ok) throw new Error(data.error || "Failed to send.");
+      onCreated(data);
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   }
 
@@ -59,18 +67,23 @@ function NewExternalConversationModal({ schools, onClose, onCreated }) {
           <p className="text-foreground font-medium">Message a School</p>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
-        <div className="max-h-64 overflow-y-auto space-y-1 border border-border rounded-lg p-2">
+        <p className="text-muted-foreground text-xs mb-2">Select one or more schools — each gets its own private conversation, never a shared one.</p>
+        <div className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg p-2">
           {schools.length === 0 && <p className="text-muted-foreground text-xs p-2">No schools yet.</p>}
           {schools.map((s) => (
             <label key={s.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted cursor-pointer">
-              <input type="radio" name="school" checked={selected === s.id} onChange={() => setSelected(s.id)} className="cursor-pointer accent-indigo-500" />
+              <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} className="cursor-pointer accent-indigo-500" />
               <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="text-foreground text-sm">{s.name}</span>
             </label>
           ))}
         </div>
-        <button onClick={create} disabled={saving} className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-lg btn-brand text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />} Start Conversation
+        <textarea
+          value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Type your message…"
+          className="w-full mt-3 px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <button onClick={send} disabled={saving} className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-lg btn-brand text-white text-sm font-medium disabled:opacity-60 cursor-pointer">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />} {selected.length > 1 ? `Send to ${selected.length} Schools` : "Send"}
         </button>
       </div>
       </ModalFocusTrap>
@@ -713,7 +726,12 @@ export default function MessagingApp({ currentUserId, isSuperAdmin, initialConve
         <NewExternalConversationModal
           schools={childCompanies}
           onClose={() => setShowNewExternal(false)}
-          onCreated={(id) => { setShowNewExternal(false); refreshConversations(); selectConversation(id); }}
+          onCreated={(result) => {
+            setShowNewExternal(false);
+            refreshConversations();
+            if (result.conversationId) selectConversation(result.conversationId);
+            else toast.success(`Sent to ${result.sentCount} school${result.sentCount === 1 ? "" : "s"}.`);
+          }}
         />
       )}
 

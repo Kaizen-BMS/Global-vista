@@ -44,6 +44,28 @@ export async function moveToNextStage(session, leadId, actorId) {
   await updateLeadStage(session, leadId, next, actorId);
 }
 
+export async function moveToPreviousStage(session, leadId, actorId) {
+  assertSchoolFeature(session);
+  const [[lead]] = await pool.query(`SELECT stage FROM leads WHERE id = ? AND company_id = ? AND ${NOT_DELETED}`, [leadId, session.company_id]);
+  if (!lead) { const e = new Error("Student not found."); e.status = 404; throw e; }
+
+  const stages = await getLeadPipelineStages(session);
+  const index = stages.indexOf(lead.stage);
+  const prev = index > 0 ? stages[index - 1] : null;
+  if (!prev) { const e = new Error("Already on the first stage — there is no previous stage to move to."); e.status = 400; throw e; }
+
+  await updateLeadStage(session, leadId, prev, actorId);
+}
+
+export async function bulkMoveToPreviousStage(session, ids, actorId) {
+  if (!ids?.length) return;
+  const errors = [];
+  for (const id of ids) {
+    try { await moveToPreviousStage(session, id, actorId); } catch (err) { errors.push({ id, message: err.message }); }
+  }
+  return { errors };
+}
+
 export async function bulkMarkStageComplete(session, ids, actorId) {
   if (!ids?.length) return;
   for (const id of ids) await markStageComplete(session, id, actorId);

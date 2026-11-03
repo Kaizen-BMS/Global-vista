@@ -252,6 +252,32 @@ export async function getOrCreateExternalConversation(session, { schoolCompanyId
   return conversationId;
 }
 
+/**
+ * GVE composing one message for several schools at once — each school
+ * still gets its own private, found-or-created `getOrCreateExternalConversation`
+ * thread (same as messaging one school at a time); this just loops that,
+ * so there is never a single shared/group thread spanning more than one
+ * school. Checked once up front rather than relying on sendMessage's own
+ * per-conversation check, so a non-Super-Admin gets one clean 403 instead
+ * of a partial send followed by N failures.
+ */
+export async function sendExternalMessageToSchools(session, schoolCompanyIds, body) {
+  if (!isSuperAdmin(session)) { const e = new Error("Only a Super Admin can post in an external conversation."); e.status = 403; throw e; }
+  const ids = [...new Set((schoolCompanyIds || []).map(Number).filter(Boolean))];
+  if (!ids.length) { const e = new Error("Select at least one school."); e.status = 400; throw e; }
+  if (!body?.trim()) { const e = new Error("Message body is required."); e.status = 400; throw e; }
+
+  let sentCount = 0;
+  let lastConversationId = null;
+  for (const schoolCompanyId of ids) {
+    const conversationId = await getOrCreateExternalConversation(session, { schoolCompanyId });
+    await sendMessage(session, conversationId, { body }, session.id);
+    lastConversationId = conversationId;
+    sentCount++;
+  }
+  return { sentCount, conversationId: ids.length === 1 ? lastConversationId : null };
+}
+
 export async function listConversations(session) {
   const [rows] = await pool.query(
     `SELECT c.id, c.type, c.title, c.created_by, c.updated_at, c.company_id, c.counterparty_company_id, cp.last_read_at,

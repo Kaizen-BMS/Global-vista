@@ -25,7 +25,7 @@ export default async function LeadManagementPage({ searchParams }) {
   const sp = await searchParams;
   const terms = getCrmTerms(session.is_child_company);
   const isChildCompany = session.is_child_company;
-  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
+  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, canDelete, customFields] = await Promise.all([
     listLeads(session, {
       status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
       sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
@@ -46,6 +46,7 @@ export default async function LeadManagementPage({ searchParams }) {
     can(session, "leads.update"),
     isImportExportAllowed(session.company_id),
     can(session, "leads.notes.manage"),
+    can(session, "leads.delete"),
     isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : [],
   ]);
   const stageCounts = Object.fromEntries(stageCountRows.map((r) => [r.stage, r.count]));
@@ -90,6 +91,7 @@ export default async function LeadManagementPage({ searchParams }) {
         canBulkUpdate={canUpdate}
         canClaim={canUpdate}
         canManageNotes={canManageNotes}
+        canBulkDelete={canDelete}
         currentUserId={session.id}
         assignableUsers={counsellorsResult.users}
         sortKey={sp?.sort || "created_at"}

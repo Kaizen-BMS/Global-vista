@@ -3,6 +3,7 @@ import { isSuperAdmin } from "@/lib/helpers/permissions";
 import { getCompanyBranding } from "@/lib/actions/companyBranding";
 import { getSettingsByGroup } from "@/lib/actions/settings";
 import { listOrgRecords } from "@/lib/actions/orgSettings";
+import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import SettingsTabs from "@/components/shared/SettingsTabs";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import CompanyBrandingSettingsForm from "@/components/forms/CompanyBrandingSettingsForm";
@@ -13,6 +14,7 @@ export default async function OrganizationalSettingPage() {
   const session = await getSession();
   if (!isSuperAdmin(session)) return <ForbiddenState />;
   const isChildCompany = session.is_child_company;
+  const terms = getCrmTerms(isChildCompany);
 
   const [branding, notificationValues, emailValues, callingValues, branches, departments, designations, employeeTypes] = await Promise.all([
     getCompanyBranding(session),
@@ -49,7 +51,7 @@ export default async function OrganizationalSettingPage() {
             group="notifications"
             initialValues={notificationValues}
             fields={[
-              { key: "notify_leads", label: "Leads & Follow-ups", type: "toggle", hint: "New leads, assignments, status changes, follow-ups, meetings." },
+              { key: "notify_leads", label: `${terms.plural} & Follow-ups`, type: "toggle", hint: "New leads, assignments, status changes, follow-ups, meetings." },
               { key: "notify_tasks", label: "Tasks", type: "toggle", hint: "Task assignments and completions." },
               ...(isChildCompany ? [] : [
                 { key: "notify_documents", label: "Documents", type: "toggle", hint: "New uploads and reminders for missing/pending documents." },
