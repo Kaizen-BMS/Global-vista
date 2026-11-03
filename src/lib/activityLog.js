@@ -17,10 +17,11 @@ export async function logActivity({ userId = null, module, action, entityType = 
   // feature's action file.
   publishChange(companyId, { module, action, entityType, entityId, userId });
 }
-export async function getActivityLogs({ module = null, companyId = null, limit = 50, offset = 0 } = {}) {
+export async function getActivityLogs({ module = null, companyId = null, userId = null, limit = 50, offset = 0 } = {}) {
   const where = []; const params = [];
   if (companyId) { where.push("al.company_id = ?"); params.push(companyId); }
   if (module) { where.push("al.module = ?"); params.push(module); }
+  if (userId) { where.push("al.user_id = ?"); params.push(userId); }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   params.push(limit, offset);
   const [rows] = await pool.query(`SELECT al.*, u.name AS user_name FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id ${whereSql} ORDER BY al.created_at DESC LIMIT ? OFFSET ?`, params);

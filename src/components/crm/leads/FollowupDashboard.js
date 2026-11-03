@@ -8,6 +8,7 @@ import { apiFetch } from "@/components/shared/apiClient";
 import FollowupCompleteModal from "@/components/crm/leads/FollowupCompleteModal";
 import { useTimezone } from "@/components/shared/TimezoneProvider";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
 const SECTIONS = [
   { key: "overdue", label: "Overdue", icon: AlertTriangle, color: "text-red-400", accent: "border-red-500/30 bg-red-500/5" },
@@ -22,7 +23,10 @@ const SECTIONS = [
 export default function FollowupDashboard({ data, isChildCompany = false }) {
   const router = useRouter();
   const timezone = useTimezone();
-  const [collapsed, setCollapsed] = useState(() => Object.fromEntries(SECTIONS.map((s) => [s.key, true])));
+  // Array of OPEN section keys (empty = everything closed, matching the
+  // old default) — persisted per browser, so whatever you last opened
+  // stays open across reloads and logins instead of resetting every time.
+  const [openKeys, setOpenKeys] = useLocalStorageState("gv:followups:open", []);
   const [local, setLocal] = useState(data);
   const [completingFollowup, setCompletingFollowup] = useState(null);
 
@@ -49,10 +53,10 @@ export default function FollowupDashboard({ data, isChildCompany = false }) {
       {SECTIONS.map((section) => {
         const items = local[section.key] || [];
         const Icon = section.icon;
-        const isCollapsed = collapsed[section.key];
+        const isCollapsed = !openKeys.includes(section.key);
         return (
           <div key={section.key}>
-            <button onClick={() => setCollapsed((c) => ({ ...c, [section.key]: !c[section.key] }))} className="flex items-center gap-2 mb-3 cursor-pointer group w-full">
+            <button onClick={() => setOpenKeys((prev) => prev.includes(section.key) ? prev.filter((k) => k !== section.key) : [...prev, section.key])} className="flex items-center gap-2 mb-3 cursor-pointer group w-full">
               {isChildCompany && <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />}
               <Icon className={`h-4 w-4 ${section.color}`} />
               <h2 className="text-sm font-semibold text-foreground">{section.label}</h2>

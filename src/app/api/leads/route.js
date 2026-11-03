@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, created, forbidden, badRequest, withErrorHandling } from "@/lib/helpers/response";
 import { validate, leadValidators } from "@/lib/helpers/validation";
-import { listLeads, createLead, bulkUpdateStatus, bulkAssign, bulkDeleteLeads } from "@/lib/modules/crm/actions/leads";
+import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/modules/crm/actions/leads";
 import { bulkAddLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 import { bulkMarkStageComplete, bulkMoveToNextStage, bulkMoveToPreviousStage, applyBulkPreviewUpdates } from "@/lib/modules/crm/actions/leadStageProgress";
 import { bulkSendLeadEmail } from "@/lib/modules/crm/actions/leadBulkEmail";
@@ -48,9 +48,6 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
     } else if (body.bulkAction === "stageMoveBack") {
       const result = await bulkMoveToPreviousStage(session, body.ids || [], session.id);
       return ok(result);
-    } else if (body.bulkAction === "delete") {
-      if (!(await can(session, "leads.delete"))) return forbidden();
-      await bulkDeleteLeads(session, body.ids || [], session.id);
     } else if (body.bulkAction === "bulkPreviewUpdate") {
       const result = await applyBulkPreviewUpdates(session, body.rows || [], session.id);
       return ok(result);

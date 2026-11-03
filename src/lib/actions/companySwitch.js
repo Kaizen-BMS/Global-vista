@@ -164,20 +164,106 @@ export async function getSchoolsOverview(session) {
   return { schools, totals };
 }
 
+/** Shared by every getAggregated-prefixed function below — same gate,
+ * same id list, as listAggregatedSchoolLeads/getSchoolsOverview. */
+async function aggregatedCompanyIds(session) {
+  if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
+    const e = new Error("Not authorized.");
+    e.status = 403;
+    throw e;
+  }
+  const children = await listChildCompanies(session);
+  return [...children.map((c) => c.id), session.company_id];
+}
+
+/** Mirrors getLeadDashboardStats's exact shape (src/lib/modules/crm/
+ * actions/dashboard.js) — just `company_id IN (?)` instead of `= ?`, no
+ * getVisibleLeadFilter (that's a single-company RLS primitive; GVE's own
+ * view here is deliberately the "sees everything across its own schools"
+ * one, same as every other getAggregated* function). */
+export async function getAggregatedLeadDashboardStats(session) {
+  const ids = await aggregatedCompanyIds(session);
+  if (!ids.length) return { totalLeads: 0, newLeads: 0, converted: 0, todaysFollowups: 0, myLeads: 0, unassignedLeads: 0, conversionRate: 0 };
+
+  const [[leadCount]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
+  const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='New' AND l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
+  const [[converted]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='Converted' AND l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
+  const [[todaysFollowups]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0
+     WHERE l.company_id IN (?) AND DATE(f.scheduled_at) = CURDATE() AND f.status = 'Scheduled'`,
+    [ids]
+  );
+  const [[myLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?) AND l.assigned_to = ?`, [ids, session.id]);
+  const [[unassignedLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?) AND l.assigned_to IS NULL`, [ids]);
+  const conversionRate = leadCount.total > 0 ? Math.round((converted.total / leadCount.total) * 1000) / 10 : 0;
+  return {
+    totalLeads: leadCount.total, newLeads: newLeads.total, converted: converted.total,
+    todaysFollowups: todaysFollowups.total, myLeads: myLeads.total, unassignedLeads: unassignedLeads.total, conversionRate,
+  };
+}
+
+/** Mirrors getLeadsBySource — grouped by NAME rather than lead_sources.id,
+ * since each school has its own separate lead_sources rows; two schools'
+ * same-named source (e.g. both have "Project UDAAN") rolls up into one
+ * slice this way instead of appearing twice. */
+export async function getAggregatedLeadsBySource(session) {
+  const ids = await aggregatedCompanyIds(session);
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT s.name AS source, COUNT(l.id) AS count
+     FROM leads l JOIN lead_sources s ON s.id = l.lead_source_id
+     WHERE l.is_deleted=0 AND l.company_id IN (?)
+     GROUP BY s.name ORDER BY count DESC`,
+    [ids]
+  );
+  return rows;
+}
+
+/** Same reasoning as getAggregatedLeadsBySource, for Service. */
+export async function getAggregatedLeadsByService(session) {
+  const ids = await aggregatedCompanyIds(session);
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT sv.name AS service, COUNT(l.id) AS count
+     FROM leads l JOIN services sv ON sv.id = l.service_id
+     WHERE l.is_deleted=0 AND l.company_id IN (?)
+     GROUP BY sv.name ORDER BY count DESC`,
+    [ids]
+  );
+  return rows;
+}
+
+/** Mirrors getLeadsByStage — `stage` is a plain string column on `leads`
+ * itself (not a per-company lookup table), so no name-collision concern
+ * like source/service above. */
+export async function getAggregatedLeadsByStage(session) {
+  const ids = await aggregatedCompanyIds(session);
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT l.stage, COUNT(*) AS count FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?) GROUP BY l.stage`,
+    [ids]
+  );
+  return rows;
+}
+
 /**
- * The actual combined, filterable lead LIST (not just counts) across every
- * school — a GVE-only reporting view, read-only by design. Reuses the
- * exact same gate, same `listChildCompanies` id source, and the same
- * "only ever the ids this parent's own children resolve to" discipline as
- * `getSchoolsOverview` above — never a caller-supplied company_id list.
- * GVE's OWN leads (company_id = session.company_id) are folded into the
- * same scope so a prospect that approaches GVE directly — not through any
- * school — still shows up here, labeled "Independent" (school_name is
- * null for those rows; the UI renders the badge). `schoolId` narrows to
- * one specific child company, or the sentinel "independent" for just
- * GVE's own rows; omitted/null means every school + GVE's own, combined.
- * Editing a specific lead still happens inside its OWNER's own session
- * (see the "Switch to Company" flow) — this view never writes anything.
+ * The combined lead LIST across every school — what GVE's own
+ * /workspace/lead-management page renders INSTEAD OF listLeads() when
+ * `session.can_create_child_companies` (there's no separate "Leads
+ * Overview" page anymore; this is just what "Leads" means for GVE).
+ * Reuses the exact same gate, same `listChildCompanies` id source, and
+ * the same "only ever the ids this parent's own children resolve to"
+ * discipline as `getSchoolsOverview` above — never a caller-supplied
+ * company_id list. GVE's OWN leads (company_id = session.company_id) are
+ * folded into the same scope so a prospect that approaches GVE directly
+ * — not through any school — still shows up here, labeled "Independent"
+ * (school_name is null for those rows; the UI renders the badge).
+ * `schoolId` narrows to one specific child company, or the sentinel
+ * "independent" for just GVE's own rows; omitted/null means every school
+ * + GVE's own, combined. This query itself never writes anything —
+ * opening a specific lead switches the whole session into its owning
+ * school first (see OpenLeadLink-style logic in LeadsTable.js), it isn't
+ * a second read-only view bolted on top.
  */
 export async function listAggregatedSchoolLeads(session, { schoolId = null, search = null, page = 1, pageSize = 20 } = {}) {
   if (!isSuperAdminAccount(session) || !session.can_create_child_companies) {
@@ -208,10 +294,18 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
 
+  // l.* (not a hand-picked field list) so this lines up with listLeads's
+  // own row shape — LeadsTable.js renders whichever columns are present
+  // regardless of which query produced them, and shouldn't need a second,
+  // narrower set of column defs just because the rows came from here.
   const [rows] = await pool.query(
-    `SELECT l.id, l.name, l.phone, l.email, l.stage, l.priority, l.created_at, l.company_id,
+    `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
             (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
      FROM leads l
+     JOIN lead_sources s ON s.id = l.lead_source_id
+     JOIN services sv ON sv.id = l.service_id
+     LEFT JOIN users u ON u.id = l.assigned_to
+     LEFT JOIN users cu ON cu.id = l.created_by
      LEFT JOIN companies co ON co.id = l.company_id
      ${whereSql}
      ORDER BY l.created_at DESC

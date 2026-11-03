@@ -98,7 +98,7 @@ export default async function LeadDetailsPage({ params }) {
     <div>
       {session.is_child_company && <ProfileCompletionBar completion={profileCompletion} />}
 
-      {lead.is_duplicate && lead.duplicate_of && (
+      {!!lead.is_duplicate && lead.duplicate_of && (
         <DuplicateBanner
           leadId={id}
           duplicateOfId={lead.duplicate_of}

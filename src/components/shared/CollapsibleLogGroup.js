@@ -1,12 +1,18 @@
 "use client";
-import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 
 /** Same collapse/rotate chevron pattern as FollowupDashboard's section
- * headers — one group of activity-log rows, collapsed or expanded. */
-export default function CollapsibleLogGroup({ title, logs, timezone, hour12, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
+ * headers — one group of activity-log rows, collapsed or expanded.
+ * `persistKey` is required — it's the slot's own stable identity ("today",
+ * "dashboard-recent-activity", ...), never the date/content inside it, so
+ * whichever slots were last opened stay open across reloads/logins
+ * without silently expanding the WRONG day's group next time (see
+ * ActivityTimeline.js, which deliberately does NOT do this because its
+ * day-group labels aren't stable identities the same way). */
+export default function CollapsibleLogGroup({ title, logs, timezone, hour12, defaultOpen = false, persistKey }) {
+  const [open, setOpen] = useLocalStorageState(`gv:logGroup:${persistKey}`, defaultOpen);
   if (logs.length === 0) return null;
 
   return (

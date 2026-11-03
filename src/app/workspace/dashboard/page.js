@@ -13,6 +13,10 @@ import {
   getMonthlyLeadTrend, getTeamPerformance, getTeamPerformanceByStream, getRecentLeads,
 } from "@/lib/modules/crm/actions/dashboard";
 import {
+  getAggregatedLeadDashboardStats, getAggregatedLeadsBySource, getAggregatedLeadsByService, getAggregatedLeadsByStage,
+  listAggregatedSchoolLeads, getSchoolsOverview,
+} from "@/lib/actions/companySwitch";
+import {
   getWorkspaceOrgStats, getUpcomingWorkAnniversaries, getRecentLogins,
   getEmployeeGrowth, getDepartmentDistribution, getRoleDistribution, getDocumentUploadTrend,
 } from "@/lib/actions/workspaceDashboard";
@@ -42,6 +46,10 @@ import {
 export default async function DashboardPage({ searchParams }) {
   const session = await getSession();
   const isChildCompany = session.is_child_company;
+  // GVE's own dashboard shows every school's leads combined instead of
+  // GVE's own (near-empty) company data — same gate as the Leads page's
+  // own isAggregated branch.
+  const isGveParent = !isChildCompany && !!session.can_create_child_companies;
   const sp = await searchParams;
   // "year" removed from this dashboard's own UI (Financial Year replaces
   // it) — the default preset on first load matches.
@@ -67,7 +75,7 @@ export default async function DashboardPage({ searchParams }) {
 
   const [
     stats, crmStats, leadsBySource, leadsByService, leadsByStage, monthlyLeads,
-    teamPerformance, recentLeads, orgStats, anniversaries, recentLogins,
+    teamPerformance, recentLeads, schoolsOverview, orgStats, anniversaries, recentLogins,
     employeeGrowth, departmentDistribution, roleDistribution, documentTrend,
     recentActivity, unreadNotifications, branding, announcement, parentAnnouncement,
     missingDocsEmployees, pendingDocs, expiringDocs, recentDocs, storageUsage,
@@ -75,13 +83,14 @@ export default async function DashboardPage({ searchParams }) {
     schoolCompany,
   ] = await Promise.all([
     getDashboardStats(session),
-    getLeadDashboardStats(session),
-    getLeadsBySource(session),
-    getLeadsByService(session),
-    getLeadsByStage(session),
+    isGveParent ? getAggregatedLeadDashboardStats(session) : getLeadDashboardStats(session),
+    isGveParent ? getAggregatedLeadsBySource(session) : getLeadsBySource(session),
+    isGveParent ? getAggregatedLeadsByService(session) : getLeadsByService(session),
+    isGveParent ? getAggregatedLeadsByStage(session) : getLeadsByStage(session),
     getMonthlyLeadTrend(session, range),
     isChildCompany ? getTeamPerformanceByStream(session) : getTeamPerformance(session),
-    getRecentLeads(session, 6),
+    isGveParent ? listAggregatedSchoolLeads(session, { pageSize: 6 }).then((r) => r.leads) : getRecentLeads(session, 6),
+    isGveParent ? getSchoolsOverview(session) : Promise.resolve(null),
     getWorkspaceOrgStats(session),
     getUpcomingWorkAnniversaries(session),
     getRecentLogins(session, 8),
@@ -116,7 +125,7 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="space-y-8">
-      {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} />}
+      {isChildCompany && schoolCompany && <SchoolBanner companyName={schoolCompany.name} logoUrl={branding.sidebarLogoUrl || branding.logoUrl} />}
       {parentAnnouncement && <AnnouncementBanner announcement={parentAnnouncement} label={parentAnnouncement.companyName || "Parent Company"} accent="indigo" />}
       <AnnouncementBanner announcement={announcement} />
 
@@ -137,12 +146,17 @@ export default async function DashboardPage({ searchParams }) {
       <section className="space-y-4">
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
         <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} />
-        {!isChildCompany && <WorkspaceCrmChartsSection monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService} />}
+        {!isChildCompany && (
+          <WorkspaceCrmChartsSection
+            monthlyLeads={monthlyLeads} leadsByStage={leadsByStage} leadsBySource={leadsBySource} leadsByService={leadsByService}
+            isGveParent={isGveParent} leadsBySchool={schoolsOverview?.schools}
+          />
+        )}
         {isChildCompany ? (
           <TeamPerformanceByStreamTable team={teamPerformance} />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <RecentLeadsTable leads={recentLeads} />
+            <RecentLeadsTable leads={recentLeads} aggregated={isGveParent} homeCompanyId={session.home_company_id} gveCompanyId={session.company_id} />
             <TeamPerformanceTable team={teamPerformance} />
           </div>
         )}
@@ -186,7 +200,7 @@ export default async function DashboardPage({ searchParams }) {
 
       {isChildCompany ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <CollapsibleLogGroup title="Recent Activity" logs={recentActivity} timezone={timezone} hour12={hour12} />
+          <CollapsibleLogGroup persistKey="dashboard-recent-activity" title="Recent Activity" logs={recentActivity} timezone={timezone} hour12={hour12} />
           <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
       ) : (

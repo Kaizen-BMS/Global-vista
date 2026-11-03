@@ -1,8 +1,11 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Plus, Pencil, Trash2, UserPlus, CheckCircle2, LogIn, Activity, AlertTriangle, Clock, UploadCloud, ChevronDown } from "lucide-react";
 import { formatDateTime, formatDate } from "@/lib/helpers/dateFormat";
+import { openLeadAcrossCompanies } from "@/lib/helpers/peekLead";
 
 function actionIcon(action = "") {
   if (action.includes("create") || action.includes("provision")) return { Icon: Plus, color: "text-emerald-400" };
@@ -31,19 +34,36 @@ function TableCard({ title, children, empty, emptyLabel }) {
   );
 }
 
-export function RecentLeadsTable({ leads }) {
+/** `aggregated`/`homeCompanyId`/`gveCompanyId` are only ever passed on
+ * GVE's own dashboard — a row there usually belongs to a different
+ * company (a school), so opening it switches the session into that
+ * school first (see openLeadAcrossCompanies). Every other caller omits
+ * these and gets the plain same-company Link it always had. */
+export function RecentLeadsTable({ leads, aggregated = false, homeCompanyId = null, gveCompanyId = null }) {
+  const router = useRouter();
+  async function open(l) {
+    try { await openLeadAcrossCompanies({ router, leadId: l.id, companyId: l.company_id, homeCompanyId, gveCompanyId }); }
+    catch (err) { toast.error(err.message); }
+  }
   return (
     <TableCard title="Recent Leads" empty={!leads.length}>
       <div className="divide-y divide-border">
-        {leads.map((l) => (
-          <Link key={l.id} href={`/workspace/lead-management/${l.id}`} className="flex items-center justify-between py-2.5 hover:bg-muted/40 -mx-2 px-2 rounded-lg transition">
-            <div className="min-w-0">
-              <p className="text-foreground text-sm truncate">{l.name}</p>
-              <p className="text-muted-foreground text-xs">{l.source_name} · {l.service_name}</p>
+        {leads.map((l) => {
+          const row = (
+            <div className="flex items-center justify-between py-2.5 hover:bg-muted/40 -mx-2 px-2 rounded-lg transition">
+              <div className="min-w-0">
+                <p className="text-foreground text-sm truncate">{l.name}</p>
+                <p className="text-muted-foreground text-xs">{l.source_name} · {l.service_name}</p>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] border shrink-0 ml-2 ${STATUS_COLORS[l.status] || "bg-muted/20 text-muted-foreground border-border/30"}`}>{l.status}</span>
             </div>
-            <span className={`px-2 py-0.5 rounded-full text-[11px] border shrink-0 ml-2 ${STATUS_COLORS[l.status] || "bg-muted/20 text-muted-foreground border-border/30"}`}>{l.status}</span>
-          </Link>
-        ))}
+          );
+          return aggregated ? (
+            <button key={l.id} onClick={() => open(l)} className="block w-full text-left cursor-pointer">{row}</button>
+          ) : (
+            <Link key={l.id} href={`/workspace/lead-management/${l.id}`}>{row}</Link>
+          );
+        })}
       </div>
     </TableCard>
   );

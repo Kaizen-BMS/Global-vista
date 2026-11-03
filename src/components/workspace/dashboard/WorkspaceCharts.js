@@ -70,6 +70,11 @@ function DistributionPie({ title, subtitle, data, nameKey, valueKey, emptyLabel 
 
 export function LeadsBySourceChart({ data }) { return <DistributionPie title="Leads by Source" data={data} nameKey="source" valueKey="count" />; }
 export function LeadsByServiceChart({ data }) { return <DistributionPie title="Leads by Service" data={data} nameKey="service" valueKey="count" />; }
+// GVE's own dashboard only — same {stage, count} shape PipelineFunnelChart
+// already uses, just as a pie instead of a bar (regular companies/schools
+// keep the funnel exactly as before).
+export function LeadsByStageChart({ data }) { return <DistributionPie title="Leads by Stage" subtitle="Across every school" data={data} nameKey="stage" valueKey="count" />; }
+export function LeadsBySchoolChart({ data }) { return <DistributionPie title="Leads by School" data={data} nameKey="name" valueKey="leadCount" />; }
 export function DepartmentDistributionChart({ data }) { return <DistributionPie title="Department Distribution" data={data} nameKey="department" valueKey="count" />; }
 export function RoleDistributionChart({ data }) { return <DistributionPie title="Role Distribution" data={data} nameKey="role" valueKey="count" />; }
 

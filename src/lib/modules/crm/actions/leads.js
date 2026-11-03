@@ -487,15 +487,6 @@ export async function deleteLead(session, id, deletedBy) {
   await logActivity({ userId: deletedBy, module: "leads", action: "delete", entityType: "lead", entityId: id, companyId: session.company_id, description: `Soft-deleted lead #${id}` });
 }
 
-export async function bulkDeleteLeads(session, ids, deletedBy) {
-  if (!ids.length) return;
-  await pool.query(
-    `UPDATE leads SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?, status = 'Cancelled' WHERE id IN (?) AND company_id = ?`,
-    [deletedBy, ids, session.company_id]
-  );
-  await logActivity({ userId: deletedBy, module: "leads", action: "bulk_delete", entityType: "lead", companyId: session.company_id, description: `Bulk-deleted ${ids.length} leads`, meta: { ids } });
-}
-
 export async function bulkUpdateStatus(session, ids, status, updatedBy) {
   if (!ids.length) return;
   await pool.query(

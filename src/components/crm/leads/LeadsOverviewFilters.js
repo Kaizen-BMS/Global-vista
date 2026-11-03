@@ -37,7 +37,7 @@ export default function LeadsOverviewFilters({ schools }) {
       >
         <option value="">All Schools</option>
         {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        <option value="independent">Independent</option>
+        <option value="independent">Direct Leads</option>
       </select>
     </div>
   );

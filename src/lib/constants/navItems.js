@@ -17,10 +17,6 @@ export const PLATFORM_NAV_ITEMS = [
 export const ALL_NAV_ITEMS = [
   { href: "/workspace/dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: "dashboard.view" },
   { href: "/workspace/lead-management", label: "Leads", icon: "Contact2", permission: "leads.view" },
-  // GVE-only — a combined, read-only lead list across every school, plus
-  // whatever leads GVE adds directly ("Independent"). Hidden for everyone
-  // else by getVisibleNavItems (menu.js), same gate getSchoolsOverview uses.
-  { href: "/workspace/leads-overview", label: "Leads Overview", icon: "Building2", permission: "leads.view" },
   { href: "/workspace/lead-forms", label: "Query Forms", icon: "ClipboardList", permission: "leads.view" },
   { href: "/workspace/followups", label: "Follow-ups", icon: "CalendarClock", permission: "leads.view" },
   { href: "/workspace/reports", label: "Reports", icon: "BarChart3", permission: null, module: "reports" },

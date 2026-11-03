@@ -1,8 +1,10 @@
 import { getSession } from "@/lib/auth";
 import { getActivityLogs } from "@/lib/activityLog";
 import { getSettingsByGroup } from "@/lib/actions/settings";
+import { listUsers } from "@/lib/actions/users";
 import { formatDateTime } from "@/lib/helpers/dateFormat";
 import CollapsibleLogGroup from "@/components/shared/CollapsibleLogGroup";
+import ActivityLogFilters from "@/components/workspace/ActivityLogFilters";
 
 // Schools only — same day/yesterday/earlier split a counsellor would
 // expect from a "minimalistic" activity feed, collapsed by default so the
@@ -20,11 +22,13 @@ function groupByDay(logs) {
   return groups;
 }
 
-export default async function ActivityLogsPage() {
+export default async function ActivityLogsPage({ searchParams }) {
   const session = await getSession();
-  const [logs, systemSettings] = await Promise.all([
-    getActivityLogs({ limit: 100, companyId: session.company_id }),
+  const sp = await searchParams;
+  const [logs, systemSettings, employeesResult] = await Promise.all([
+    getActivityLogs({ limit: 100, companyId: session.company_id, userId: sp?.employee || null }),
     getSettingsByGroup(session, "system"),
+    listUsers(session, { status: "active", pageSize: 100 }),
   ]);
   const timezone = systemSettings.timezone || "UTC";
   const hour12 = systemSettings.time_format !== "24h";
@@ -32,15 +36,16 @@ export default async function ActivityLogsPage() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-foreground mb-6">Activity Logs</h1>
+      <ActivityLogFilters employees={employeesResult.users} />
       {session.is_child_company ? (
         <div className="space-y-3">
           {(() => {
             const groups = groupByDay(logs);
             return (
               <>
-                <CollapsibleLogGroup title="Today" logs={groups.Today} timezone={timezone} hour12={hour12} />
-                <CollapsibleLogGroup title="Yesterday" logs={groups.Yesterday} timezone={timezone} hour12={hour12} />
-                <CollapsibleLogGroup title="Earlier" logs={groups.Earlier} timezone={timezone} hour12={hour12} />
+                <CollapsibleLogGroup persistKey="activity-today" title="Today" logs={groups.Today} timezone={timezone} hour12={hour12} />
+                <CollapsibleLogGroup persistKey="activity-yesterday" title="Yesterday" logs={groups.Yesterday} timezone={timezone} hour12={hour12} />
+                <CollapsibleLogGroup persistKey="activity-earlier" title="Earlier" logs={groups.Earlier} timezone={timezone} hour12={hour12} />
               </>
             );
           })()}

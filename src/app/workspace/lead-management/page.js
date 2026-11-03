@@ -3,6 +3,7 @@ import { Plus, Upload, Download } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeads, listDistinctTags } from "@/lib/modules/crm/actions/leads";
+import { listAggregatedSchoolLeads } from "@/lib/actions/companySwitch";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
 import { getLeadsByStage } from "@/lib/modules/crm/actions/dashboard";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
@@ -12,6 +13,7 @@ import { isImportExportAllowed } from "@/lib/platform/tenant";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadFilters from "@/components/crm/leads/LeadFilters";
+import LeadsOverviewFilters from "@/components/crm/leads/LeadsOverviewFilters";
 import StageTabs from "@/components/crm/leads/StageTabs";
 import LeadsTable from "@/components/crm/leads/LeadsTable";
 import LeadViewToggle from "@/components/crm/leads/LeadViewToggle";
@@ -25,16 +27,23 @@ export default async function LeadManagementPage({ searchParams }) {
   const sp = await searchParams;
   const terms = getCrmTerms(session.is_child_company);
   const isChildCompany = session.is_child_company;
-  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, canDelete, customFields] = await Promise.all([
-    listLeads(session, {
-      status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
-      sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
-      assignedTo: sp?.assignedTo || null, country: sp?.country || null, tag: sp?.tag || null,
-      createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
-      followupFrom: sp?.followupFrom || null, followupTo: sp?.followupTo || null,
-      sort: sp?.sort || "created_at", dir: sp?.dir || "DESC",
-      page: sp?.page || 1, pageSize: 20,
-    }),
+  // GVE sees every school's leads combined here — plus anything that came
+  // to GVE directly, labeled Direct Lead — instead of a separate "Leads
+  // Overview" page; this IS "Leads" for GVE. See listAggregatedSchoolLeads.
+  const isAggregated = !isChildCompany && !!session.can_create_child_companies;
+
+  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
+    isAggregated
+      ? listAggregatedSchoolLeads(session, { schoolId: sp?.school || null, search: sp?.q || null, page: sp?.page || 1, pageSize: 20 })
+      : listLeads(session, {
+          status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
+          sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
+          assignedTo: sp?.assignedTo || null, country: sp?.country || null, tag: sp?.tag || null,
+          createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
+          followupFrom: sp?.followupFrom || null, followupTo: sp?.followupTo || null,
+          sort: sp?.sort || "created_at", dir: sp?.dir || "DESC",
+          page: sp?.page || 1, pageSize: 20,
+        }),
     getLeadPipelineStages(session),
     isChildCompany ? getLeadsByStage(session) : [],
     listLeadSources(session),
@@ -46,7 +55,6 @@ export default async function LeadManagementPage({ searchParams }) {
     can(session, "leads.update"),
     isImportExportAllowed(session.company_id),
     can(session, "leads.notes.manage"),
-    can(session, "leads.delete"),
     isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : [],
   ]);
   const stageCounts = Object.fromEntries(stageCountRows.map((r) => [r.stage, r.count]));
@@ -84,14 +92,17 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       {isChildCompany && <StageTabs stages={stages} counts={stageCounts} total={result.total} />}
-      <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany} />
+      {isAggregated ? (
+        <LeadsOverviewFilters schools={result.schools} />
+      ) : (
+        <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany} />
+      )}
       <LeadsTable
         leads={result.leads}
         canBulkAssign={canAssign}
         canBulkUpdate={canUpdate}
         canClaim={canUpdate}
         canManageNotes={canManageNotes}
-        canBulkDelete={canDelete}
         currentUserId={session.id}
         assignableUsers={counsellorsResult.users}
         sortKey={sp?.sort || "created_at"}
@@ -99,6 +110,9 @@ export default async function LeadManagementPage({ searchParams }) {
         isChildCompany={isChildCompany}
         stages={stages}
         customFields={customFields}
+        aggregated={isAggregated}
+        homeCompanyId={session.home_company_id}
+        gveCompanyId={session.company_id}
       />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>

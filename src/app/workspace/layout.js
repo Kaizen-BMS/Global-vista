@@ -20,6 +20,7 @@ import SessionLivenessWatcher from "@/components/shared/SessionLivenessWatcher";
 import RealtimeUpdatesWatcher from "@/components/shared/RealtimeUpdatesWatcher";
 import FeatureGuideWidget from "@/components/workspace/FeatureGuideWidget";
 import OnboardingTour from "@/components/workspace/OnboardingTour";
+import PeekSchoolWatcher from "@/components/workspace/PeekSchoolWatcher";
 import ChildCompanyBanner from "@/components/workspace/ChildCompanyBanner";
 
 export default async function WorkspaceLayout({ children }) {
@@ -85,6 +86,7 @@ export default async function WorkspaceLayout({ children }) {
           </div>
           {!session.must_change_password && <FeatureGuideWidget entries={guideEntries} />}
           {!session.must_change_password && <OnboardingTour isChildCompany={session.is_child_company} />}
+          <PeekSchoolWatcher />
         </div>
       </MobileNavProvider>
     </TimezoneProvider>

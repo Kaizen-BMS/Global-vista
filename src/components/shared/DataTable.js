@@ -16,9 +16,10 @@ export default function DataTable({
   sortKey, sortDir, onSort,
   rowContextMenuItems, onRowClick,
   leadingColumn, // optional { width, render(row) } for a checkbox column, rendered unhideable
+  defaultHiddenColumns = [], // which column keys start hidden for someone who's never touched the Columns menu — ignored once they've saved their own choice
 }) {
   const [colWidths, setColWidths] = useLocalStorageState(`gv:table:${tableId}:widths`, {});
-  const [hiddenCols, setHiddenCols] = useLocalStorageState(`gv:table:${tableId}:hidden`, []);
+  const [hiddenCols, setHiddenCols] = useLocalStorageState(`gv:table:${tableId}:hidden`, defaultHiddenColumns);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, row }
   const columnMenuAnchorRef = useRef(null);
