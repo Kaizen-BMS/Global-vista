@@ -57,11 +57,22 @@ export async function moveToPreviousStage(session, leadId, actorId) {
   await updateLeadStage(session, leadId, prev, actorId);
 }
 
-export async function bulkMoveToPreviousStage(session, ids, actorId) {
+// `note` is the same optional common note StageNoteModal already offers
+// for a single lead's own Move to Next/Previous Stage — here it's applied
+// to every lead the bulk move actually succeeds on (never the ones that
+// errored, e.g. already on the first/last stage), same text each time so
+// there's one shared record of why the whole group moved. updateLeadStage
+// (called inside moveToNextStage/moveToPreviousStage) already logs the
+// stage change itself to Activity Log / that lead's own Stage History —
+// this only adds the note on top, it isn't a second logging path.
+export async function bulkMoveToPreviousStage(session, ids, actorId, note = "") {
   if (!ids?.length) return;
   const errors = [];
   for (const id of ids) {
-    try { await moveToPreviousStage(session, id, actorId); } catch (err) { errors.push({ id, message: err.message }); }
+    try {
+      await moveToPreviousStage(session, id, actorId);
+      if (note && note.trim()) await addLeadNote(session, id, { content: note.trim() }, actorId);
+    } catch (err) { errors.push({ id, message: err.message }); }
   }
   return { errors };
 }
@@ -71,11 +82,14 @@ export async function bulkMarkStageComplete(session, ids, actorId) {
   for (const id of ids) await markStageComplete(session, id, actorId);
 }
 
-export async function bulkMoveToNextStage(session, ids, actorId) {
+export async function bulkMoveToNextStage(session, ids, actorId, note = "") {
   if (!ids?.length) return;
   const errors = [];
   for (const id of ids) {
-    try { await moveToNextStage(session, id, actorId); } catch (err) { errors.push({ id, message: err.message }); }
+    try {
+      await moveToNextStage(session, id, actorId);
+      if (note && note.trim()) await addLeadNote(session, id, { content: note.trim() }, actorId);
+    } catch (err) { errors.push({ id, message: err.message }); }
   }
   return { errors };
 }

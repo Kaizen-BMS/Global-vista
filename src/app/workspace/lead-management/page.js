@@ -113,6 +113,7 @@ export default async function LeadManagementPage({ searchParams }) {
         aggregated={isAggregated}
         homeCompanyId={session.home_company_id}
         gveCompanyId={session.company_id}
+        totalCount={result.total}
       />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} />
     </div>

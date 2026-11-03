@@ -33,7 +33,7 @@ function downloadCsv(filename, data, columns) {
  * recharts <Brush> for interactive zoom. renderChart receives {fullscreen}
  * so callers can add a Brush / bigger legend only in the modal.
  */
-export default function ChartCard({ title, subtitle, empty, emptyLabel, data, csvColumns, renderChart }) {
+export default function ChartCard({ title, subtitle, empty, emptyLabel, data, csvColumns, renderChart, compact = false }) {
   const [open, setOpen] = useState(false);
   const hasData = !empty && data && data.length > 0;
 
@@ -50,21 +50,21 @@ export default function ChartCard({ title, subtitle, empty, emptyLabel, data, cs
 
   return (
     <>
-      <div className="group relative bg-card border border-border rounded-xl p-5 transition-colors hover:border-muted-foreground/30">
+      <div className={`group relative bg-card border border-border rounded-xl transition-colors hover:border-muted-foreground/30 ${compact ? "p-3" : "p-5"}`}>
         {hasData && (
           <button
             type="button"
             onClick={() => setOpen(true)}
             title="Expand chart"
             aria-label={`Expand ${title} chart`}
-            className="absolute top-4 right-4 h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-muted hover:text-foreground transition cursor-pointer"
+            className={`absolute ${compact ? "top-2.5 right-2.5" : "top-4 right-4"} h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-muted hover:text-foreground transition cursor-pointer`}
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
         )}
-        <p className="text-foreground font-medium pr-8">{title}</p>
+        <p className={`text-foreground font-medium pr-8 ${compact ? "text-sm" : ""}`}>{title}</p>
         {subtitle && <p className="text-muted-foreground text-xs mb-1">{subtitle}</p>}
-        <div className="h-64 mt-3">
+        <div className={`${compact ? "h-44 mt-1.5" : "h-64 mt-3"}`}>
           {empty ? (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm text-center px-6">{emptyLabel || "No data yet"}</div>
           ) : (

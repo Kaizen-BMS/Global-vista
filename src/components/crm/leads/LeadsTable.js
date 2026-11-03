@@ -18,12 +18,17 @@ import BulkEmailModal from "@/components/crm/leads/BulkEmailModal";
 import StageNoteModal from "@/components/crm/leads/StageNoteModal";
 import { openLeadAcrossCompanies } from "@/lib/helpers/peekLead";
 
-export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [], aggregated = false, homeCompanyId = null, gveCompanyId = null }) {
+export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canClaim, canManageNotes = false, currentUserId, assignableUsers = [], sortKey = "created_at", sortDir = "DESC", isChildCompany = false, stages = [], customFields = [], aggregated = false, homeCompanyId = null, gveCompanyId = null, totalCount = null }) {
   const terms = getCrmTerms(isChildCompany);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [selected, setSelected] = useState([]);
+  // Gmail-style "All N on this page are selected. Select all M matching
+  // your filters" — true once the user explicitly asks to go beyond the
+  // current page; every bulk action below then resolves the REAL, live id
+  // list via resolveBulkIds() instead of trusting `selected`.
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [claimingId, setClaimingId] = useState(null);
@@ -34,7 +39,36 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [notesLead, setNotesLead] = useState(null);
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [stageNoteAction, setStageNoteAction] = useState(null); // { id, kind: "complete" | "next" | "prev", label }
+  const [bulkStageNoteKind, setBulkStageNoteKind] = useState(null); // "next" | "prev"
   const streamOptions = customFields.find((f) => f.field_key === "stream")?.options || [];
+  const selectedCount = selectAllMatching ? (totalCount ?? selected.length) : selected.length;
+
+  function clearSelection() { setSelected([]); setSelectAllMatching(false); }
+
+  // The REAL id list a bulk action should run against — every page's
+  // worth of ids while just paging-level selection is active, or every id
+  // matching the current filters (resolved fresh, not cached from
+  // whatever's on screen) once "Select all N matching" has been clicked.
+  async function resolveBulkIds() {
+    if (!selectAllMatching) return selected;
+    const res = await apiFetch(`/api/leads/ids?${searchParams.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    return data.ids || selected;
+  }
+
+  // Shared by every bulk action that mutates something (stage/status/
+  // assign/release) — the action doesn't actually run for 10 seconds, so
+  // clicking "Undo" on the toast means NOTHING ever touched the database,
+  // same idea as Gmail's own "Archived. Undo" snackbar. Selection clears
+  // immediately either way, matching that same feel.
+  function runBulkWithUndo(label, run) {
+    let cancelled = false;
+    const timer = setTimeout(() => { if (!cancelled) run(); }, 10000);
+    toast(label, {
+      duration: 10000,
+      action: { label: "Undo", onClick: () => { cancelled = true; clearTimeout(timer); toast.success("Undone — nothing was changed."); } },
+    });
+  }
 
   // A lead's own detail page is strictly scoped to session.company_id —
   // in GVE's combined (aggregated) view, a row usually belongs to some
@@ -113,39 +147,62 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   }
 
   async function bulkStageComplete() {
-    setBulkBusy(true);
-    try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageComplete", ids: selected }) });
-      if (!res.ok) throw new Error();
-      toast.success(`${selected.length} marked complete.`);
-      setSelected([]); router.refresh();
-    } catch { toast.error("Bulk mark complete failed."); } finally { setBulkBusy(false); }
+    const ids = await resolveBulkIds();
+    const count = ids.length;
+    clearSelection();
+    runBulkWithUndo(`Marking ${count} complete…`, async () => {
+      try {
+        const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageComplete", ids }) });
+        if (!res.ok) throw new Error();
+        toast.success(`${count} marked complete.`);
+        router.refresh();
+      } catch { toast.error("Bulk mark complete failed."); }
+    });
   }
 
-  async function bulkStageMove() {
-    setBulkBusy(true);
-    try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMove", ids: selected }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error();
-      const failed = data.errors?.length || 0;
-      if (failed) toast.error(`${failed} could not be moved (already on the last stage).`);
-      if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved to their next stage.`);
-      setSelected([]); router.refresh();
-    } catch { toast.error("Bulk move failed."); } finally { setBulkBusy(false); }
+  async function bulkStageMove(note = "") {
+    const ids = await resolveBulkIds();
+    const count = ids.length;
+    clearSelection();
+    runBulkWithUndo(`Moving ${count} to their next stage…`, async () => {
+      try {
+        const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMove", ids, note }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error();
+        const failed = data.errors?.length || 0;
+        if (failed) toast.error(`${failed} could not be moved (already on the last stage).`);
+        if (count - failed > 0) toast.success(`${count - failed} moved to their next stage.`);
+        router.refresh();
+      } catch { toast.error("Bulk move failed."); }
+    });
   }
 
-  async function bulkStageMovePrev() {
-    setBulkBusy(true);
-    try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMoveBack", ids: selected }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error();
-      const failed = data.errors?.length || 0;
-      if (failed) toast.error(`${failed} could not be moved back (already on the first stage).`);
-      if (selected.length - failed > 0) toast.success(`${selected.length - failed} moved back a stage.`);
-      setSelected([]); router.refresh();
-    } catch { toast.error("Bulk move back failed."); } finally { setBulkBusy(false); }
+  async function bulkStageMovePrev(note = "") {
+    const ids = await resolveBulkIds();
+    const count = ids.length;
+    clearSelection();
+    runBulkWithUndo(`Moving ${count} back a stage…`, async () => {
+      try {
+        const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "stageMoveBack", ids, note }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error();
+        const failed = data.errors?.length || 0;
+        if (failed) toast.error(`${failed} could not be moved back (already on the first stage).`);
+        if (count - failed > 0) toast.success(`${count - failed} moved back a stage.`);
+        router.refresh();
+      } catch { toast.error("Bulk move back failed."); }
+    });
+  }
+
+  // Shared by both bulk stage buttons — a note here is never required, but
+  // always offered (same reasoning as the single-lead StageNoteModal), and
+  // applied as the SAME note text to every lead the move actually succeeds
+  // on, so there's one common record of why the group moved.
+  async function confirmBulkStageNote(note) {
+    const kind = bulkStageNoteKind;
+    setBulkStageNoteKind(null);
+    if (kind === "next") await bulkStageMove(note);
+    else if (kind === "prev") await bulkStageMovePrev(note);
   }
 
   async function submitBulkPreviewUpdate(rows) {
@@ -156,12 +213,12 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       const failed = data.errors?.length || 0;
       if (failed) toast.error(`${failed} student${failed === 1 ? "" : "s"} could not be updated.`);
       if (rows.length - failed > 0) toast.success(`${rows.length - failed} student${rows.length - failed === 1 ? "" : "s"} updated.`);
-      setShowBulkEditModal(false); setSelected([]); router.refresh();
+      setShowBulkEditModal(false); clearSelection(); router.refresh();
     } catch (err) { toast.error(err.message); }
   }
 
-  function toggleSelect(id) { setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
-  function toggleAll() { setSelected(selected.length === leads.length ? [] : leads.map((l) => l.id)); }
+  function toggleSelect(id) { setSelectAllMatching(false); setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])); }
+  function toggleAll() { setSelectAllMatching(false); setSelected(selected.length === leads.length ? [] : leads.map((l) => l.id)); }
 
   function handleSort(key) {
     const params = new URLSearchParams(searchParams.toString());
@@ -171,46 +228,57 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   }
 
   async function bulkSetStatus(status) {
-    setBulkBusy(true);
-    try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "status", ids: selected, status }) });
-      if (!res.ok) throw new Error();
-      toast.success(`${selected.length} leads updated.`);
-      setSelected([]); router.refresh();
-    } catch { toast.error("Bulk update failed."); } finally { setBulkBusy(false); }
+    const ids = await resolveBulkIds();
+    const count = ids.length;
+    clearSelection();
+    runBulkWithUndo(`Updating ${count} leads…`, async () => {
+      try {
+        const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "status", ids, status }) });
+        if (!res.ok) throw new Error();
+        toast.success(`${count} leads updated.`);
+        router.refresh();
+      } catch { toast.error("Bulk update failed."); }
+    });
   }
 
   async function bulkAssignTo() {
     if (!bulkAssignee) return;
-    setBulkBusy(true);
-    try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "assign", ids: selected, assignedTo: Number(bulkAssignee) }) });
-      if (!res.ok) throw new Error();
-      toast.success(`${selected.length} lead${selected.length === 1 ? "" : "s"} assigned.`);
-      setSelected([]); setBulkAssignee(""); router.refresh();
-    } catch { toast.error("Bulk assignment failed."); } finally { setBulkBusy(false); }
+    const assignee = bulkAssignee;
+    const ids = await resolveBulkIds();
+    const count = ids.length;
+    clearSelection(); setBulkAssignee("");
+    runBulkWithUndo(`Assigning ${count} lead${count === 1 ? "" : "s"}…`, async () => {
+      try {
+        const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "assign", ids, assignedTo: Number(assignee) }) });
+        if (!res.ok) throw new Error();
+        toast.success(`${count} lead${count === 1 ? "" : "s"} assigned.`);
+        router.refresh();
+      } catch { toast.error("Bulk assignment failed."); }
+    });
   }
 
   async function bulkAddNote(content) {
     try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "note", ids: selected, content }) });
+      const ids = await resolveBulkIds();
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "note", ids, content }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to add note.");
       toast.success(`Note added to ${data.addedCount} ${data.addedCount === 1 ? terms.singularLower : terms.pluralLower}.`);
-      setShowNoteModal(false); setSelected([]); router.refresh();
+      setShowNoteModal(false); clearSelection(); router.refresh();
     } catch (err) { toast.error(err.message); }
   }
 
   async function bulkSendEmail(subject, message) {
     try {
-      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "sendEmail", ids: selected, subject, message }) });
+      const ids = await resolveBulkIds();
+      const res = await apiFetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bulkAction: "sendEmail", ids, subject, message }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to send email.");
       const parts = [`${data.sentCount} emailed`];
       if (data.skippedCount) parts.push(`${data.skippedCount} skipped (no email on file)`);
       if (data.failedCount) parts.push(`${data.failedCount} failed`);
       toast.success(parts.join(", ") + ".");
-      setShowEmailModal(false); setSelected([]); router.refresh();
+      setShowEmailModal(false); clearSelection(); router.refresh();
     } catch (err) { toast.error(err.message); }
   }
 
@@ -376,9 +444,20 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   return (
     <div>
+      {selected.length > 0 && selected.length === leads.length && !selectAllMatching && totalCount != null && totalCount > leads.length && (
+        <div className="mb-2 px-4 py-2 bg-muted border border-border rounded-lg text-xs text-muted-foreground">
+          All {leads.length} {leads.length === 1 ? terms.singularLower : terms.pluralLower} on this page are selected.{" "}
+          <button onClick={() => setSelectAllMatching(true)} className="text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer">
+            Select all {totalCount} {totalCount === 1 ? terms.singularLower : terms.pluralLower} matching your filters
+          </button>
+        </div>
+      )}
+
       {selected.length > 0 && (canBulkAssign || canBulkUpdate || canClaim || canManageNotes) && (
         <div className="flex items-center gap-3 mb-3 px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-sm flex-wrap">
-          <span className="text-indigo-300 shrink-0">{selected.length} selected</span>
+          <span className="text-indigo-300 shrink-0">
+            {selectAllMatching ? `All ${selectedCount} ${selectedCount === 1 ? terms.singularLower : terms.pluralLower} selected` : `${selectedCount} selected`}
+          </span>
           {canBulkUpdate && (<>
             <button disabled={bulkBusy} onClick={() => bulkSetStatus("Hold")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Hold</button>
             <button disabled={bulkBusy} onClick={() => bulkSetStatus("Denied")} className="text-foreground hover:text-foreground cursor-pointer disabled:opacity-60">Deny</button>
@@ -406,7 +485,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
                 onClick={bulkAssignTo}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium cursor-pointer disabled:opacity-50 transition"
               >
-                {bulkBusy && <Loader2 className="h-3 w-3 animate-spin" />} Assign {selected.length} {selected.length === 1 ? terms.singular : terms.plural}
+                {bulkBusy && <Loader2 className="h-3 w-3 animate-spin" />} Assign {selectedCount} {selectedCount === 1 ? terms.singular : terms.plural}
               </button>
             </div>
           )}
@@ -420,22 +499,22 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
             <button disabled={bulkBusy} onClick={bulkStageComplete} className="flex items-center gap-1 text-amber-400 hover:text-amber-300 cursor-pointer disabled:opacity-60">
               <CheckCircle2 className="h-3.5 w-3.5" /> Mark Complete
             </button>
-            <button disabled={bulkBusy} onClick={bulkStageMove} className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">
+            <button disabled={bulkBusy} onClick={() => setBulkStageNoteKind("next")} className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-60">
               <ArrowRightCircle className="h-3.5 w-3.5" /> Move to Next Stage
             </button>
-            <button disabled={bulkBusy} onClick={bulkStageMovePrev} className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60">
+            <button disabled={bulkBusy} onClick={() => setBulkStageNoteKind("prev")} className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-60">
               <ArrowLeftCircle className="h-3.5 w-3.5" /> Move Back
             </button>
             <button disabled={bulkBusy} onClick={() => setShowBulkEditModal(true)} className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 cursor-pointer disabled:opacity-60">
               <PencilLine className="h-3.5 w-3.5" /> Bulk Edit
             </button>
           </>)}
-          <button onClick={() => setSelected([])} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
+          <button onClick={clearSelection} className="text-muted-foreground hover:text-foreground text-xs cursor-pointer shrink-0">Clear</button>
         </div>
       )}
 
       {showNoteModal && (
-        <BulkNoteModal count={selected.length} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowNoteModal(false)} onSubmit={bulkAddNote} />
+        <BulkNoteModal count={selectedCount} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowNoteModal(false)} onSubmit={bulkAddNote} />
       )}
 
       {notesLead && (
@@ -443,11 +522,19 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       )}
 
       {showEmailModal && (
-        <BulkEmailModal count={selected.length} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowEmailModal(false)} onSubmit={bulkSendEmail} />
+        <BulkEmailModal count={selectedCount} singularLower={terms.singularLower} pluralLower={terms.pluralLower} onClose={() => setShowEmailModal(false)} onSubmit={bulkSendEmail} />
       )}
 
       {stageNoteAction && (
         <StageNoteModal title={stageNoteAction.label} onClose={() => setStageNoteAction(null)} onConfirm={confirmStageNote} />
+      )}
+
+      {bulkStageNoteKind && (
+        <StageNoteModal
+          title={bulkStageNoteKind === "next" ? `Move ${selectedCount} to Next Stage` : `Move ${selectedCount} Back`}
+          onClose={() => setBulkStageNoteKind(null)}
+          onConfirm={confirmBulkStageNote}
+        />
       )}
 
       {showBulkEditModal && (

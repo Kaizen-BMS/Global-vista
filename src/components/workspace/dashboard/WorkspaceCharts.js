@@ -19,9 +19,9 @@ const legendStyle = { fontSize: 12, color: "var(--foreground)" };
  * is deferred until after the rest of the dashboard (KPIs, tables) has
  * already painted. See the dynamic() calls in dashboard/page.js.
  */
-export function MonthlyLeadTrendChart({ data }) {
+export function MonthlyLeadTrendChart({ data, compact = false }) {
   return (
-    <ChartCard title="Monthly Leads" subtitle="New leads per month" empty={!data.length} data={data} csvColumns={["month", "count"]}
+    <ChartCard title="Monthly Leads" subtitle="New leads per month" empty={!data.length} data={data} csvColumns={["month", "count"]} compact={compact}
       renderChart={({ fullscreen }) => (
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
@@ -36,9 +36,9 @@ export function MonthlyLeadTrendChart({ data }) {
   );
 }
 
-export function PipelineFunnelChart({ data }) {
+export function PipelineFunnelChart({ data, compact = false }) {
   return (
-    <ChartCard title="Pipeline by Stage" subtitle="Active leads across the funnel" empty={!data.length} data={data} csvColumns={["stage", "count"]}
+    <ChartCard title="Pipeline by Stage" subtitle="Active leads across the funnel" empty={!data.length} data={data} csvColumns={["stage", "count"]} compact={compact}
       renderChart={({ fullscreen }) => (
         <BarChart data={data} layout="vertical" margin={{ left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
@@ -52,29 +52,29 @@ export function PipelineFunnelChart({ data }) {
   );
 }
 
-function DistributionPie({ title, subtitle, data, nameKey, valueKey, emptyLabel }) {
+function DistributionPie({ title, subtitle, data, nameKey, valueKey, emptyLabel, compact = false }) {
   return (
-    <ChartCard title={title} subtitle={subtitle} empty={!data.length} emptyLabel={emptyLabel} data={data} csvColumns={[nameKey, valueKey]}
+    <ChartCard title={title} subtitle={subtitle} empty={!data.length} emptyLabel={emptyLabel} data={data} csvColumns={[nameKey, valueKey]} compact={compact}
       renderChart={({ fullscreen }) => (
         <PieChart>
-          <Pie data={data} dataKey={valueKey} nameKey={nameKey} innerRadius={fullscreen ? 70 : 45} outerRadius={fullscreen ? 140 : 80} paddingAngle={2}>
+          <Pie data={data} dataKey={valueKey} nameKey={nameKey} innerRadius={fullscreen ? 70 : compact ? 32 : 45} outerRadius={fullscreen ? 140 : compact ? 56 : 80} paddingAngle={2}>
             {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
           </Pie>
           <Tooltip contentStyle={tooltipStyle} />
-          <Legend wrapperStyle={legendStyle} />
+          <Legend wrapperStyle={compact ? { ...legendStyle, fontSize: 10 } : legendStyle} />
         </PieChart>
       )}
     />
   );
 }
 
-export function LeadsBySourceChart({ data }) { return <DistributionPie title="Leads by Source" data={data} nameKey="source" valueKey="count" />; }
-export function LeadsByServiceChart({ data }) { return <DistributionPie title="Leads by Service" data={data} nameKey="service" valueKey="count" />; }
+export function LeadsBySourceChart({ data, compact = false }) { return <DistributionPie title="Leads by Source" data={data} nameKey="source" valueKey="count" compact={compact} />; }
+export function LeadsByServiceChart({ data, compact = false }) { return <DistributionPie title="Leads by Service" data={data} nameKey="service" valueKey="count" compact={compact} />; }
 // GVE's own dashboard only — same {stage, count} shape PipelineFunnelChart
 // already uses, just as a pie instead of a bar (regular companies/schools
 // keep the funnel exactly as before).
-export function LeadsByStageChart({ data }) { return <DistributionPie title="Leads by Stage" subtitle="Across every school" data={data} nameKey="stage" valueKey="count" />; }
-export function LeadsBySchoolChart({ data }) { return <DistributionPie title="Leads by School" data={data} nameKey="name" valueKey="leadCount" />; }
+export function LeadsByStageChart({ data, compact = false }) { return <DistributionPie title="Leads by Stage" subtitle="Across every school" data={data} nameKey="stage" valueKey="count" compact={compact} />; }
+export function LeadsBySchoolChart({ data, compact = false }) { return <DistributionPie title="Leads by School" data={data} nameKey="name" valueKey="leadCount" compact={compact} />; }
 export function DepartmentDistributionChart({ data }) { return <DistributionPie title="Department Distribution" data={data} nameKey="department" valueKey="count" />; }
 export function RoleDistributionChart({ data }) { return <DistributionPie title="Role Distribution" data={data} nameKey="role" valueKey="count" />; }
 

@@ -37,9 +37,13 @@ import { provisionCompany } from "@/lib/platform/actions/provisioning";
  */
 export async function listChildCompanies(session) {
   if (!(await canSwitchCompanies(session))) return [];
+  return listChildCompaniesData(session.company_id);
+}
+
+async function listChildCompaniesData(companyId) {
   const [rows] = await pool.query(
     `SELECT id, name, short_name, status FROM companies WHERE parent_company_id = ? AND status != 'deleted' ORDER BY name`,
-    [session.company_id]
+    [companyId]
   );
   return rows;
 }
@@ -167,7 +171,7 @@ export async function getSchoolsOverview(session) {
     throw e;
   }
 
-  const children = await listChildCompanies(session);
+  const children = await listChildCompaniesData(session.company_id);
   if (children.length === 0) return { schools: [], totals: { leadCount: 0, userCount: 0 } };
 
   const childIds = children.map((c) => c.id);
@@ -195,7 +199,7 @@ async function aggregatedCompanyIds(session) {
     e.status = 403;
     throw e;
   }
-  const children = await listChildCompanies(session);
+  const children = await listChildCompaniesData(session.company_id);
   return [...children.map((c) => c.id), session.company_id];
 }
 
@@ -299,7 +303,7 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
     throw e;
   }
 
-  const children = await listChildCompanies(session);
+  const children = await listChildCompaniesData(session.company_id);
   const childIds = children.map((c) => c.id);
 
   let ids;

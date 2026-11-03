@@ -19,19 +19,19 @@ const ACCENTS = {
   neutral: "text-muted-foreground bg-muted-foreground/10",
 };
 
-export function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
+export function Kpi({ label, value, icon, accent = "indigo", hint, href, compact = false }) {
   const Icon = ICONS[icon];
   const content = (
     <>
       <div className="min-w-0">
-        <p className="text-muted-foreground text-xs mb-1 truncate">{label}</p>
-        <p className="text-foreground text-xl font-semibold tabular-nums">{value}</p>
+        <p className={`text-muted-foreground mb-1 truncate ${compact ? "text-[11px]" : "text-xs"}`}>{label}</p>
+        <p className={`text-foreground font-semibold tabular-nums ${compact ? "text-lg" : "text-xl"}`}>{value}</p>
         {hint && <p className="text-muted-foreground text-[11px] mt-0.5">{hint}</p>}
       </div>
-      {Icon && <div className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${ACCENTS[accent]}`}><Icon className="h-4.5 w-4.5" /></div>}
+      {Icon && <div className={`${compact ? "h-7 w-7" : "h-9 w-9"} shrink-0 rounded-lg flex items-center justify-center ${ACCENTS[accent]}`}><Icon className={compact ? "h-3.5 w-3.5" : "h-4.5 w-4.5"} /></div>}
     </>
   );
-  const className = "bg-card border border-border rounded-xl p-4 flex items-center justify-between transition-all";
+  const className = `bg-card border border-border rounded-xl flex items-center justify-between transition-all ${compact ? "p-2.5" : "p-4"}`;
   return href ? (
     <Link href={href} className={`${className} cursor-pointer hover:border-border hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20`}>{content}</Link>
   ) : (
@@ -41,8 +41,9 @@ export function Kpi({ label, value, icon, accent = "indigo", hint, href }) {
 
 /** `schoolCount` is only ever passed on GVE's own dashboard (every other
  * company omits it) — adds a "Total Schools" card up front, since that's
- * the one number this grid otherwise has no room for. */
-export function CrmKpiGrid({ crm, isChildCompany = false, schoolCount = null }) {
+ * the one number this grid otherwise has no room for. `compact` likewise
+ * only ever true for GVE — see the same flag on the charts section. */
+export function CrmKpiGrid({ crm, isChildCompany = false, schoolCount = null, compact = false }) {
   const cards = [
     ...(schoolCount === null ? [] : [{ label: "Total Schools", value: schoolCount, icon: "building", accent: "purple", href: "/workspace/settings/schools" }]),
     { label: isChildCompany ? "Total Students" : "Total Leads", value: crm.totalLeads, icon: "contact", accent: "indigo", href: "/workspace/lead-management" },
@@ -51,7 +52,8 @@ export function CrmKpiGrid({ crm, isChildCompany = false, schoolCount = null }) 
     { label: "Today's Follow-ups", value: crm.todaysFollowups, icon: "calendar", accent: "yellow", href: "/workspace/followups" },
     ...(isChildCompany ? [] : [{ label: "Conversion Rate", value: `${crm.conversionRate}%`, icon: "trending", accent: "green", href: "/workspace/lead-management" }]),
   ];
-  return <div className={`grid grid-cols-2 sm:grid-cols-3 gap-3 ${isChildCompany ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>{cards.map((c) => <Kpi key={c.label} {...c} />)}</div>;
+  const lgCols = isChildCompany ? "lg:grid-cols-3" : compact ? "lg:grid-cols-6" : "lg:grid-cols-5";
+  return <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2.5 ${lgCols}`}>{cards.map((c) => <Kpi key={c.label} {...c} compact={compact} />)}</div>;
 }
 
 /** Platform subscription billing — what THIS company has actually paid the

@@ -154,7 +154,7 @@ export default async function DashboardPage({ searchParams }) {
 
       <section className={sectionGap}>
         <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">CRM Overview</p>
-        <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} schoolCount={isGveParent ? schoolsOverview?.schools?.length ?? 0 : null} />
+        <CrmKpiGrid crm={crmStats} isChildCompany={isChildCompany} schoolCount={isGveParent ? schoolsOverview?.schools?.length ?? 0 : null} compact={isGveParent} />
         {!isChildCompany && (() => {
           const charts = (
             <WorkspaceCrmChartsSection

@@ -20,12 +20,12 @@ import {
  */
 export function WorkspaceCrmChartsSection({ monthlyLeads, leadsByStage, leadsBySource, leadsByService, isGveParent = false, leadsBySchool }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <MonthlyLeadTrendChart data={monthlyLeads} />
-      {isGveParent ? <LeadsByStageChart data={leadsByStage} /> : <PipelineFunnelChart data={leadsByStage} />}
-      <LeadsBySourceChart data={leadsBySource} />
-      <LeadsByServiceChart data={leadsByService} />
-      {isGveParent && <LeadsBySchoolChart data={leadsBySchool} />}
+    <div className={`grid grid-cols-1 ${isGveParent ? "sm:grid-cols-2 lg:grid-cols-3" : "lg:grid-cols-2"} gap-3`}>
+      <MonthlyLeadTrendChart data={monthlyLeads} compact={isGveParent} />
+      {isGveParent ? <LeadsByStageChart data={leadsByStage} compact /> : <PipelineFunnelChart data={leadsByStage} />}
+      <LeadsBySourceChart data={leadsBySource} compact={isGveParent} />
+      <LeadsByServiceChart data={leadsByService} compact={isGveParent} />
+      {isGveParent && <LeadsBySchoolChart data={leadsBySchool} compact />}
     </div>
   );
 }

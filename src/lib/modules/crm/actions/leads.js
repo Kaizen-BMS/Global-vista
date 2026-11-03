@@ -118,6 +118,51 @@ export async function listLeads(session, {
   return { leads: rows, total, page: p, pageSize: size };
 }
 
+/** Every lead id matching the current filters, no pagination (capped at a
+ * safety ceiling) — backs the Leads page's "Select all N matching your
+ * filters" (Gmail-style, see LeadsTable.js's selectAllMatching), so a
+ * bulk action can run against the FULL filtered set rather than just
+ * whatever's on the current page. Mirrors listLeads's own filter-building
+ * exactly, just without sorting/pagination/the joined display columns. */
+export async function listAllLeadIds(session, {
+  status = null, stage = null, priority = null, sourceId = null, serviceId = null,
+  assignedTo = null, country = null, search = null, tag = null,
+  createdFrom = null, createdTo = null, followupFrom = null, followupTo = null,
+} = {}) {
+  const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
+  const where = [`l.${NOT_DELETED}`, rlsWhere];
+  const params = [...rlsParams];
+
+  if (status) { where.push("l.status = ?"); params.push(status); }
+  if (stage) { where.push("l.stage = ?"); params.push(stage); }
+  if (priority) { where.push("l.priority = ?"); params.push(priority); }
+  if (sourceId) { where.push("l.lead_source_id = ?"); params.push(sourceId); }
+  if (serviceId) { where.push("l.service_id = ?"); params.push(serviceId); }
+  applyAssignedToFilter(where, params, assignedTo, session);
+  if (country) { where.push("l.country = ?"); params.push(country); }
+  if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
+  if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
+  if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
+  if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
+  if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
+  if (search) {
+    const customFieldSearch = session.is_child_company
+      ? ` OR EXISTS (
+          SELECT 1 FROM lead_custom_field_values v
+          JOIN lead_custom_fields f ON f.id = v.custom_field_id
+          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name') AND v.value LIKE ?
+        )`
+      : "";
+    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?${customFieldSearch})`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    if (session.is_child_company) params.push(`%${search}%`);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+
+  const [rows] = await pool.query(`SELECT l.id FROM leads l ${whereSql} LIMIT 10000`, params);
+  return rows.map((r) => r.id);
+}
+
 export async function listLeadsForExport(session, {
   status = null, stage = null, sourceId = null, serviceId = null, search = null,
   priority = null, assignedTo = null, country = null, tag = null,

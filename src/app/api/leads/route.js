@@ -43,10 +43,10 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
     } else if (body.bulkAction === "stageComplete") {
       await bulkMarkStageComplete(session, body.ids || [], session.id);
     } else if (body.bulkAction === "stageMove") {
-      const result = await bulkMoveToNextStage(session, body.ids || [], session.id);
+      const result = await bulkMoveToNextStage(session, body.ids || [], session.id, body.note || "");
       return ok(result);
     } else if (body.bulkAction === "stageMoveBack") {
-      const result = await bulkMoveToPreviousStage(session, body.ids || [], session.id);
+      const result = await bulkMoveToPreviousStage(session, body.ids || [], session.id, body.note || "");
       return ok(result);
     } else if (body.bulkAction === "bulkPreviewUpdate") {
       const result = await applyBulkPreviewUpdates(session, body.rows || [], session.id);
