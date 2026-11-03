@@ -10,7 +10,7 @@ import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import FloatingPanel from "@/components/shared/FloatingPanel";
 
 const ASSIGNED_TABS = [{ key: "", label: "All Visible" }, { key: "me", label: "Assigned to Me" }, { key: "unassigned", label: "Unassigned" }];
-const FILTER_KEYS = ["stage", "priority", "sourceId", "serviceId", "assignedTo", "country", "tag", "createdFrom", "createdTo", "followupFrom", "followupTo"];
+const FILTER_KEYS = ["school", "stage", "priority", "sourceId", "serviceId", "assignedTo", "country", "tag", "createdFrom", "createdTo", "followupFrom", "followupTo"];
 
 /**
  * One compact row — Search, an "Assigned to" quick-pick, and a single
@@ -20,7 +20,7 @@ const FILTER_KEYS = ["stage", "priority", "sourceId", "serviceId", "assignedTo",
  * selects plus a separate stacked quick-tabs row. All the same URL params
  * as before — this only changes how they're presented.
  */
-export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true, stages = LEAD_STAGES, isChildCompany = false }) {
+export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true, stages = LEAD_STAGES, isChildCompany = false, aggregated = false, schools = [] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -89,6 +89,18 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           />
         </div>
 
+        {aggregated && (
+          <select
+            value={searchParams.get("school") || ""}
+            onChange={(e) => setParam("school", e.target.value)}
+            className="px-3 py-2 rounded-lg bg-card border border-border text-foreground text-sm cursor-pointer shrink-0"
+          >
+            <option value="">All Schools</option>
+            {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="independent">Direct Leads</option>
+          </select>
+        )}
+
         <div className="flex items-center gap-1 p-1 rounded-lg bg-card border border-border shrink-0">
           {ASSIGNED_TABS.map((t) => (
             <button
@@ -116,13 +128,15 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {!isChildCompany && (
                 <>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Stage</label>
-                    <select defaultValue={searchParams.get("stage") || ""} onChange={(e) => setParam("stage", e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
-                      <option value="">All Stages</option>
-                      {[...stages, ...LEAD_TERMINAL_STAGES].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
+                  {!aggregated && (
+                    <div>
+                      <label className="block text-xs text-muted-foreground mb-1">Stage</label>
+                      <select defaultValue={searchParams.get("stage") || ""} onChange={(e) => setParam("stage", e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
+                        <option value="">All Stages</option>
+                        {[...stages, ...LEAD_TERMINAL_STAGES].map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1">Priority</label>
                     <select defaultValue={searchParams.get("priority") || ""} onChange={(e) => setParam("priority", e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
@@ -209,7 +223,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
           </FloatingPanel>
         </div>
 
-        {!isChildCompany && allowImportExport && (
+        {!isChildCompany && !aggregated && allowImportExport && (
           <>
             <a href={`/api/leads/export?${searchParams.toString()}${searchParams.toString() ? "&" : ""}format=xlsx`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card border border-border text-foreground hover:text-foreground text-sm transition cursor-pointer" title="Export current filtered view to Excel">
               <Download className="h-4 w-4" /> Excel

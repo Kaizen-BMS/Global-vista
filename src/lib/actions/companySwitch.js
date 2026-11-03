@@ -260,6 +260,23 @@ export async function getAggregatedLeadsByService(session) {
   return rows;
 }
 
+/** Mirrors listDistinctTags — same `IN (ids)` scoping every getAggregated-
+ * prefixed function here uses, since leads.tags is free text with no
+ * per-company collision concern (unlike source/service names above). */
+export async function getAggregatedDistinctTags(session) {
+  const ids = await aggregatedCompanyIds(session);
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT DISTINCT tags FROM leads l WHERE l.company_id IN (?) AND l.is_deleted = 0 AND l.tags IS NOT NULL AND l.tags != ''`,
+    [ids]
+  );
+  const set = new Set();
+  for (const row of rows) {
+    for (const t of (row.tags || "").split(",")) { const trimmed = t.trim(); if (trimmed) set.add(trimmed); }
+  }
+  return Array.from(set).sort();
+}
+
 /** Mirrors getLeadsByStage — `stage` is a plain string column on `leads`
  * itself (not a per-company lookup table), so no name-collision concern
  * like source/service above. */
@@ -292,7 +309,11 @@ export async function getAggregatedLeadsByStage(session) {
  * school first (see OpenLeadLink-style logic in LeadsTable.js), it isn't
  * a second read-only view bolted on top.
  */
-export async function listAggregatedSchoolLeads(session, { schoolId = null, search = null, page = 1, pageSize = 20 } = {}) {
+export async function listAggregatedSchoolLeads(session, {
+  schoolId = null, search = null, priority = null, assignedTo = null, tag = null,
+  sourceName = null, serviceName = null, createdFrom = null, createdTo = null,
+  page = 1, pageSize = 20,
+} = {}) {
   // Not gated on isSuperAdminAccount — the Leads page (its only caller
   // besides the Dashboard's own ungated "Recent Leads" widget) already
   // requires "leads.view" before reaching here, same as every other role
@@ -314,7 +335,7 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
     ids = [requested];
   } else ids = [...childIds, session.company_id];
 
-  if (ids.length === 0) return { leads: [], total: 0, page: 1, pageSize };
+  if (ids.length === 0) return { leads: [], total: 0, page: 1, pageSize, schools: children };
 
   const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
   const params = [ids];
@@ -327,6 +348,23 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
     where.push(`(l.assigned_to = ? OR l.assigned_to IS NULL)`);
     params.push(session.id);
   }
+  if (priority) { where.push("l.priority = ?"); params.push(priority); }
+  // A specific named counsellor isn't offered here (unlike a single
+  // company's own LeadFilters) — "assigned to" a user id only means
+  // something within ONE company, and a school's own employees never
+  // show up in GVE's own assignable-users list. "Me" / "Unassigned" are
+  // the two sentinels that still mean the same thing across every school.
+  if (assignedTo === "unassigned") where.push("l.assigned_to IS NULL");
+  else if (assignedTo === "me") { where.push("l.assigned_to = ?"); params.push(session.id); }
+  if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
+  if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
+  if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
+  // Matched by NAME, not lead_sources.id/services.id — each school has its
+  // own separate rows in those tables (same reasoning as
+  // getAggregatedLeadsBySource/Service above), so an id only ever means
+  // something within one company.
+  if (sourceName) { where.push("s.name = ?"); params.push(sourceName); }
+  if (serviceName) { where.push("sv.name = ?"); params.push(serviceName); }
   if (search) {
     where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ?)`);
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
@@ -338,12 +376,16 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
   // own row shape — LeadsTable.js renders whichever columns are present
   // regardless of which query produced them, and shouldn't need a second,
   // narrower set of column defs just because the rows came from here.
+  // The source/service JOINs are INNER on purpose (every lead always has
+  // both) — reused as-is in the COUNT query below so a sourceName/
+  // serviceName filter (which references those aliases) works there too.
+  const fromSql = `FROM leads l
+     JOIN lead_sources s ON s.id = l.lead_source_id
+     JOIN services sv ON sv.id = l.service_id`;
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
             (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
-     FROM leads l
-     JOIN lead_sources s ON s.id = l.lead_source_id
-     JOIN services sv ON sv.id = l.service_id
+     ${fromSql}
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
      LEFT JOIN companies co ON co.id = l.company_id
@@ -352,7 +394,7 @@ export async function listAggregatedSchoolLeads(session, { schoolId = null, sear
      LIMIT ? OFFSET ?`,
     [session.company_id, ...params, limit, offset]
   );
-  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l ${whereSql}`, params);
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total ${fromSql} ${whereSql}`, params);
 
   return { leads: rows, total, page: p, pageSize: size, schools: children };
 }

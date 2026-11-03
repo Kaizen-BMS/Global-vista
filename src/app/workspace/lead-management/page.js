@@ -3,7 +3,7 @@ import { Plus, Upload, Download } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeads, listDistinctTags } from "@/lib/modules/crm/actions/leads";
-import { listAggregatedSchoolLeads } from "@/lib/actions/companySwitch";
+import { listAggregatedSchoolLeads, getAggregatedLeadsBySource, getAggregatedLeadsByService, getAggregatedDistinctTags } from "@/lib/actions/companySwitch";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
 import { getLeadsByStage } from "@/lib/modules/crm/actions/dashboard";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
@@ -13,7 +13,6 @@ import { isImportExportAllowed } from "@/lib/platform/tenant";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 import ForbiddenState from "@/components/shared/ForbiddenState";
 import LeadFilters from "@/components/crm/leads/LeadFilters";
-import LeadsOverviewFilters from "@/components/crm/leads/LeadsOverviewFilters";
 import StageTabs from "@/components/crm/leads/StageTabs";
 import LeadsTable from "@/components/crm/leads/LeadsTable";
 import LeadViewToggle from "@/components/crm/leads/LeadViewToggle";
@@ -32,9 +31,15 @@ export default async function LeadManagementPage({ searchParams }) {
   // Overview" page; this IS "Leads" for GVE. See listAggregatedSchoolLeads.
   const isAggregated = !isChildCompany && !!session.can_create_child_companies;
 
-  const [result, stages, stageCountRows, sources, services, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
+  const [result, stages, stageCountRows, sourceRows, serviceRows, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
     isAggregated
-      ? listAggregatedSchoolLeads(session, { schoolId: sp?.school || null, search: sp?.q || null, page: sp?.page || 1, pageSize: 20 })
+      ? listAggregatedSchoolLeads(session, {
+          schoolId: sp?.school || null, search: sp?.q || sp?.search || null, priority: sp?.priority || null,
+          assignedTo: sp?.assignedTo || null, tag: sp?.tag || null,
+          sourceName: sp?.sourceId || null, serviceName: sp?.serviceId || null,
+          createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
+          page: sp?.page || 1, pageSize: 20,
+        })
       : listLeads(session, {
           status: sp?.status || null, stage: sp?.stage || null, priority: sp?.priority || null,
           sourceId: sp?.sourceId || null, serviceId: sp?.serviceId || null, search: sp?.search || null,
@@ -46,9 +51,14 @@ export default async function LeadManagementPage({ searchParams }) {
         }),
     getLeadPipelineStages(session),
     isChildCompany ? getLeadsByStage(session) : [],
-    listLeadSources(session),
-    listServices(session),
-    listDistinctTags(session),
+    // For GVE's combined view, Source/Service options are distinct NAMES
+    // aggregated across every school (each school has its own separate
+    // lead_sources/services rows, so an id only ever means something
+    // within one company) — same data getAggregatedLeadsBySource/Service
+    // already compute for the dashboard's own pie charts.
+    isAggregated ? getAggregatedLeadsBySource(session) : listLeadSources(session),
+    isAggregated ? getAggregatedLeadsByService(session) : listServices(session),
+    isAggregated ? getAggregatedDistinctTags(session) : listDistinctTags(session),
     listUsers(session, { status: "active", pageSize: 100 }),
     can(session, "leads.create"),
     can(session, "leads.assign"),
@@ -58,6 +68,12 @@ export default async function LeadManagementPage({ searchParams }) {
     isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : [],
   ]);
   const stageCounts = Object.fromEntries(stageCountRows.map((r) => [r.stage, r.count]));
+  // LeadFilters' Source/Service <option>s read {id, name} — for the
+  // aggregated case the "id" submitted back as ?sourceId=/&serviceId= is
+  // really the NAME (see sourceName/serviceName above), so the dropdown
+  // itself needs no further change, just a {id: name, name} shape here.
+  const sources = isAggregated ? sourceRows.map((r) => ({ id: r.source, name: r.source })) : sourceRows;
+  const services = isAggregated ? serviceRows.map((r) => ({ id: r.service, name: r.service })) : serviceRows;
 
   return (
     <div>
@@ -92,11 +108,12 @@ export default async function LeadManagementPage({ searchParams }) {
       </div>
 
       {isChildCompany && <StageTabs stages={stages} counts={stageCounts} total={result.total} />}
-      {isAggregated ? (
-        <LeadsOverviewFilters schools={result.schools} />
-      ) : (
-        <LeadFilters sources={sources} services={services} counsellors={counsellorsResult.users} tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany} />
-      )}
+      <LeadFilters
+        sources={sources} services={services}
+        counsellors={isAggregated ? [] : counsellorsResult.users}
+        tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany}
+        aggregated={isAggregated} schools={result.schools || []}
+      />
       <LeadsTable
         leads={result.leads}
         canBulkAssign={canAssign}
