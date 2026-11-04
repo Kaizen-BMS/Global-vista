@@ -181,9 +181,8 @@ export default async function DashboardPage({ searchParams }) {
         })()}
       </section>
 
-      {isAdmin && subscriptionDetails?.hasSubscription && (
-        <section className="space-y-4">
-          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Subscription & Billing</p>
+      {isAdmin && subscriptionDetails?.hasSubscription && (() => {
+        const subscriptionBlock = (
           <SubscriptionKpiGrid
             planName={subscriptionDetails?.planName}
             state={subscriptionDetails?.state}
@@ -195,63 +194,85 @@ export default async function DashboardPage({ searchParams }) {
             lastPaymentDate={lastPayment ? formatDate(lastPayment.created_at, timezone) : null}
             gateway={lastPayment?.gateway}
           />
-        </section>
-      )}
+        );
+        return isGveParent ? (
+          <CollapsibleSection title="Subscription & Billing" persistKey="gve-dashboard-subscription">{subscriptionBlock}</CollapsibleSection>
+        ) : (
+          <section className="space-y-4">
+            <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Subscription & Billing</p>
+            {subscriptionBlock}
+          </section>
+        );
+      })()}
 
-      {!isChildCompany && paymentsEnabled && employeePayments && (
-        <section className="space-y-4">
-          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Payments</p>
-          <EmployeePaymentKpiGrid data={employeePayments} currency={branding.currency} />
-          {isAdmin && superAdminPayments && (
-            <>
-              <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide pt-2">Company-Wide (Super Admin)</p>
-              <SuperAdminPaymentKpiGrid data={superAdminPayments} currency={branding.currency} />
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <CollectionsBreakdown title="Collections by Service" rows={superAdminPayments.byService} labelKey="service" currency={branding.currency} />
-                <CollectionsBreakdown title="Collections by Method" rows={superAdminPayments.byMethod} labelKey="method" currency={branding.currency} />
-                <CollectionsBreakdown title="Collections by Employee" rows={superAdminPayments.byEmployee} labelKey="employee" currency={branding.currency} />
-              </div>
-            </>
-          )}
-          <RecentPaymentsTable payments={employeePayments.recentPayments} timezone={timezone} />
-        </section>
-      )}
+      {/* For GVE specifically, employees don't run their own payment
+          collection the way a school's counsellors do — admin-only there,
+          same as the "Company-Wide (Super Admin)" breakdown always was. */}
+      {!isChildCompany && paymentsEnabled && employeePayments && (!isGveParent || isAdmin) && (() => {
+        const paymentsBlock = (
+          <>
+            <EmployeePaymentKpiGrid data={employeePayments} currency={branding.currency} />
+            {isAdmin && superAdminPayments && (
+              <>
+                <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide pt-2">Company-Wide (Super Admin)</p>
+                <SuperAdminPaymentKpiGrid data={superAdminPayments} currency={branding.currency} />
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <CollectionsBreakdown title="Collections by Service" rows={superAdminPayments.byService} labelKey="service" currency={branding.currency} />
+                  <CollectionsBreakdown title="Collections by Method" rows={superAdminPayments.byMethod} labelKey="method" currency={branding.currency} />
+                  <CollectionsBreakdown title="Collections by Employee" rows={superAdminPayments.byEmployee} labelKey="employee" currency={branding.currency} />
+                </div>
+              </>
+            )}
+            <RecentPaymentsTable payments={employeePayments.recentPayments} timezone={timezone} />
+          </>
+        );
+        return isGveParent ? (
+          <CollapsibleSection title="Payments" persistKey="gve-dashboard-payments">{paymentsBlock}</CollapsibleSection>
+        ) : (
+          <section className="space-y-4">
+            <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Payments</p>
+            {paymentsBlock}
+          </section>
+        );
+      })()}
 
       {isChildCompany ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <CollapsibleLogGroup persistKey="dashboard-recent-activity" title="Recent Activity" logs={recentActivity} timezone={timezone} hour12={hour12} />
           <RecentLoginsTable logins={recentLogins} timezone={timezone} />
         </div>
-      ) : (
-        <section className={sectionGap}>
-          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
-          <OrgKpiGrid
-            activeUsers={stats.activeUsers}
-            roles={stats.roles}
-            lockedAccounts={stats.lockedAccounts}
-            org={orgStats}
-            anniversaryCount={anniversaries.length}
-            unreadNotifications={unreadNotifications.length}
-            recentLoginCount={recentLogins.length}
-          />
-          <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
-          <div className={`grid grid-cols-1 lg:grid-cols-3 ${gridGap}`}>
-            {isGveParent ? (
-              <CollapsibleSection title="Recent Activity" persistKey="gve-dashboard-recent-activity">
-                <RecentActivityTable logs={recentActivity} timezone={timezone} />
-              </CollapsibleSection>
-            ) : (
+      ) : (() => {
+        const orgBlock = (
+          <>
+            <OrgKpiGrid
+              activeUsers={stats.activeUsers}
+              roles={stats.roles}
+              lockedAccounts={stats.lockedAccounts}
+              org={orgStats}
+              anniversaryCount={anniversaries.length}
+              unreadNotifications={unreadNotifications.length}
+              recentLoginCount={recentLogins.length}
+            />
+            <WorkspaceOrgChartsSection employeeGrowth={employeeGrowth} departmentDistribution={departmentDistribution} roleDistribution={roleDistribution} documentTrend={documentTrend} />
+            <div className={`grid grid-cols-1 lg:grid-cols-3 ${gridGap}`}>
               <RecentActivityTable logs={recentActivity} timezone={timezone} />
-            )}
-            <UpcomingAnniversariesTable people={anniversaries} />
-            <RecentLoginsTable logins={recentLogins} timezone={timezone} />
-          </div>
-        </section>
-      )}
+              <UpcomingAnniversariesTable people={anniversaries} />
+              <RecentLoginsTable logins={recentLogins} timezone={timezone} />
+            </div>
+          </>
+        );
+        return isGveParent ? (
+          <CollapsibleSection title="Organization Overview" persistKey="gve-dashboard-org-overview">{orgBlock}</CollapsibleSection>
+        ) : (
+          <section className={sectionGap}>
+            <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Organization Overview</p>
+            {orgBlock}
+          </section>
+        );
+      })()}
 
-      {!isChildCompany && canManageDocuments && (
-        <section className="space-y-4">
-          <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Employee Documents</p>
+      {!isChildCompany && canManageDocuments && (() => {
+        const docsBlock = (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <MissingDocumentsTable employees={missingDocsEmployees} />
             <PendingApprovalDocumentsTable documents={pendingDocs} />
@@ -259,8 +280,16 @@ export default async function DashboardPage({ searchParams }) {
             <RecentlyUploadedDocumentsTable documents={recentDocs} timezone={timezone} />
             <StorageUsageWidget usage={storageUsage} />
           </div>
-        </section>
-      )}
+        );
+        return isGveParent ? (
+          <CollapsibleSection title="Employee Documents" persistKey="gve-dashboard-employee-documents">{docsBlock}</CollapsibleSection>
+        ) : (
+          <section className="space-y-4">
+            <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Employee Documents</p>
+            {docsBlock}
+          </section>
+        );
+      })()}
 
       {!isChildCompany && !isGveParent && <QuickActionsCard isChildCompany={isChildCompany} />}
     </div>
