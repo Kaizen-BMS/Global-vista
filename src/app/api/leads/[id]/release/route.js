@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { ok, forbidden, withErrorHandling } from "@/lib/helpers/response";
 import { releaseLead } from "@/lib/modules/crm/actions/leads";
+import { releaseLeadAggregated } from "@/lib/actions/companySwitch";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const POST = withCsrf(withErrorHandling(async (request, context) => {
@@ -12,6 +13,10 @@ export const POST = withCsrf(withErrorHandling(async (request, context) => {
   // assignment) is what lets a manager release someone else's lead —
   // everyone else can only release a lead currently assigned to themselves.
   const canManage = await can(session, "leads.assign");
+  if (session.can_create_child_companies) {
+    await releaseLeadAggregated(session, id, session.id, { force: canManage });
+    return ok({});
+  }
   const lead = await releaseLead(session, id, session.id, { force: canManage });
   return ok({ lead });
 }));

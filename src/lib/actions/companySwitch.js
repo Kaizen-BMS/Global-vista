@@ -4,6 +4,8 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
 import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
+import { claimLead, releaseLead, updateLeadStatus } from "@/lib/modules/crm/actions/leads";
+import { addLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 
 // The permanent super-admin account can always switch (unchanged default);
 // any other role can be granted the same ability via the "Switch to Child
@@ -201,6 +203,62 @@ async function aggregatedCompanyIds(session) {
   }
   const children = await listChildCompaniesData(session.company_id);
   return [...children.map((c) => c.id), session.company_id];
+}
+
+/**
+ * Runs an existing single-company lead action (claimLead, releaseLead,
+ * updateLeadStatus, addLeadNote — none of which do anything but read
+ * `session.company_id`/`session.name`) once per lead, with `session`
+ * faked to carry THAT LEAD's real owning company_id instead of GVE's own
+ * — so e.g. a note lands with the SAME company_id the lead itself has,
+ * exactly as if a school's own employee had written it, rather than
+ * mismatched to GVE's. Every id is checked against aggregatedCompanyIds
+ * first (never a caller-supplied company list) and anything outside it
+ * is reported as an error for that id rather than silently touched.
+ */
+async function runPerLeadAggregated(session, ids, fn) {
+  const allowedIds = await aggregatedCompanyIds(session);
+  const uniqueIds = [...new Set((ids || []).map(Number).filter(Boolean))];
+  if (!uniqueIds.length) return { okCount: 0, errors: [] };
+  const [rows] = await pool.query(`SELECT id, company_id FROM leads WHERE id IN (?) AND is_deleted = 0`, [uniqueIds]);
+  const byId = new Map(rows.map((r) => [r.id, r.company_id]));
+  let okCount = 0;
+  const errors = [];
+  for (const id of uniqueIds) {
+    const companyId = byId.get(id);
+    if (!companyId || !allowedIds.includes(companyId)) { errors.push({ id, message: "Not one of your schools." }); continue; }
+    try { await fn({ ...session, company_id: companyId }, id); okCount++; }
+    catch (err) { errors.push({ id, message: err.message }); }
+  }
+  return { okCount, errors };
+}
+
+/** The aggregated-view counterpart to claimLead — "Take Lead" on a row
+ * from GVE's combined Leads list, which usually belongs to a school, not
+ * GVE itself. */
+export async function claimLeadAggregated(session, id, userId) {
+  const { okCount, errors } = await runPerLeadAggregated(session, [id], (scoped, leadId) => claimLead(scoped, leadId, userId));
+  if (!okCount) { const e = new Error(errors[0]?.message || "Failed to claim this lead."); e.status = 409; throw e; }
+}
+
+/** The aggregated-view counterpart to releaseLead. */
+export async function releaseLeadAggregated(session, id, userId, { force = false } = {}) {
+  const { okCount, errors } = await runPerLeadAggregated(session, [id], (scoped, leadId) => releaseLead(scoped, leadId, userId, { force }));
+  if (!okCount) { const e = new Error(errors[0]?.message || "Failed to release this lead."); e.status = 409; throw e; }
+}
+
+/** The aggregated-view counterpart to bulkUpdateStatus — Hold/Deny from
+ * the combined Leads list's bulk toolbar, across however many schools
+ * the selection actually spans. */
+export async function bulkUpdateStatusAggregated(session, ids, status, actorId) {
+  return runPerLeadAggregated(session, ids, (scoped, id) => updateLeadStatus(scoped, id, status, actorId));
+}
+
+/** The aggregated-view counterpart to bulkAddLeadNote. */
+export async function bulkAddLeadNoteAggregated(session, ids, content, actorId) {
+  if (!content?.trim()) { const e = new Error("Note content is required."); e.status = 400; throw e; }
+  const { okCount, errors } = await runPerLeadAggregated(session, ids, (scoped, id) => addLeadNote(scoped, id, { content: content.trim(), type: "general" }, actorId));
+  return { addedCount: okCount, skippedCount: errors.length };
 }
 
 /** Mirrors getLeadDashboardStats's exact shape (src/lib/modules/crm/

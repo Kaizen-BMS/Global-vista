@@ -6,6 +6,7 @@ import { listLeads, createLead, bulkUpdateStatus, bulkAssign } from "@/lib/modul
 import { bulkAddLeadNote } from "@/lib/modules/crm/actions/leadNotes";
 import { bulkMarkStageComplete, bulkMoveToNextStage, bulkMoveToPreviousStage, applyBulkPreviewUpdates } from "@/lib/modules/crm/actions/leadStageProgress";
 import { bulkSendLeadEmail } from "@/lib/modules/crm/actions/leadBulkEmail";
+import { bulkUpdateStatusAggregated, bulkAddLeadNoteAggregated } from "@/lib/actions/companySwitch";
 import { withCsrf } from "@/lib/helpers/withCsrf";
 
 export const GET = withErrorHandling(async (request) => {
@@ -32,13 +33,22 @@ export const POST = withCsrf(withErrorHandling(async (request) => {
 
   if (body.bulkAction) {
     if (!(await can(session, "leads.update"))) return forbidden();
-    if (body.bulkAction === "status") await bulkUpdateStatus(session, body.ids || [], body.status, session.id);
-    else if (body.bulkAction === "assign") {
+    // GVE's combined Leads view: a selection usually spans several
+    // schools, not just GVE's own company — these two aggregated variants
+    // resolve each id's real owning company first (never trusting the
+    // client's ids blindly) instead of writing everything under GVE's own
+    // company_id the way the plain bulk* functions below would.
+    if (body.bulkAction === "status") {
+      if (session.can_create_child_companies) await bulkUpdateStatusAggregated(session, body.ids || [], body.status, session.id);
+      else await bulkUpdateStatus(session, body.ids || [], body.status, session.id);
+    } else if (body.bulkAction === "assign") {
       if (!(await can(session, "leads.assign"))) return forbidden();
       await bulkAssign(session, body.ids || [], body.assignedTo, session.id);
     } else if (body.bulkAction === "note") {
       if (!(await can(session, "leads.notes.manage"))) return forbidden();
-      const result = await bulkAddLeadNote(session, body.ids || [], { content: body.content }, session.id);
+      const result = session.can_create_child_companies
+        ? await bulkAddLeadNoteAggregated(session, body.ids || [], body.content, session.id)
+        : await bulkAddLeadNote(session, body.ids || [], { content: body.content }, session.id);
       return ok(result);
     } else if (body.bulkAction === "stageComplete") {
       await bulkMarkStageComplete(session, body.ids || [], session.id);

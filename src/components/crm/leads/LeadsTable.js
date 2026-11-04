@@ -470,7 +470,11 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
               <UserMinus className="h-3.5 w-3.5" /> Release Selected
             </button>
           )}
-          {canBulkAssign && (
+          {/* Assigning across companies doesn't mean anything — the
+              assignable-users list here is only ever GVE's own employees,
+              never a school's — so this stays hidden for the combined
+              view. */}
+          {canBulkAssign && !aggregated && (
             <div className="flex items-center gap-2 ml-auto">
               <select
                 value={bulkAssignee}
@@ -491,9 +495,14 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
           )}
           {canManageNotes && (<>
             <button disabled={bulkBusy} onClick={() => setShowNoteModal(true)} className="text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">Add Note</button>
-            <button disabled={bulkBusy} onClick={() => setShowEmailModal(true)} className="flex items-center gap-1 text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">
-              <Send className="h-3.5 w-3.5" /> Send Email
-            </button>
+            {/* Bulk email isn't wired up cross-company yet — hidden for
+                the combined view rather than shipping something that
+                would silently skip every row outside GVE's own. */}
+            {!aggregated && (
+              <button disabled={bulkBusy} onClick={() => setShowEmailModal(true)} className="flex items-center gap-1 text-foreground hover:text-indigo-400 cursor-pointer disabled:opacity-60">
+                <Send className="h-3.5 w-3.5" /> Send Email
+              </button>
+            )}
           </>)}
           {isChildCompany && canBulkUpdate && (<>
             <button disabled={bulkBusy} onClick={bulkStageComplete} className="flex items-center gap-1 text-amber-400 hover:text-amber-300 cursor-pointer disabled:opacity-60">
@@ -557,7 +566,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
           sortDir={sortDir}
           onSort={aggregated ? undefined : handleSort}
           onRowClick={openLead}
-          leadingColumn={aggregated ? undefined : {
+          leadingColumn={{
             width: 36,
             headerRender: () => <input type="checkbox" checked={selected.length === leads.length} onChange={toggleAll} onClick={(e) => e.stopPropagation()} className="cursor-pointer" />,
             render: (l) => <input type="checkbox" checked={selected.includes(l.id)} onChange={() => toggleSelect(l.id)} className="cursor-pointer" />,
