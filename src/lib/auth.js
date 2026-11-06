@@ -175,8 +175,17 @@ export async function reissueSessionExitingToHome(payload) {
 }
 
 export async function verifySessionToken(token) { try { const { payload } = await jwtVerify(token, getSecret()); return payload; } catch { return null; } }
+// Includes the owning company's own status (c.status AS company_status)
+// so the login route doesn't need a second round trip just to check
+// whether that company is suspended/deleted — one extra LEFT JOIN column
+// callers that don't need it (e.g. forgot-password) simply ignore.
 export async function getUserByEmail(email) {
-  const [rows] = await pool.query(`SELECT u.*, r.slug AS role_slug, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.email = ? LIMIT 1`, [email]);
+  const [rows] = await pool.query(
+    `SELECT u.*, r.slug AS role_slug, r.name AS role_name, c.status AS company_status
+     FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN companies c ON c.id = u.company_id
+     WHERE u.email = ? LIMIT 1`,
+    [email]
+  );
   return rows[0] || null;
 }
 export const SESSION_COOKIE_NAME = SESSION_COOKIE;

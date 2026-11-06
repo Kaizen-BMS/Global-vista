@@ -23,11 +23,10 @@ export async function POST(request) {
     const isFirstLogin = !user.last_login_at;
     if (await isAccountLocked(user)) return NextResponse.json({ error: "Account locked. Try again in 15 minutes." }, { status: 423 });
 
-    if (user.company_id && !user.is_platform_operator) {
-      const [[company]] = await pool.query(`SELECT status FROM companies WHERE id = ? LIMIT 1`, [user.company_id]);
-      if (company && ["suspended", "deleted"].includes(company.status)) {
-        return NextResponse.json({ error: "Your company account has been suspended. Please contact KaizenBMS Support.", code: "COMPANY_SUSPENDED" }, { status: 403 });
-      }
+    // company_status now comes straight off the getUserByEmail row (a
+    // LEFT JOIN there) instead of a second round trip here.
+    if (user.company_id && !user.is_platform_operator && ["suspended", "deleted"].includes(user.company_status)) {
+      return NextResponse.json({ error: "Your company account has been suspended. Please contact KaizenBMS Support.", code: "COMPANY_SUSPENDED" }, { status: 403 });
     }
 
     if (!(await verifyPassword(password, user.password_hash))) {
@@ -36,11 +35,22 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
     }
 
-    await clearFailedLogins(user.id);
-    await createSession(user, { ipAddress: ip, userAgent: ua, rememberMe: !!rememberMe });
-    await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = ?`, [user.id]);
-    await recordLoginEvent(user.id, "login", { ipAddress: ip, userAgent: ua });
-    await logActivity({ userId: user.id, module: "auth", action: "login", entityType: "user", entityId: user.id, description: `${user.name} logged in`, ipAddress: ip, companyId: user.company_id });
+    // createSession has to happen before the response goes out (it sets
+    // the cookie), but nothing below depends on ITS result or on each
+    // OTHER's — these used to run one after another, each one a full
+    // round trip to a remote/shared DB host that's already slow on its
+    // own (see db.js's own comment on why the pool is small); running
+    // them concurrently instead cuts login latency roughly proportional
+    // to how many of these there are. Skips the failed-login reset
+    // entirely when there was nothing to reset (the common case for an
+    // account that's never had a failed attempt).
+    await Promise.all([
+      createSession(user, { ipAddress: ip, userAgent: ua, rememberMe: !!rememberMe }),
+      user.failed_login_count ? clearFailedLogins(user.id) : null,
+      pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = ?`, [user.id]),
+      recordLoginEvent(user.id, "login", { ipAddress: ip, userAgent: ua }),
+      logActivity({ userId: user.id, module: "auth", action: "login", entityType: "user", entityId: user.id, description: `${user.name} logged in`, ipAddress: ip, companyId: user.company_id }),
+    ]);
 
     return NextResponse.json({
       success: true,
