@@ -9,40 +9,33 @@ import { pool } from "@/lib/db";
  * the UI layer rather than fabricated here. Everything else below is a
  * real, company-scoped query.
  */
+// Was 6 concurrent queries via Promise.all — each one grabs its own
+// pooled connection AT THE SAME TIME, so this single function alone used
+// to momentarily need 6 of this app's (deliberately small, see db.js's
+// own comment on why) 5 pooled connections. Collapsed into one query, 6
+// independent scalar subqueries instead of 6 round trips.
 export async function getWorkspaceOrgStats(session) {
   const companyId = session.company_id;
-  const [
-    [[departments]], [[branches]], [[designations]], [[permissions]],
-    [[documents]], [[pendingTasks]],
-  ] = await Promise.all([
-    pool.query(`SELECT COUNT(*) AS total FROM departments WHERE company_id=? AND is_deleted=0`, [companyId]),
-    pool.query(`SELECT COUNT(*) AS total FROM branches WHERE company_id=? AND is_deleted=0`, [companyId]),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM designations d JOIN departments dept ON dept.id=d.department_id
-       WHERE dept.company_id=? AND d.is_deleted=0 AND dept.is_deleted=0`,
-      [companyId]
-    ),
-    pool.query(
-      `SELECT COUNT(DISTINCT p.id) AS total FROM permissions p
-       WHERE p.status='active' AND (p.module_slug IN ('core','platform') OR EXISTS (
-         SELECT 1 FROM company_modules cm JOIN modules m ON m.id=cm.module_id
-         WHERE cm.company_id=? AND cm.enabled=1 AND m.slug=p.module_slug
-       ))`,
-      [companyId]
-    ),
-    pool.query(
-      `SELECT
-        (SELECT COUNT(*) FROM lead_documents WHERE company_id=?) +
-        (SELECT COUNT(*) FROM employee_documents ed JOIN users u ON u.id=ed.user_id WHERE u.company_id=? AND u.is_deleted=0 AND ed.is_deleted=0)
-       AS total`,
-      [companyId, companyId]
-    ),
-    pool.query(`SELECT COUNT(*) AS total FROM lead_tasks WHERE company_id=? AND is_completed=0`, [companyId]),
-  ]);
+  const [[row]] = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM departments WHERE company_id=? AND is_deleted=0) AS departments,
+       (SELECT COUNT(*) FROM branches WHERE company_id=? AND is_deleted=0) AS branches,
+       (SELECT COUNT(*) FROM designations d JOIN departments dept ON dept.id=d.department_id
+          WHERE dept.company_id=? AND d.is_deleted=0 AND dept.is_deleted=0) AS designations,
+       (SELECT COUNT(DISTINCT p.id) FROM permissions p
+          WHERE p.status='active' AND (p.module_slug IN ('core','platform') OR EXISTS (
+            SELECT 1 FROM company_modules cm JOIN modules m ON m.id=cm.module_id
+            WHERE cm.company_id=? AND cm.enabled=1 AND m.slug=p.module_slug
+          ))) AS permissions,
+       (SELECT COUNT(*) FROM lead_documents WHERE company_id=?) +
+       (SELECT COUNT(*) FROM employee_documents ed JOIN users u ON u.id=ed.user_id WHERE u.company_id=? AND u.is_deleted=0 AND ed.is_deleted=0) AS documents,
+       (SELECT COUNT(*) FROM lead_tasks WHERE company_id=? AND is_completed=0) AS pendingTasks`,
+    [companyId, companyId, companyId, companyId, companyId, companyId, companyId]
+  );
 
   return {
-    departments: departments.total, branches: branches.total, designations: designations.total,
-    permissions: permissions.total, documents: documents.total, pendingTasks: pendingTasks.total,
+    departments: row.departments, branches: row.branches, designations: row.designations,
+    permissions: row.permissions, documents: row.documents, pendingTasks: row.pendingTasks,
   };
 }
 

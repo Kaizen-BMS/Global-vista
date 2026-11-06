@@ -3,29 +3,38 @@ import { pool } from "@/lib/db";
 import { NOT_DELETED } from "@/lib/helpers/db";
 import { getVisibleLeadFilter } from "@/lib/modules/crm/rls";
 
+// Was 6 separate round trips (one per count) — on the remote/shared DB
+// host this app runs against, each round trip costs real latency on its
+// own, and this function runs on every single dashboard load for every
+// company. The 5 leads-table-only counts collapse into one query via
+// conditional SUM (every COUNT(*) WHERE x becomes SUM(CASE WHEN x...)) —
+// todaysFollowups stays separate since it's the only one that joins a
+// different table.
 export async function getLeadDashboardStats(session) {
   const { where, params } = await getVisibleLeadFilter(session);
-  const [[leadCount]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where}`, params);
-  const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='New' AND l.${NOT_DELETED} AND ${where}`, params);
-  const [[converted]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='Converted' AND l.${NOT_DELETED} AND ${where}`, params);
+  const [[counts]] = await pool.query(
+    `SELECT
+       COUNT(*) AS total,
+       COALESCE(SUM(CASE WHEN l.status = 'New' THEN 1 ELSE 0 END), 0) AS newLeads,
+       COALESCE(SUM(CASE WHEN l.status = 'Converted' THEN 1 ELSE 0 END), 0) AS converted,
+       COALESCE(SUM(CASE WHEN l.assigned_to = ? THEN 1 ELSE 0 END), 0) AS myLeads,
+       COALESCE(SUM(CASE WHEN l.assigned_to IS NULL THEN 1 ELSE 0 END), 0) AS unassignedLeads
+     FROM leads l WHERE l.${NOT_DELETED} AND ${where}`,
+    [session.id, ...params]
+  );
   const [[todaysFollowups]] = await pool.query(
     `SELECT COUNT(*) AS total FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.${NOT_DELETED}
      WHERE ${where} AND DATE(f.scheduled_at) = CURDATE() AND f.status = 'Scheduled'`,
     params
   );
-  // Same visible pool, split by ownership — "how much of what I can see is
-  // mine to work vs still up for grabs," the same distinction the Leads
-  // list's quick tabs (Assigned to Me / Unassigned) surface.
-  const [[myLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.assigned_to = ?`, [...params, session.id]);
-  const [[unassignedLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.${NOT_DELETED} AND ${where} AND l.assigned_to IS NULL`, params);
-  const conversionRate = leadCount.total > 0 ? Math.round((converted.total / leadCount.total) * 1000) / 10 : 0;
+  const conversionRate = counts.total > 0 ? Math.round((counts.converted / counts.total) * 1000) / 10 : 0;
   return {
-    totalLeads: leadCount.total,
-    newLeads: newLeads.total,
-    converted: converted.total,
+    totalLeads: counts.total,
+    newLeads: counts.newLeads,
+    converted: counts.converted,
     todaysFollowups: todaysFollowups.total,
-    myLeads: myLeads.total,
-    unassignedLeads: unassignedLeads.total,
+    myLeads: counts.myLeads,
+    unassignedLeads: counts.unassignedLeads,
     conversionRate,
   };
 }

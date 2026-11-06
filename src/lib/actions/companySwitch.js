@@ -4,8 +4,8 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
 import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
-import { claimLead, releaseLead, updateLeadStatus } from "@/lib/modules/crm/actions/leads";
-import { addLeadNote } from "@/lib/modules/crm/actions/leadNotes";
+import { claimLead, releaseLead } from "@/lib/modules/crm/actions/leads";
+import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
 
 // The permanent super-admin account can always switch (unchanged default);
 // any other role can be granted the same ability via the "Switch to Child
@@ -206,15 +206,16 @@ async function aggregatedCompanyIds(session) {
 }
 
 /**
- * Runs an existing single-company lead action (claimLead, releaseLead,
- * updateLeadStatus, addLeadNote — none of which do anything but read
- * `session.company_id`/`session.name`) once per lead, with `session`
- * faked to carry THAT LEAD's real owning company_id instead of GVE's own
- * — so e.g. a note lands with the SAME company_id the lead itself has,
- * exactly as if a school's own employee had written it, rather than
- * mismatched to GVE's. Every id is checked against aggregatedCompanyIds
+ * Runs an existing single-company lead action (claimLead, releaseLead —
+ * neither does anything but read `session.company_id`/`session.name`)
+ * once per lead, with `session` faked to carry THAT LEAD's real owning
+ * company_id instead of GVE's own, exactly as if a school's own employee
+ * had performed it. Every id is checked against aggregatedCompanyIds
  * first (never a caller-supplied company list) and anything outside it
- * is reported as an error for that id rather than silently touched.
+ * is reported as an error for that id rather than silently touched. Only
+ * ever called with a single id (per-row Take Lead/Release) — the actual
+ * BULK versions below (status/note) use a real batch query instead of
+ * looping this per lead, since N leads here would mean N round trips.
  */
 async function runPerLeadAggregated(session, ids, fn) {
   const allowedIds = await aggregatedCompanyIds(session);
@@ -249,16 +250,57 @@ export async function releaseLeadAggregated(session, id, userId, { force = false
 
 /** The aggregated-view counterpart to bulkUpdateStatus — Hold/Deny from
  * the combined Leads list's bulk toolbar, across however many schools
- * the selection actually spans. */
+ * the selection actually spans. A real batch UPDATE (not a per-lead loop
+ * through runPerLeadAggregated) — status is a plain column with nothing
+ * else per-lead-specific to vary, so this is 2 queries total (1 UPDATE +
+ * 1 logActivity) no matter how many leads are selected, same shape the
+ * plain (non-aggregated) bulkUpdateStatus already uses. */
 export async function bulkUpdateStatusAggregated(session, ids, status, actorId) {
-  return runPerLeadAggregated(session, ids, (scoped, id) => updateLeadStatus(scoped, id, status, actorId));
+  const allowedIds = await aggregatedCompanyIds(session);
+  const uniqueIds = [...new Set((ids || []).map(Number).filter(Boolean))];
+  if (!uniqueIds.length) return { errors: [] };
+  const [result] = await pool.query(
+    `UPDATE leads SET status = ?, updated_by = ? WHERE id IN (?) AND company_id IN (?) AND is_deleted = 0`,
+    [status, actorId, uniqueIds, allowedIds]
+  );
+  await logActivity({
+    userId: actorId, module: "leads", action: "bulk_status_change", entityType: "lead", companyId: session.company_id,
+    description: `Bulk status update to ${status} for ${result.affectedRows} leads across schools`, meta: { ids: uniqueIds, status },
+  });
+  const skipped = uniqueIds.length - result.affectedRows;
+  return { errors: skipped > 0 ? [{ message: `${skipped} lead(s) were outside your network.` }] : [] };
 }
 
-/** The aggregated-view counterpart to bulkAddLeadNote. */
+/** The aggregated-view counterpart to bulkAddLeadNote — one multi-row
+ * INSERT instead of looping addLeadNote per id (each note still carries
+ * its OWN lead's real company_id, resolved and validated the same way
+ * runPerLeadAggregated does), so this is 3 queries total (validate,
+ * insert, log) no matter how many leads are selected. */
 export async function bulkAddLeadNoteAggregated(session, ids, content, actorId) {
-  if (!content?.trim()) { const e = new Error("Note content is required."); e.status = 400; throw e; }
-  const { okCount, errors } = await runPerLeadAggregated(session, ids, (scoped, id) => addLeadNote(scoped, id, { content: content.trim(), type: "general" }, actorId));
-  return { addedCount: okCount, skippedCount: errors.length };
+  const trimmed = content?.trim();
+  if (!trimmed) { const e = new Error("Note content is required."); e.status = 400; throw e; }
+  const allowedIds = await aggregatedCompanyIds(session);
+  const uniqueIds = [...new Set((ids || []).map(Number).filter(Boolean))];
+  if (!uniqueIds.length) return { addedCount: 0, skippedCount: 0 };
+
+  const [rows] = await pool.query(`SELECT id, company_id FROM leads WHERE id IN (?) AND is_deleted = 0`, [uniqueIds]);
+  const validRows = rows.filter((r) => allowedIds.includes(r.company_id));
+  if (!validRows.length) return { addedCount: 0, skippedCount: uniqueIds.length };
+
+  const withType = await hasLeadNoteTypeColumn();
+  const columns = withType
+    ? ["company_id", "lead_id", "content", "visibility", "type", "is_pinned", "created_by"]
+    : ["company_id", "lead_id", "content", "visibility", "is_pinned", "created_by"];
+  const values = validRows.map((r) => (withType
+    ? [r.company_id, r.id, trimmed, "public", "general", 0, actorId]
+    : [r.company_id, r.id, trimmed, "public", 0, actorId]));
+
+  await pool.query(`INSERT INTO lead_notes (${columns.join(", ")}) VALUES ?`, [values]);
+  await logActivity({
+    userId: actorId, module: "leads", action: "bulk_note_add", entityType: "lead", companyId: session.company_id,
+    description: `Bulk note added to ${validRows.length} leads across schools`, meta: { ids: validRows.map((r) => r.id) },
+  });
+  return { addedCount: validRows.length, skippedCount: uniqueIds.length - validRows.length };
 }
 
 /** Mirrors getLeadDashboardStats's exact shape (src/lib/modules/crm/
@@ -270,20 +312,29 @@ export async function getAggregatedLeadDashboardStats(session) {
   const ids = await aggregatedCompanyIds(session);
   if (!ids.length) return { totalLeads: 0, newLeads: 0, converted: 0, todaysFollowups: 0, myLeads: 0, unassignedLeads: 0, conversionRate: 0 };
 
-  const [[leadCount]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
-  const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='New' AND l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
-  const [[converted]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.status='Converted' AND l.is_deleted=0 AND l.company_id IN (?)`, [ids]);
+  // Was 6 separate round trips — same collapse as getLeadDashboardStats
+  // (see that function's own comment): every leads-table-only COUNT(*)
+  // becomes one conditional-SUM query, todaysFollowups stays separate
+  // since it alone joins lead_followups.
+  const [[counts]] = await pool.query(
+    `SELECT
+       COUNT(*) AS total,
+       COALESCE(SUM(CASE WHEN l.status = 'New' THEN 1 ELSE 0 END), 0) AS newLeads,
+       COALESCE(SUM(CASE WHEN l.status = 'Converted' THEN 1 ELSE 0 END), 0) AS converted,
+       COALESCE(SUM(CASE WHEN l.assigned_to = ? THEN 1 ELSE 0 END), 0) AS myLeads,
+       COALESCE(SUM(CASE WHEN l.assigned_to IS NULL THEN 1 ELSE 0 END), 0) AS unassignedLeads
+     FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?)`,
+    [session.id, ids]
+  );
   const [[todaysFollowups]] = await pool.query(
     `SELECT COUNT(*) AS total FROM lead_followups f JOIN leads l ON l.id = f.lead_id AND l.is_deleted=0
      WHERE l.company_id IN (?) AND DATE(f.scheduled_at) = CURDATE() AND f.status = 'Scheduled'`,
     [ids]
   );
-  const [[myLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?) AND l.assigned_to = ?`, [ids, session.id]);
-  const [[unassignedLeads]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE l.is_deleted=0 AND l.company_id IN (?) AND l.assigned_to IS NULL`, [ids]);
-  const conversionRate = leadCount.total > 0 ? Math.round((converted.total / leadCount.total) * 1000) / 10 : 0;
+  const conversionRate = counts.total > 0 ? Math.round((counts.converted / counts.total) * 1000) / 10 : 0;
   return {
-    totalLeads: leadCount.total, newLeads: newLeads.total, converted: converted.total,
-    todaysFollowups: todaysFollowups.total, myLeads: myLeads.total, unassignedLeads: unassignedLeads.total, conversionRate,
+    totalLeads: counts.total, newLeads: counts.newLeads, converted: counts.converted,
+    todaysFollowups: todaysFollowups.total, myLeads: counts.myLeads, unassignedLeads: counts.unassignedLeads, conversionRate,
   };
 }
 
