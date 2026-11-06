@@ -51,14 +51,23 @@ export async function getUserById(session, id) {
 // employee_id carries a GLOBAL unique constraint (not scoped to company_id —
 // confirmed against the live schema), so a prefix shared by every tenant
 // guarantees cross-company collisions the moment two companies' sequences
-// reach the same number. The prefix is derived from the company's own slug
-// so each tenant gets its own namespace. The count is MAX(existing suffix)
-// scoped to that prefix, not COUNT(*) — COUNT breaks the instant any user
-// is soft-deleted (the count drops, so "next" reissues an already-taken
-// number); MAX never goes backwards.
+// reach the same number. The prefix used to be JUST the company's slug,
+// truncated to 12 chars — two companies whose names/slugs agree on their
+// first 12 characters (e.g. several schools all named "PSEB Adarsh
+// Sen.Sec.School <village>") truncate to the EXACT same prefix, so the
+// very first employee at the SECOND such school collides with the first
+// school's own #1 ("A record with this employee ID already exists",
+// confirmed live across every PSEB-prefixed school). Appending the
+// company's own id — always unique by definition — makes prefix
+// collisions impossible regardless of how similar two slugs are, while
+// keeping most of the readable slug prefix. The count is MAX(existing
+// suffix) scoped to that prefix, not COUNT(*) — COUNT breaks the instant
+// any user is soft-deleted (the count drops, so "next" reissues an
+// already-taken number); MAX never goes backwards.
 async function generateEmployeeId(companyId) {
   const [[company]] = await pool.query(`SELECT slug FROM companies WHERE id = ?`, [companyId]);
-  const prefix = (company?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "EMP";
+  const slugPart = (company?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "EMP";
+  const prefix = `${slugPart}${companyId}`;
   const [[{ maxNum }]] = await pool.query(
     `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(employee_id, '-', -1) AS UNSIGNED)), 0) AS maxNum
      FROM users WHERE company_id = ? AND employee_id LIKE ?`,

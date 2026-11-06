@@ -206,7 +206,11 @@ export async function commitImport({ rows, fileName, skipDuplicates, sendWelcome
   });
 
   const [[importCompany]] = await pool.query(`SELECT slug FROM companies WHERE id = ?`, [companyId]);
-  const employeeIdPrefix = (importCompany?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "EMP";
+  // See the matching comment in src/lib/actions/users.js's generateEmployeeId
+  // — appending companyId (always unique) rules out prefix collisions
+  // between two similarly-named/sloganed companies, which a bare 12-char
+  // slug truncation could not.
+  const employeeIdPrefix = `${(importCompany?.slug || "EMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "EMP"}${companyId}`;
 
   for (const row of rowsToProcess) {
     const conn = await pool.getConnection();
