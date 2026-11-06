@@ -53,12 +53,22 @@ export async function getSession() {
       // remote DB host under any concurrent load, that latency doubles up
       // on literally every authenticated request in the app.
       const [[row]] = await pool.query(
-        `SELECT us.revoked_at, c.status AS company_status, c.parent_company_id, c.can_create_child_companies
-         FROM user_sessions us LEFT JOIN companies c ON c.id = ?
+        `SELECT us.revoked_at, c.status AS company_status, c.parent_company_id, c.can_create_child_companies, u.must_change_password
+         FROM user_sessions us LEFT JOIN companies c ON c.id = ? LEFT JOIN users u ON u.id = us.user_id
          WHERE us.jti = ? LIMIT 1`,
         [payload.company_id || null, payload.jti]
       );
       if (row?.revoked_at) return null;
+      // Re-checked fresh every request, same freshness guarantee as
+      // company_status below — must_change_password used to be trusted
+      // straight from the signed JWT (set once at login and never
+      // updated), so a successful forced password change left the OLD
+      // value baked into the cookie: workspace/layout.js kept showing
+      // "Set a New Password" forever, and the second submit then failed
+      // server-side (the DB's own must_change_password was already 0, so
+      // change-password's own check started requiring currentPassword,
+      // which the forced form never asks for) — an unbreakable loop.
+      payload.must_change_password = !!row?.must_change_password;
       if (payload.company_id && !payload.is_platform_operator) {
         payload.company_status = row?.company_status || null;
         // Whether the CURRENTLY active company_id (home or switched-into
