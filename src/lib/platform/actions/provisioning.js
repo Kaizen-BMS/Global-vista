@@ -472,7 +472,7 @@ export async function provisionCompany(input, operatorId) {
       }
 
       const studentInfoFields = [
-        { key: "stream", label: "Stream", type: "select", options: ["Science", "Commerce", "Arts", "Vocational"], required: true },
+        { key: "stream", label: "Stream", type: "select", options: ["Medical", "Non-Medical", "Arts", "Commerce"], required: true },
         { key: "registration_number", label: "Registration Number", type: "text", options: null, required: false },
         { key: "parent_name", label: "Parent Name", type: "text", options: null, required: true },
         { key: "parent_mobile", label: "Parent Mobile Number", type: "text", options: null, required: true },
