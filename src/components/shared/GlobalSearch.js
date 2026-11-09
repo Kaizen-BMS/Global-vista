@@ -1,10 +1,10 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Contact2, Users, CornerDownLeft } from "lucide-react";
+import { Search, Loader2, Contact2, Users, Building2, CornerDownLeft } from "lucide-react";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
 
-const GROUP_ICONS = { Leads: Contact2, Users: Users };
+const GROUP_ICONS = { Leads: Contact2, Users: Users, Schools: Building2 };
 
 export default function GlobalSearch({ isChildCompany = false }) {
   const terms = getCrmTerms(isChildCompany);

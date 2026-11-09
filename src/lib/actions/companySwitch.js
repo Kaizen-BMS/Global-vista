@@ -2,7 +2,6 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
-import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
 import { claimLead, releaseLead } from "@/lib/modules/crm/actions/leads";
 import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
@@ -448,15 +447,15 @@ export async function listAggregatedSchoolLeads(session, {
 
   const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
   const params = [ids];
-  // Below Super Admin/Admin/Management, a GVE employee only sees leads
-  // nobody's claimed yet plus whatever's assigned to them personally —
-  // same "yours, or still up for grabs" rule as a regular company's own
-  // Leads page (getVisibleLeadFilter), applied across every school's
-  // leads here instead of just one company's own.
-  if (!canViewAllRecords(session)) {
-    where.push(`(l.assigned_to = ? OR l.assigned_to IS NULL)`);
-    params.push(session.id);
-  }
+  // Deliberately NOT restricted to "mine + unassigned" the way a single
+  // company's own Leads page is (getVisibleLeadFilter) — every GVE
+  // employee sees every school's full lead list here, matching what the
+  // Dashboard's own combined stats already count. A per-employee
+  // restriction here previously caused a school's leads (already claimed
+  // by THAT school's own staff, not any GVE employee) to disappear
+  // entirely from GVE's combined view for anyone but an admin — confirmed
+  // live as "can't see/work this school's data at all" plus a mismatch
+  // against the Dashboard's unrestricted totals.
   if (priority) { where.push("l.priority = ?"); params.push(priority); }
   // A specific named counsellor isn't offered here (unlike a single
   // company's own LeadFilters) — "assigned to" a user id only means
@@ -475,8 +474,12 @@ export async function listAggregatedSchoolLeads(session, {
   if (sourceName) { where.push("s.name = ?"); params.push(sourceName); }
   if (serviceName) { where.push("sv.name = ?"); params.push(serviceName); }
   if (search) {
-    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ?)`);
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    // Matches the school's own name too (co.name, joined below) and the
+    // lead number, not just name/phone/email — "search by anything" on
+    // the combined view, same field set listLeads's own search already
+    // covers plus school name.
+    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ? OR co.name LIKE ?)`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
@@ -486,18 +489,20 @@ export async function listAggregatedSchoolLeads(session, {
   // regardless of which query produced them, and shouldn't need a second,
   // narrower set of column defs just because the rows came from here.
   // The source/service JOINs are INNER on purpose (every lead always has
-  // both) — reused as-is in the COUNT query below so a sourceName/
-  // serviceName filter (which references those aliases) works there too.
+  // both); companies is LEFT (a lead can't actually lack a company, but
+  // LEFT costs nothing and avoids ever hiding a row over it) — all three
+  // reused as-is in the COUNT query below so a sourceName/serviceName/
+  // school-name search (which reference these aliases) works there too.
   const fromSql = `FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
-     JOIN services sv ON sv.id = l.service_id`;
+     JOIN services sv ON sv.id = l.service_id
+     LEFT JOIN companies co ON co.id = l.company_id`;
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
             (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
      ${fromSql}
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
-     LEFT JOIN companies co ON co.id = l.company_id
      ${whereSql}
      ORDER BY l.created_at DESC
      LIMIT ? OFFSET ?`,
@@ -506,4 +511,60 @@ export async function listAggregatedSchoolLeads(session, {
   const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total ${fromSql} ${whereSql}`, params);
 
   return { leads: rows, total, page: p, pageSize: size, schools: children };
+}
+
+/** Every lead id matching the current filters across every school + GVE
+ * itself, no pagination (capped at a safety ceiling) — backs the
+ * combined Leads page's "Select all N matching" for GVE, same role
+ * listAllLeadIds (leads.js) plays for a single company's own Leads page.
+ * Without this, "select all matching" on the combined view would
+ * silently resolve through the single-company id-list instead and only
+ * ever find GVE's own Direct Leads. Mirrors listAggregatedSchoolLeads's
+ * own filter-building exactly, just ids only, no row data/pagination. */
+export async function listAllAggregatedLeadIds(session, {
+  schoolId = null, search = null, priority = null, assignedTo = null, tag = null,
+  sourceName = null, serviceName = null, createdFrom = null, createdTo = null,
+} = {}) {
+  if (!session.can_create_child_companies) {
+    const e = new Error("Not authorized.");
+    e.status = 403;
+    throw e;
+  }
+  const children = await listChildCompaniesData(session.company_id);
+  const childIds = children.map((c) => c.id);
+
+  let ids;
+  if (schoolId === "independent") ids = [session.company_id];
+  else if (schoolId) {
+    const requested = Number(schoolId);
+    if (!childIds.includes(requested)) { const e = new Error("That company is not one of your schools."); e.status = 403; throw e; }
+    ids = [requested];
+  } else ids = [...childIds, session.company_id];
+  if (ids.length === 0) return [];
+
+  const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
+  const params = [ids];
+  if (priority) { where.push("l.priority = ?"); params.push(priority); }
+  if (assignedTo === "unassigned") where.push("l.assigned_to IS NULL");
+  else if (assignedTo === "me") { where.push("l.assigned_to = ?"); params.push(session.id); }
+  if (tag) { where.push("(l.tags = ? OR l.tags LIKE ? OR l.tags LIKE ? OR l.tags LIKE ?)"); params.push(tag, `${tag},%`, `%,${tag}`, `%,${tag},%`); }
+  if (createdFrom) { where.push("l.created_at >= ?"); params.push(createdFrom); }
+  if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
+  if (sourceName) { where.push("s.name = ?"); params.push(sourceName); }
+  if (serviceName) { where.push("sv.name = ?"); params.push(serviceName); }
+  if (search) {
+    where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ? OR co.name LIKE ?)`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+
+  const [rows] = await pool.query(
+    `SELECT l.id FROM leads l
+     JOIN lead_sources s ON s.id = l.lead_source_id
+     JOIN services sv ON sv.id = l.service_id
+     LEFT JOIN companies co ON co.id = l.company_id
+     ${whereSql} LIMIT 10000`,
+    params
+  );
+  return rows.map((r) => r.id);
 }
