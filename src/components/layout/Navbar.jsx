@@ -88,7 +88,14 @@ export default function Navbar() {
           ))}
         </div>
 
-        <div className="hidden lg:block">
+        <div className="hidden items-center gap-3 lg:flex">
+          <Link
+            href="/platform-home"
+            className="group flex items-center gap-2 rounded-full border border-[#D89B1D]/20 px-4 py-2 text-xs text-muted transition-all duration-300 hover:border-[#D89B1D] hover:bg-[#D89B1D]/10 hover:text-[#D89B1D]"
+          >
+            <Globe2 className="h-3.5 w-3.5 transition-transform duration-300 group-hover:rotate-12" />
+            <span>KaizenBMS Platform</span>
+          </Link>
           <Button as="a" href="/contact" variant="primary" className="text-xs">
             Book Consultation
           </Button>
@@ -123,6 +130,14 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              <Link
+                href="/platform-home"
+                onClick={() => setOpen(false)}
+                className="mt-2 flex items-center justify-center gap-2 rounded-lg border border-[#D89B1D]/20 px-3 py-3 text-sm text-muted transition-colors hover:border-[#D89B1D] hover:bg-[#D89B1D]/10 hover:text-[#D89B1D]"
+              >
+                <Globe2 className="h-4 w-4" />
+                <span>KaizenBMS Platform</span>
+              </Link>
               <Button
                 as="a"
                 href="/contact"

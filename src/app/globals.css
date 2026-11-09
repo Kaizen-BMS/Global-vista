@@ -166,6 +166,11 @@
   }
   html {
     @apply font-sans;
+    /* Anchor-link jumps and scrollIntoView/scrollTo calls animate instead
+       of snapping instantly — overridden back to instant under
+       prefers-reduced-motion below, which already existed for everything
+       else. */
+    scroll-behavior: smooth;
   }
   /* Default weights when a component doesn't already set its own — an
      explicit font-medium/font-semibold/etc. class on any element still
