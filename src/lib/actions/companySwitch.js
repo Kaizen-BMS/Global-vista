@@ -2,6 +2,7 @@ import "server-only";
 import { pool } from "@/lib/db";
 import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
+import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
 import { claimLead, releaseLead } from "@/lib/modules/crm/actions/leads";
 import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
@@ -447,15 +448,18 @@ export async function listAggregatedSchoolLeads(session, {
 
   const where = [`l.company_id IN (?)`, `l.is_deleted = 0`];
   const params = [ids];
-  // Deliberately NOT restricted to "mine + unassigned" the way a single
-  // company's own Leads page is (getVisibleLeadFilter) — every GVE
-  // employee sees every school's full lead list here, matching what the
-  // Dashboard's own combined stats already count. A per-employee
-  // restriction here previously caused a school's leads (already claimed
-  // by THAT school's own staff, not any GVE employee) to disappear
-  // entirely from GVE's combined view for anyone but an admin — confirmed
-  // live as "can't see/work this school's data at all" plus a mismatch
-  // against the Dashboard's unrestricted totals.
+  // Below Super Admin/Admin/Management, the "mine + unassigned" rule
+  // applies ONLY to GVE's own Direct Leads (l.company_id = GVE's own) —
+  // those get worked/distributed among GVE's own employees exactly like
+  // any other company's own Leads page restricts its employees. A
+  // SCHOOL's leads are a different company's own staff's work entirely;
+  // a GVE employee reviewing/overseeing a school needs to see ALL of
+  // that school's leads regardless of who it's assigned to there, so
+  // every row whose company_id isn't GVE's own stays fully visible.
+  if (!canViewAllRecords(session)) {
+    where.push(`(l.company_id != ? OR l.assigned_to = ? OR l.assigned_to IS NULL)`);
+    params.push(session.company_id, session.id);
+  }
   if (priority) { where.push("l.priority = ?"); params.push(priority); }
   // A specific named counsellor isn't offered here (unlike a single
   // company's own LeadFilters) — "assigned to" a user id only means
