@@ -47,15 +47,6 @@ export default function GlobalSearch({ isChildCompany = false }) {
 
   return (
     <div className={`relative ${showResults ? "z-50" : ""}`} ref={ref}>
-      {/* A dedicated dimming backdrop behind the results, same pattern
-          every other overlay in this app (modals, FloatingPanel) already
-          uses — without it, an open dropdown just floats directly on top
-          of whatever the page underneath happens to be (table rows,
-          toolbar buttons, …), which reads as messy/overlapping on every
-          page this global search bar appears on, not just this one. */}
-      {showResults && (
-        <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-[2px] animate-in fade-in duration-150" onClick={() => setOpen(false)} />
-      )}
       <div className="relative group">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-indigo-400" />
         <input

@@ -240,7 +240,7 @@ export default function Sidebar({ session, navItems, company, showPoweredBy = tr
       <motion.aside
         animate={{ width: hydrated && collapsed ? 76 : 256 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="hidden md:flex shrink-0 bg-sidebar border-r border-sidebar-border flex-col print:hidden overflow-hidden"
+        className="relative z-50 hidden md:flex shrink-0 bg-sidebar border-r border-sidebar-border flex-col print:hidden overflow-hidden"
       >
         <SidebarContent session={session} navItems={navItems} company={company} showPoweredBy={showPoweredBy} collapsed={hydrated && collapsed} onToggleCollapse={() => setCollapsed((c) => !c)} showToggle scope={scope} />
       </motion.aside>
