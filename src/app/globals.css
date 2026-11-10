@@ -232,6 +232,21 @@
   }
 }
 
+/* Dedicated slower variant for the Global Vista Educators marquee band
+   (MarqueeSection.jsx) now that it carries longer phrases — kept
+   separate from .animate-marquee so nothing else using that class speeds
+   up or slows down. */
+.animate-marquee-slow {
+  animation: marquee 48s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-slow {
+    animation: none;
+  }
+}
+
 /* From the supplied Kaizen BMS Landing v2 design file — same three
    keyframes, verbatim (kb-rise/kb-wash/kb-rule), applied on page load
    (not scroll-triggered) to the masthead rule and hero, exactly as that

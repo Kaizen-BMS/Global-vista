@@ -43,8 +43,19 @@ export default function GlobalSearch({ isChildCompany = false }) {
 
   let runningIndex = -1;
 
+  const showResults = open && query.trim() && groups;
+
   return (
-    <div className="relative" ref={ref}>
+    <div className={`relative ${showResults ? "z-50" : ""}`} ref={ref}>
+      {/* A dedicated dimming backdrop behind the results, same pattern
+          every other overlay in this app (modals, FloatingPanel) already
+          uses — without it, an open dropdown just floats directly on top
+          of whatever the page underneath happens to be (table rows,
+          toolbar buttons, …), which reads as messy/overlapping on every
+          page this global search bar appears on, not just this one. */}
+      {showResults && (
+        <div className="fixed inset-0 z-40 bg-background/50 backdrop-blur-[2px] animate-in fade-in duration-150" onClick={() => setOpen(false)} />
+      )}
       <div className="relative group">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-indigo-400" />
         <input
@@ -58,7 +69,7 @@ export default function GlobalSearch({ isChildCompany = false }) {
         />
         {loading && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />}
       </div>
-      {open && query.trim() && groups && (
+      {showResults && (
         <div className="absolute mt-2 w-full bg-card border border-border rounded-xl shadow-2xl z-50 max-h-96 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
           {flatResults.length === 0 && <p className="text-muted-foreground text-sm text-center py-6">No results for &ldquo;{query}&rdquo;.</p>}
           {groups.map((g) => {

@@ -1,13 +1,7 @@
 const marqueeItems = [
-  "STEM Academic Support",
-  "Mentorship",
-  "500+ Students Mentored",
-  "Career Guidance",
-  "Exam Preparation",
-  "Flexible Learning",
-  "Global Educators",
-  "1000+ Learning Sessions",
-  "95% Parent Satisfaction",
+  "Punjab School Education Board - Project Udaan",
+  "International Summer School Visits",
+  "CERN Educational Visits",
 ];
 
 export default function MarqueeSection() {
@@ -15,13 +9,16 @@ export default function MarqueeSection() {
 
   return (
     <section className="relative overflow-hidden border-y border-white/10 bg-white/[0.02] py-6">
-      <div className="flex w-max animate-marquee">
+      <div className="flex w-max animate-marquee-slow">
         {items.map((item, i) => (
           <div
             key={i}
             className="mx-8 flex shrink-0 items-center gap-4 whitespace-nowrap"
           >
-            <span className="text-sm uppercase tracking-[0.2em] text-slate-300">
+            {/* A soft tinted pill, not a loud one — just enough to lift
+                the text off the background so it's easier to read while
+                it scrolls past. */}
+            <span className="rounded-full border border-[#D89B1D]/20 bg-[#D89B1D]/[0.07] px-4 py-1.5 text-sm uppercase tracking-[0.2em] text-slate-200">
               {item}
             </span>
 
