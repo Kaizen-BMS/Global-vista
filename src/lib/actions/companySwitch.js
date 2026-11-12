@@ -5,6 +5,7 @@ import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
 import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
 import { claimLead, releaseLead } from "@/lib/modules/crm/actions/leads";
+import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
 
 // The permanent super-admin account can always switch (unchanged default);
@@ -203,6 +204,37 @@ async function aggregatedCompanyIds(session) {
   }
   const children = await listChildCompaniesData(session.company_id);
   return [...children.map((c) => c.id), session.company_id];
+}
+
+/** Powers the Filters panel's Stream/Class/Predicted Grade/District/etc.
+ * dropdowns on GVE's combined view. Every school is provisioned with the
+ * identical Student Information field set (see provisioning.js), so
+ * reading just ONE school's own definitions is representative for all of
+ * them — the actual filtering (applyCustomFieldFilters-equivalent in
+ * listAggregatedSchoolLeads) matches by field_key against whichever
+ * school a given lead really belongs to, never this particular school's
+ * row ids. Returns [] for a GVE account with no schools yet. */
+export async function getAggregatedStudentInfoFields(session) {
+  if (!session.can_create_child_companies) return [];
+  const children = await listChildCompaniesData(session.company_id);
+  if (!children.length) return [];
+  return listLeadCustomFields({ company_id: children[0].id }, { activeOnly: true });
+}
+
+/** The aggregated-view counterpart to the Predicted Grade column's save —
+ * resolves the LEAD's OWN school's "predicted_grade" field (never GVE's
+ * own, which doesn't have one) and writes under that school's own
+ * company_id, exactly as if that school's own staff had set it. */
+export async function updatePredictedGradeAggregated(session, leadId, value, actorId) {
+  const allowedIds = await aggregatedCompanyIds(session);
+  const [[lead]] = await pool.query(`SELECT company_id FROM leads WHERE id = ? AND is_deleted = 0`, [leadId]);
+  if (!lead || !allowedIds.includes(lead.company_id)) { const e = new Error("Not one of your schools."); e.status = 403; throw e; }
+  const [[field]] = await pool.query(
+    `SELECT id FROM lead_custom_fields WHERE company_id = ? AND field_key = 'predicted_grade' AND is_deleted = 0 LIMIT 1`,
+    [lead.company_id]
+  );
+  if (!field) { const e = new Error("Predicted Grade isn't set up for this school."); e.status = 400; throw e; }
+  await saveLeadCustomFieldValues({ ...session, company_id: lead.company_id }, leadId, { [field.id]: value }, actorId);
 }
 
 /**
@@ -421,6 +453,7 @@ export async function getAggregatedLeadsByStage(session) {
 export async function listAggregatedSchoolLeads(session, {
   schoolId = null, search = null, priority = null, assignedTo = null, tag = null,
   sourceName = null, serviceName = null, createdFrom = null, createdTo = null,
+  customFieldFilters = null,
   page = 1, pageSize = 20,
 } = {}) {
   // Not gated on isSuperAdminAccount — the Leads page (its only caller
@@ -477,6 +510,19 @@ export async function listAggregatedSchoolLeads(session, {
   // something within one company.
   if (sourceName) { where.push("s.name = ?"); params.push(sourceName); }
   if (serviceName) { where.push("sv.name = ?"); params.push(serviceName); }
+  // { [field_key]: value } — Stream/Class/Predicted Grade/District/etc.
+  // Each school keeps its own separate lead_custom_fields row (same
+  // field_key, own id), but this EXISTS clause only ever needs field_key
+  // + l.id, so it reaches whichever school a given row actually belongs
+  // to without caring which row id that is. Same clause shape
+  // applyCustomFieldFilters (leads.js) uses for a single company.
+  if (customFieldFilters) {
+    for (const [key, value] of Object.entries(customFieldFilters)) {
+      if (!value) continue;
+      where.push(`EXISTS (SELECT 1 FROM lead_custom_field_values v JOIN lead_custom_fields f ON f.id = v.custom_field_id WHERE v.lead_id = l.id AND f.field_key = ? AND v.value = ?)`);
+      params.push(key, value);
+    }
+  }
   if (search) {
     // Matches the school's own name too (co.name, joined below) and the
     // lead number, not just name/phone/email — "search by anything" on
@@ -497,13 +543,19 @@ export async function listAggregatedSchoolLeads(session, {
   // LEFT costs nothing and avoids ever hiding a row over it) — all three
   // reused as-is in the COUNT query below so a sourceName/serviceName/
   // school-name search (which reference these aliases) works there too.
+  // Predicted Grade (same join shape listLeads uses) — pgf resolves to
+  // WHICHEVER school a given row belongs to via l.company_id, so one
+  // join correctly serves every school at once here.
   const fromSql = `FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
-     LEFT JOIN companies co ON co.id = l.company_id`;
+     LEFT JOIN companies co ON co.id = l.company_id
+     LEFT JOIN lead_custom_fields pgf ON pgf.company_id = l.company_id AND pgf.field_key = 'predicted_grade' AND pgf.is_deleted = 0
+     LEFT JOIN lead_custom_field_values pgv ON pgv.lead_id = l.id AND pgv.custom_field_id = pgf.id`;
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
-            (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
+            (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name,
+            pgf.id AS predicted_grade_field_id, pgv.value AS predicted_grade
      ${fromSql}
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
@@ -528,6 +580,7 @@ export async function listAggregatedSchoolLeads(session, {
 export async function listAllAggregatedLeadIds(session, {
   schoolId = null, search = null, priority = null, assignedTo = null, tag = null,
   sourceName = null, serviceName = null, createdFrom = null, createdTo = null,
+  customFieldFilters = null,
 } = {}) {
   if (!session.can_create_child_companies) {
     const e = new Error("Not authorized.");
@@ -556,6 +609,13 @@ export async function listAllAggregatedLeadIds(session, {
   if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
   if (sourceName) { where.push("s.name = ?"); params.push(sourceName); }
   if (serviceName) { where.push("sv.name = ?"); params.push(serviceName); }
+  if (customFieldFilters) {
+    for (const [key, value] of Object.entries(customFieldFilters)) {
+      if (!value) continue;
+      where.push(`EXISTS (SELECT 1 FROM lead_custom_field_values v JOIN lead_custom_fields f ON f.id = v.custom_field_id WHERE v.lead_id = l.id AND f.field_key = ? AND v.value = ?)`);
+      params.push(key, value);
+    }
+  }
   if (search) {
     where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ? OR co.name LIKE ?)`);
     params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);

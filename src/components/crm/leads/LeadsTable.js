@@ -309,15 +309,18 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   // Predicted Grade is the one custom field shown as an actual column on
   // this list (every other custom field only shows on the lead's own
-  // detail page/Bulk Edit/Excel) — saved through the same generic
-  // custom-field-values endpoint those already use.
+  // detail page/Bulk Edit/Excel). On GVE's combined view `id` usually
+  // belongs to a school, not GVE itself, and that school's own field id
+  // isn't known up front (every school keeps its own separate row) — the
+  // dedicated predicted-grade endpoint resolves it server-side by key
+  // there, same as every other cross-company write in this app.
   async function updatePredictedGrade(id, value) {
     if (!predictedGradeField) return;
     setSavingGradeId(id);
     try {
-      const res = await apiFetch(`/api/leads/${id}/custom-field-values`, {
+      const res = await apiFetch(`/api/leads/${id}/predicted-grade`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values: { [predictedGradeField.id]: value } }),
+        body: JSON.stringify({ fieldId: predictedGradeField.id, value }),
       });
       if (!res.ok) throw new Error("Failed to update predicted grade.");
       router.refresh();
@@ -417,7 +420,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       },
     },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
-    ...(isChildCompany && predictedGradeField ? [{
+    ...((isChildCompany || aggregated) && predictedGradeField ? [{
       key: "predicted_grade", label: "Predicted Grade", width: 170,
       render: (l) => (
         <span className="flex items-center gap-1.5">

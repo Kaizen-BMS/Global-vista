@@ -24,6 +24,7 @@ export const GET = withErrorHandling(async (request) => {
         priority: searchParams.get("priority") || null, assignedTo: searchParams.get("assignedTo") || null,
         tag: searchParams.get("tag") || null, sourceName: searchParams.get("sourceId") || null, serviceName: searchParams.get("serviceId") || null,
         createdFrom: searchParams.get("createdFrom") || null, createdTo: searchParams.get("createdTo") || null,
+        customFieldFilters,
       })
     : await listAllLeadIds(session, {
         status: searchParams.get("status") || null, stage: searchParams.get("stage") || null,

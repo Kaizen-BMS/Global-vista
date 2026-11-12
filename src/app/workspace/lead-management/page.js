@@ -3,7 +3,7 @@ import { Plus, Upload, Download } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { can } from "@/lib/helpers/permissions";
 import { listLeads, listDistinctTags } from "@/lib/modules/crm/actions/leads";
-import { listAggregatedSchoolLeads, getAggregatedLeadsBySource, getAggregatedLeadsByService, getAggregatedDistinctTags } from "@/lib/actions/companySwitch";
+import { listAggregatedSchoolLeads, getAggregatedLeadsBySource, getAggregatedLeadsByService, getAggregatedDistinctTags, getAggregatedStudentInfoFields } from "@/lib/actions/companySwitch";
 import { getLeadPipelineStages } from "@/lib/modules/crm/actions/leadPipelineStages";
 import { getLeadsByStage } from "@/lib/modules/crm/actions/dashboard";
 import { listLeadSources, listServices } from "@/lib/actions/leadMeta";
@@ -34,10 +34,10 @@ export default async function LeadManagementPage({ searchParams }) {
   // filter (Stream/Class/Predicted Grade/District/…), built dynamically
   // in LeadFilters from this same company's own custom field list rather
   // than a hardcoded set, so a field added later is filterable with no
-  // code change here. Schools only — GVE's combined view doesn't offer
-  // these (each school has its own separate custom field rows, same
-  // reasoning Stage/Source/Service filtering already follows there).
-  const customFieldFilters = isChildCompany
+  // code change here. Works for both a school's own Leads page and GVE's
+  // combined view (matched by field_key there, never a school-specific
+  // row id — see listAggregatedSchoolLeads).
+  const customFieldFilters = isChildCompany || isAggregated
     ? Object.fromEntries(Object.entries(sp || {}).filter(([k]) => k.startsWith("cf_")).map(([k, v]) => [k.slice(3), v]))
     : null;
 
@@ -48,6 +48,7 @@ export default async function LeadManagementPage({ searchParams }) {
           assignedTo: sp?.assignedTo || null, tag: sp?.tag || null,
           sourceName: sp?.sourceId || null, serviceName: sp?.serviceId || null,
           createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
+          customFieldFilters,
           page: sp?.page || 1, pageSize: 20,
         })
       : listLeads(session, {
@@ -76,7 +77,7 @@ export default async function LeadManagementPage({ searchParams }) {
     can(session, "leads.update"),
     isImportExportAllowed(session.company_id),
     can(session, "leads.notes.manage"),
-    isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : [],
+    isChildCompany ? listLeadCustomFields(session, { activeOnly: true }) : isAggregated ? getAggregatedStudentInfoFields(session) : [],
   ]);
   const stageCounts = Object.fromEntries(stageCountRows.map((r) => [r.stage, r.count]));
   // LeadFilters' Source/Service <option>s read {id, name} — for the

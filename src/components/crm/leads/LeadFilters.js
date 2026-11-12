@@ -55,8 +55,10 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
   // Predicted Grade, District, …) gets its own ?cf_<field_key> filter —
   // built from this company's own custom field list, not a hardcoded
   // set, so a field added later in Settings is filterable immediately,
-  // no code change here. Schools only.
-  const customFilterFields = isChildCompany ? customFields.filter((f) => f.field_type === "select" || f.field_type === "radio") : [];
+  // no code change here. Schools, and GVE's combined view (one
+  // representative school's own field/option list — see
+  // getAggregatedStudentInfoFields).
+  const customFilterFields = (isChildCompany || aggregated) ? customFields.filter((f) => f.field_type === "select" || f.field_type === "radio") : [];
   const customFilterKeys = customFilterFields.map((f) => `cf_${f.field_key}`);
 
   function clearFilters() {
