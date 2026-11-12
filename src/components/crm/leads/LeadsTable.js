@@ -40,8 +40,12 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [stageNoteAction, setStageNoteAction] = useState(null); // { id, kind: "complete" | "next" | "prev", label }
   const [bulkStageNoteKind, setBulkStageNoteKind] = useState(null); // "next" | "prev"
-  const [savingGradeId, setSavingGradeId] = useState(null);
+  // Keyed `${leadId}:${fieldKey}` — several inline-editable custom-field
+  // columns (Predicted Grade, Previous Year Percentage, …) can each be
+  // mid-save independently without one blocking another's spinner.
+  const [savingCellKey, setSavingCellKey] = useState(null);
   const predictedGradeField = customFields.find((f) => f.field_key === "predicted_grade");
+  const previousYearPercentageField = customFields.find((f) => f.field_key === "previous_year_percentage");
   const streamOptions = customFields.find((f) => f.field_key === "stream")?.options || [];
   const selectedCount = selectAllMatching ? (totalCount ?? selected.length) : selected.length;
 
@@ -307,24 +311,25 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     } catch (err) { toast.error(err.message); } finally { setReleasingId(null); }
   }
 
-  // Predicted Grade is the one custom field shown as an actual column on
-  // this list (every other custom field only shows on the lead's own
-  // detail page/Bulk Edit/Excel). On GVE's combined view `id` usually
-  // belongs to a school, not GVE itself, and that school's own field id
-  // isn't known up front (every school keeps its own separate row) — the
-  // dedicated predicted-grade endpoint resolves it server-side by key
-  // there, same as every other cross-company write in this app.
-  async function updatePredictedGrade(id, value) {
-    if (!predictedGradeField) return;
-    setSavingGradeId(id);
+  // Predicted Grade / Previous Year Percentage are the two custom fields
+  // shown as actual columns on this list (every other custom field only
+  // shows on the lead's own detail page/Bulk Edit/Excel). On GVE's
+  // combined view `id` usually belongs to a school, not GVE itself, and
+  // that school's own field id isn't known up front (every school keeps
+  // its own separate row) — the dedicated custom-field-value endpoint
+  // resolves it server-side by key there, same as every other
+  // cross-company write in this app.
+  async function updateInlineCustomField(id, fieldKey, fieldId, value) {
+    const cellKey = `${id}:${fieldKey}`;
+    setSavingCellKey(cellKey);
     try {
-      const res = await apiFetch(`/api/leads/${id}/predicted-grade`, {
+      const res = await apiFetch(`/api/leads/${id}/custom-field-value`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldId: predictedGradeField.id, value }),
+        body: JSON.stringify({ fieldKey, fieldId, value }),
       });
-      if (!res.ok) throw new Error("Failed to update predicted grade.");
+      if (!res.ok) throw new Error("Failed to update.");
       router.refresh();
-    } catch (err) { toast.error(err.message); } finally { setSavingGradeId(null); }
+    } catch (err) { toast.error(err.message); } finally { setSavingCellKey(null); }
   }
 
   async function bulkRelease() {
@@ -422,21 +427,49 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
     ...((isChildCompany || aggregated) && predictedGradeField ? [{
       key: "predicted_grade", label: "Predicted Grade", width: 170,
-      render: (l) => (
-        <span className="flex items-center gap-1.5">
-          <select
-            value={l.predicted_grade || ""}
-            disabled={savingGradeId === l.id}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => { e.stopPropagation(); updatePredictedGrade(l.id, e.target.value); }}
-            className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-60"
-          >
-            <option value="">Not set</option>
-            {predictedGradeField.options.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-          {savingGradeId === l.id && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
-        </span>
-      ),
+      render: (l) => {
+        const saving = savingCellKey === `${l.id}:predicted_grade`;
+        return (
+          <span className="flex items-center gap-1.5">
+            <select
+              value={l.predicted_grade || ""}
+              disabled={saving}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => { e.stopPropagation(); updateInlineCustomField(l.id, "predicted_grade", predictedGradeField.id, e.target.value); }}
+              className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-60"
+            >
+              <option value="">Not set</option>
+              {predictedGradeField.options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+            {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+          </span>
+        );
+      },
+    }] : []),
+    ...((isChildCompany || aggregated) && previousYearPercentageField ? [{
+      key: "previous_year_percentage", label: "Previous Year %", width: 150,
+      render: (l) => {
+        const saving = savingCellKey === `${l.id}:previous_year_percentage`;
+        return (
+          <span className="flex items-center gap-1.5">
+            <input
+              type="text"
+              defaultValue={l.previous_year_percentage || ""}
+              disabled={saving}
+              placeholder="e.g. 85%"
+              onClick={(e) => e.stopPropagation()}
+              onBlur={(e) => {
+                e.stopPropagation();
+                const value = e.target.value.trim();
+                if (value !== (l.previous_year_percentage || "")) updateInlineCustomField(l.id, "previous_year_percentage", previousYearPercentageField.id, value);
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+              className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs disabled:opacity-60"
+            />
+            {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+          </span>
+        );
+      },
     }] : []),
     ...(isChildCompany ? [{
       key: "stage_status", label: "Stage Status", width: 190,

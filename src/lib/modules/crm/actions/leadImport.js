@@ -20,6 +20,7 @@ export const CUSTOM_FIELD_IMPORT_KEYS = {
   stream: "stream", district: "district", schoolName: "school_name",
   academicYear: "academic_year", class: "class", subjects: "subjects", parentMobile: "parent_mobile",
   parentName: "parent_name", registrationNumber: "registration_number",
+  predictedGrade: "predicted_grade", previousYearPercentage: "previous_year_percentage",
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

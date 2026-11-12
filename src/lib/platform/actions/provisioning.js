@@ -486,6 +486,7 @@ export async function provisionCompany(input, operatorId) {
           options: ["A+ (Above 90%)", "A (Above 80% to 90%)", "B+ (Above 70% to 80%)", "B (Above 60% to 70%)", "C+ (Above 50% to 60%)", "C (Above 40% to 50%)", "D (33% to 40%)", "E (Below 33%)"],
           required: false,
         },
+        { key: "previous_year_percentage", label: "Previous Year Percentage", type: "text", options: null, required: false },
       ];
       for (let i = 0; i < studentInfoFields.length; i++) {
         const f = studentInfoFields[i];

@@ -4,7 +4,7 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
 import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
-import { claimLead, releaseLead } from "@/lib/modules/crm/actions/leads";
+import { claimLead, releaseLead, buildInlineCustomFieldSql } from "@/lib/modules/crm/actions/leads";
 import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
 
@@ -221,19 +221,21 @@ export async function getAggregatedStudentInfoFields(session) {
   return listLeadCustomFields({ company_id: children[0].id }, { activeOnly: true });
 }
 
-/** The aggregated-view counterpart to the Predicted Grade column's save —
- * resolves the LEAD's OWN school's "predicted_grade" field (never GVE's
- * own, which doesn't have one) and writes under that school's own
- * company_id, exactly as if that school's own staff had set it. */
-export async function updatePredictedGradeAggregated(session, leadId, value, actorId) {
+/** The aggregated-view counterpart to an inline custom-field-column save
+ * (Predicted Grade, Previous Year Percentage, …) — resolves the LEAD's
+ * OWN school's field by KEY (never GVE's own, which doesn't have one)
+ * and writes under that school's own company_id, exactly as if that
+ * school's own staff had set it. GVE never knows a specific school's
+ * field id up front the way that school's own session already does. */
+export async function updateCustomFieldValueAggregated(session, leadId, fieldKey, value, actorId) {
   const allowedIds = await aggregatedCompanyIds(session);
   const [[lead]] = await pool.query(`SELECT company_id FROM leads WHERE id = ? AND is_deleted = 0`, [leadId]);
   if (!lead || !allowedIds.includes(lead.company_id)) { const e = new Error("Not one of your schools."); e.status = 403; throw e; }
   const [[field]] = await pool.query(
-    `SELECT id FROM lead_custom_fields WHERE company_id = ? AND field_key = 'predicted_grade' AND is_deleted = 0 LIMIT 1`,
-    [lead.company_id]
+    `SELECT id FROM lead_custom_fields WHERE company_id = ? AND field_key = ? AND is_deleted = 0 LIMIT 1`,
+    [lead.company_id, fieldKey]
   );
-  if (!field) { const e = new Error("Predicted Grade isn't set up for this school."); e.status = 400; throw e; }
+  if (!field) { const e = new Error(`This field isn't set up for this school.`); e.status = 400; throw e; }
   await saveLeadCustomFieldValues({ ...session, company_id: lead.company_id }, leadId, { [field.id]: value }, actorId);
 }
 
@@ -543,19 +545,20 @@ export async function listAggregatedSchoolLeads(session, {
   // LEFT costs nothing and avoids ever hiding a row over it) — all three
   // reused as-is in the COUNT query below so a sourceName/serviceName/
   // school-name search (which reference these aliases) works there too.
-  // Predicted Grade (same join shape listLeads uses) — pgf resolves to
-  // WHICHEVER school a given row belongs to via l.company_id, so one
-  // join correctly serves every school at once here.
+  // Predicted Grade / Previous Year Percentage (same buildInlineCustomFieldSql
+  // helper listLeads uses) — each join resolves to WHICHEVER school a
+  // given row belongs to via l.company_id, so it correctly serves every
+  // school at once here instead of just one fixed company.
+  const { joinSql: inlineJoin, selectSql: inlineSelect } = buildInlineCustomFieldSql();
   const fromSql = `FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN companies co ON co.id = l.company_id
-     LEFT JOIN lead_custom_fields pgf ON pgf.company_id = l.company_id AND pgf.field_key = 'predicted_grade' AND pgf.is_deleted = 0
-     LEFT JOIN lead_custom_field_values pgv ON pgv.lead_id = l.id AND pgv.custom_field_id = pgf.id`;
+     ${inlineJoin}`;
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
-            (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name,
-            pgf.id AS predicted_grade_field_id, pgv.value AS predicted_grade
+            (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
+            ${inlineSelect}
      ${fromSql}
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by

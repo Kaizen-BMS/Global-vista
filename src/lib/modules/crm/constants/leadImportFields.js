@@ -52,6 +52,8 @@ export const LEAD_IMPORT_FIELDS = [
   { key: "parentMobile", label: "Parent Mobile Number", required: false },
   { key: "parentName", label: "Parent Name", required: false },
   { key: "registrationNumber", label: "Registration Number", required: false },
+  { key: "predictedGrade", label: "Predicted Grade", required: false },
+  { key: "previousYearPercentage", label: "Previous Year Percentage", required: false },
 ];
 
 // noteContent/noteDate/followupType/followupDate/stage/stream/district/
@@ -66,6 +68,7 @@ export const LEAD_IMPORT_FIELDS = [
 const SUB_COMPANY_ONLY_KEYS = new Set([
   "noteContent", "noteDate", "followupType", "followupDate",
   "stage", "stream", "district", "schoolName", "academicYear", "class", "subjects", "parentMobile", "parentName", "registrationNumber",
+  "predictedGrade", "previousYearPercentage",
 ]);
 export function getLeadImportFields(isChildCompany) {
   return isChildCompany ? LEAD_IMPORT_FIELDS : LEAD_IMPORT_FIELDS.filter((f) => !SUB_COMPANY_ONLY_KEYS.has(f.key));

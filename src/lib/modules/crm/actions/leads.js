@@ -9,6 +9,31 @@ import { generateStudentCode } from "@/lib/modules/crm/studentCode";
 import { listLeadCustomFields } from "@/lib/modules/crm/actions/leadCustomFields";
 import { enforceLeadLimit } from "@/lib/platform/tenant";
 
+// The custom fields shown as actual columns on the Students list itself
+// (every other custom field only ever shows on Lead Detail/Bulk Edit/
+// Excel) — pulled straight into the row here so LeadsTable.js doesn't
+// need a second round trip per row just to know each student's current
+// value. Hardcoded, not user input, so safe to inline into SQL directly.
+export const INLINE_CUSTOM_FIELD_KEYS = ["predicted_grade", "previous_year_percentage"];
+
+/** One LEFT JOIN pair + two SELECT columns per key in
+ * INLINE_CUSTOM_FIELD_KEYS, aliased by position so multiple keys never
+ * collide. Reused as-is by listAggregatedSchoolLeads (companySwitch.js)
+ * for GVE's combined view — there, `icf0`'s company_id match against
+ * l.company_id resolves to WHICHEVER school a given row belongs to, not
+ * a single fixed company. */
+export function buildInlineCustomFieldSql() {
+  let joinSql = "";
+  let selectSql = "";
+  INLINE_CUSTOM_FIELD_KEYS.forEach((key, i) => {
+    const f = `icf${i}f`, v = `icf${i}v`;
+    joinSql += ` LEFT JOIN lead_custom_fields ${f} ON ${f}.company_id = l.company_id AND ${f}.field_key = '${key}' AND ${f}.is_deleted = 0
+       LEFT JOIN lead_custom_field_values ${v} ON ${v}.lead_id = l.id AND ${v}.custom_field_id = ${f}.id`;
+    selectSql += `, ${f}.id AS ${key}_field_id, ${v}.value AS ${key}`;
+  });
+  return { joinSql, selectSql };
+}
+
 // Correlated subquery, not a JOIN: a lead can have more than one
 // lead_form_submissions row (a repeat submitter gets linked to their
 // existing lead rather than spawning a duplicate — see submitPublicLeadForm),
@@ -115,26 +140,20 @@ export async function listLeads(session, {
   const sortCol = SORTABLE.has(sort) ? sort : "created_at";
   const sortDir = dir === "ASC" ? "ASC" : "DESC";
 
-  // Predicted Grade (schools only) is pulled straight into the row here —
-  // it's shown/edited as an actual column on the Students list, unlike
-  // every other custom field (which only ever shows on Lead Detail/Bulk
-  // Edit/Excel) — so LeadsTable.js doesn't need a second round trip per
-  // row just to know each student's current grade.
-  const predictedGradeJoin = session.is_child_company
-    ? `LEFT JOIN lead_custom_fields pgf ON pgf.company_id = l.company_id AND pgf.field_key = 'predicted_grade' AND pgf.is_deleted = 0
-       LEFT JOIN lead_custom_field_values pgv ON pgv.lead_id = l.id AND pgv.custom_field_id = pgf.id`
-    : "";
-  const predictedGradeSelect = session.is_child_company ? `, pgf.id AS predicted_grade_field_id, pgv.value AS predicted_grade` : "";
+  // Schools only — see buildInlineCustomFieldSql's own comment.
+  const { joinSql: inlineJoin, selectSql: inlineSelect } = session.is_child_company
+    ? buildInlineCustomFieldSql()
+    : { joinSql: "", selectSql: "" };
 
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
-            ${SOURCE_FORM_SUBQUERY}${predictedGradeSelect}
+            ${SOURCE_FORM_SUBQUERY}${inlineSelect}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
-     ${predictedGradeJoin}
+     ${inlineJoin}
      ${whereSql}
      ORDER BY l.${sortCol} ${sortDir}
      LIMIT ? OFFSET ?`,
