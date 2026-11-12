@@ -23,18 +23,23 @@ export default function DuplicateBanner({ leadId, duplicateOfId, duplicateOfName
   }
 
   return (
+    // text-amber-300 read fine on a dark background but nearly vanished
+    // against this banner's own light tint in light mode (confirmed
+    // live) — text-amber-700 dark:text-amber-300 keeps good contrast in
+    // both themes, same convention already used elsewhere in the app
+    // (e.g. PlatformHome.js's "gold" accent).
     <div className="flex items-center justify-between gap-3 mb-4 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-      <div className="flex items-center gap-2 text-amber-300 text-sm">
+      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
           Possible duplicate of{" "}
-          <a href={`/workspace/lead-management/${duplicateOfId}`} className="underline hover:text-amber-200">
+          <a href={`/workspace/lead-management/${duplicateOfId}`} className="underline font-medium hover:text-amber-800 dark:hover:text-amber-200">
             {duplicateOfName} ({duplicateOfNumber})
           </a>
         </span>
       </div>
       {canMerge && (
-        <button onClick={handleMerge} disabled={merging} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-medium transition disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shrink-0">
+        <button onClick={handleMerge} disabled={merging} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-medium transition disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shrink-0">
           {merging && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Merge into original
         </button>
