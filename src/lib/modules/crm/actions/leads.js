@@ -29,6 +29,7 @@ function applyAssignedToFilter(where, params, assignedTo, session) {
   else { where.push("l.assigned_to = ?"); params.push(assignedTo); }
 }
 
+
 export async function listDistinctTags(session) {
   const { where, params } = await getVisibleLeadFilter(session);
   const [rows] = await pool.query(
@@ -76,16 +77,16 @@ export async function listLeads(session, {
   if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
   if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
   if (search) {
-    // Registration Number / Parent Name live as custom fields (schools
-    // only) — matched via EXISTS against the EAV value table rather than a
-    // JOIN, so a student with neither value set is still found by name/
-    // phone. Only added to the query for child companies; every other
-    // company's search is unchanged.
+    // Registration Number / Parent Name / Subjects live as custom fields
+    // (schools only) — matched via EXISTS against the EAV value table
+    // rather than a JOIN, so a student with none of them set is still
+    // found by name/phone. Only added to the query for child companies;
+    // every other company's search is unchanged.
     const customFieldSearch = session.is_child_company
       ? ` OR EXISTS (
           SELECT 1 FROM lead_custom_field_values v
           JOIN lead_custom_fields f ON f.id = v.custom_field_id
-          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name') AND v.value LIKE ?
+          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name', 'subjects') AND v.value LIKE ?
         )`
       : "";
     where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?${customFieldSearch})`);
@@ -99,14 +100,26 @@ export async function listLeads(session, {
   const sortCol = SORTABLE.has(sort) ? sort : "created_at";
   const sortDir = dir === "ASC" ? "ASC" : "DESC";
 
+  // Predicted Grade (schools only) is pulled straight into the row here —
+  // it's shown/edited as an actual column on the Students list, unlike
+  // every other custom field (which only ever shows on Lead Detail/Bulk
+  // Edit/Excel) — so LeadsTable.js doesn't need a second round trip per
+  // row just to know each student's current grade.
+  const predictedGradeJoin = session.is_child_company
+    ? `LEFT JOIN lead_custom_fields pgf ON pgf.company_id = l.company_id AND pgf.field_key = 'predicted_grade' AND pgf.is_deleted = 0
+       LEFT JOIN lead_custom_field_values pgv ON pgv.lead_id = l.id AND pgv.custom_field_id = pgf.id`
+    : "";
+  const predictedGradeSelect = session.is_child_company ? `, pgf.id AS predicted_grade_field_id, pgv.value AS predicted_grade` : "";
+
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
-            ${SOURCE_FORM_SUBQUERY}
+            ${SOURCE_FORM_SUBQUERY}${predictedGradeSelect}
      FROM leads l
      JOIN lead_sources s ON s.id = l.lead_source_id
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
+     ${predictedGradeJoin}
      ${whereSql}
      ORDER BY l.${sortCol} ${sortDir}
      LIMIT ? OFFSET ?`,
@@ -150,7 +163,7 @@ export async function listAllLeadIds(session, {
       ? ` OR EXISTS (
           SELECT 1 FROM lead_custom_field_values v
           JOIN lead_custom_fields f ON f.id = v.custom_field_id
-          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name') AND v.value LIKE ?
+          WHERE v.lead_id = l.id AND f.field_key IN ('registration_number', 'parent_name', 'subjects') AND v.value LIKE ?
         )`
       : "";
     where.push(`(l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.lead_number LIKE ?${customFieldSearch})`);

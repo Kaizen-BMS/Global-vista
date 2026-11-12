@@ -40,6 +40,8 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [stageNoteAction, setStageNoteAction] = useState(null); // { id, kind: "complete" | "next" | "prev", label }
   const [bulkStageNoteKind, setBulkStageNoteKind] = useState(null); // "next" | "prev"
+  const [savingGradeId, setSavingGradeId] = useState(null);
+  const predictedGradeField = customFields.find((f) => f.field_key === "predicted_grade");
   const streamOptions = customFields.find((f) => f.field_key === "stream")?.options || [];
   const selectedCount = selectAllMatching ? (totalCount ?? selected.length) : selected.length;
 
@@ -305,6 +307,23 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     } catch (err) { toast.error(err.message); } finally { setReleasingId(null); }
   }
 
+  // Predicted Grade is the one custom field shown as an actual column on
+  // this list (every other custom field only shows on the lead's own
+  // detail page/Bulk Edit/Excel) — saved through the same generic
+  // custom-field-values endpoint those already use.
+  async function updatePredictedGrade(id, value) {
+    if (!predictedGradeField) return;
+    setSavingGradeId(id);
+    try {
+      const res = await apiFetch(`/api/leads/${id}/custom-field-values`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: { [predictedGradeField.id]: value } }),
+      });
+      if (!res.ok) throw new Error("Failed to update predicted grade.");
+      router.refresh();
+    } catch (err) { toast.error(err.message); } finally { setSavingGradeId(null); }
+  }
+
   async function bulkRelease() {
     if (!confirm(`Release ${selected.length} ${selected.length === 1 ? terms.singularLower : terms.pluralLower} back to the unassigned pool?`)) return;
     setBulkBusy(true);
@@ -398,6 +417,24 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       },
     },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
+    ...(isChildCompany && predictedGradeField ? [{
+      key: "predicted_grade", label: "Predicted Grade", width: 170,
+      render: (l) => (
+        <span className="flex items-center gap-1.5">
+          <select
+            value={l.predicted_grade || ""}
+            disabled={savingGradeId === l.id}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { e.stopPropagation(); updatePredictedGrade(l.id, e.target.value); }}
+            className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-60"
+          >
+            <option value="">Not set</option>
+            {predictedGradeField.options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          {savingGradeId === l.id && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+        </span>
+      ),
+    }] : []),
     ...(isChildCompany ? [{
       key: "stage_status", label: "Stage Status", width: 190,
       render: (l) => {

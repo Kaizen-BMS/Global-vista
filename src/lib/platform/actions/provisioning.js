@@ -481,6 +481,11 @@ export async function provisionCompany(input, operatorId) {
         { key: "district", label: "District", type: "select", options: ["Amritsar", "Ferozpur", "SBS Nagar", "Shri Muktsar Sahib", "Bathinda"], required: false },
         { key: "school_name", label: "School", type: "select", options: ["PSEB Adarsh SSS. Dhardeo Buttar", "PSEB Adarsh SSS. Shahzada Sant Singh", "PSEB Adarsh SSS. Khatkar Kalan", "PSEB Adarsh SSS. Kot Bhai", "PSEB Adarsh SSS. Nandgarh"], required: false },
         { key: "academic_year", label: "Academic Year", type: "select", options: ["2026-27"], required: false },
+        {
+          key: "predicted_grade", label: "Predicted Grade", type: "select",
+          options: ["A+ (Above 90%)", "A (Above 80% to 90%)", "B+ (Above 70% to 80%)", "B (Above 60% to 70%)", "C+ (Above 50% to 60%)", "C (Above 40% to 50%)", "D (33% to 40%)", "E (Below 33%)"],
+          required: false,
+        },
       ];
       for (let i = 0; i < studentInfoFields.length; i++) {
         const f = studentInfoFields[i];
