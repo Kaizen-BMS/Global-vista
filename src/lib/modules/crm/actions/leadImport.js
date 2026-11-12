@@ -257,7 +257,7 @@ export async function validateLeadImportRows(session, dataRows, mapping, { defau
       if (record.email) seenEmails.set(record.email, rowNumber);
 
       if (!isDuplicate && errors.length === 0 && record.phone) {
-        const existing = await findDuplicateLead(session.company_id, { phone: record.phone, email: record.email });
+        const existing = await findDuplicateLead(session.company_id, { name: record.name, phone: record.phone, email: record.email });
         if (existing) { isDuplicate = true; duplicateOfId = existing.id; duplicateReason = `Matches existing lead ${existing.name} (${existing.phone}).`; }
       }
     }

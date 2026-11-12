@@ -81,12 +81,20 @@ export async function listDistinctTags(session) {
   return Array.from(set).sort();
 }
 
-export async function findDuplicateLead(companyId, { phone, email }) {
+// Was phone-OR-email — on its own, that flagged two genuinely different
+// people as duplicates of each other whenever they happened to share a
+// phone number (a parent's own number used as the contact for more than
+// one of their children, or a school office number entered for several
+// students) or an email, with no regard for whether they were even the
+// same person. Narrowed to name AND phone together, matching the actual
+// intent of "duplicate" — the same student, re-entered.
+export async function findDuplicateLead(companyId, { name, phone, email }) {
+  if (!name || !phone) return null;
   const [rows] = await pool.query(
     `SELECT id, name, phone, email, status FROM leads
-     WHERE company_id = ? AND ${NOT_DELETED} AND (phone = ? ${email ? "OR email = ?" : ""})
+     WHERE company_id = ? AND ${NOT_DELETED} AND name = ? AND phone = ?
      ORDER BY created_at DESC LIMIT 1`,
-    email ? [companyId, phone, email] : [companyId, phone]
+    [companyId, name, phone]
   );
   return rows[0] || null;
 }
@@ -382,7 +390,7 @@ export async function releaseLead(session, id, userId, { force = false } = {}) {
 
 export async function createLead(session, data, createdBy) {
   await enforceLeadLimit(session.company_id);
-  const duplicate = await findDuplicateLead(session.company_id, { phone: data.phone, email: data.email });
+  const duplicate = await findDuplicateLead(session.company_id, { name: data.name, phone: data.phone, email: data.email });
   const leadNumber = await generateLeadNumber();
   const studentCode = session.is_child_company ? await generateStudentCode(session.company_id) : null;
 

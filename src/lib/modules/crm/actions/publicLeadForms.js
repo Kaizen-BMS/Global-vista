@@ -100,7 +100,7 @@ export async function submitPublicLeadForm(form, rawData, meta) {
   if (errors.length) { await record("failed", null, errors.join("; ")); return { success: false, errors }; }
 
   const pseudoSession = { company_id: form.company_id };
-  const duplicate = await findDuplicateLead(form.company_id, { phone: rawData.phone, email: rawData.email });
+  const duplicate = await findDuplicateLead(form.company_id, { name: rawData.name, phone: rawData.phone, email: rawData.email });
 
   let leadId;
   if (duplicate) {

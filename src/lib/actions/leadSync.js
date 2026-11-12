@@ -103,7 +103,7 @@ export async function runSync(source) {
         const email = mapping.email ? row[mapping.email] : null;
         if (!name || !phone) { failed++; errors.push({ row, reason: "Missing required name/phone after column mapping." }); continue; }
 
-        const dup = await findDuplicateLead(source.company_id, { phone, email });
+        const dup = await findDuplicateLead(source.company_id, { name, phone, email });
         let leadId;
         if (dup) {
           leadId = dup.id;
