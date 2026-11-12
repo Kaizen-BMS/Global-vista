@@ -29,6 +29,19 @@ function applyAssignedToFilter(where, params, assignedTo, session) {
   else { where.push("l.assigned_to = ?"); params.push(assignedTo); }
 }
 
+// `customFieldFilters` = { [field_key]: value } — one EXISTS clause per
+// entry against the EAV value table (lead_custom_field_values), same
+// pattern the registration_number/parent_name search below already uses.
+// Schools only (custom fields are a child-company feature); silently a
+// no-op for every other company so this is safe to call unconditionally.
+function applyCustomFieldFilters(where, params, customFieldFilters, isChildCompany) {
+  if (!isChildCompany || !customFieldFilters) return;
+  for (const [key, value] of Object.entries(customFieldFilters)) {
+    if (!value) continue;
+    where.push(`EXISTS (SELECT 1 FROM lead_custom_field_values v JOIN lead_custom_fields f ON f.id = v.custom_field_id WHERE v.lead_id = l.id AND f.field_key = ? AND v.value = ?)`);
+    params.push(key, value);
+  }
+}
 
 export async function listDistinctTags(session) {
   const { where, params } = await getVisibleLeadFilter(session);
@@ -57,6 +70,7 @@ export async function listLeads(session, {
   status = null, stage = null, priority = null, sourceId = null, serviceId = null,
   assignedTo = null, country = null, search = null, tag = null,
   createdFrom = null, createdTo = null, followupFrom = null, followupTo = null,
+  customFieldFilters = null,
   sort = "created_at", dir = "DESC",
   page = 1, pageSize = 20,
 } = {}) {
@@ -76,6 +90,7 @@ export async function listLeads(session, {
   if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
   if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
   if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
+  applyCustomFieldFilters(where, params, customFieldFilters, session.is_child_company);
   if (search) {
     // Registration Number / Parent Name / Subjects live as custom fields
     // (schools only) — matched via EXISTS against the EAV value table
@@ -141,6 +156,7 @@ export async function listAllLeadIds(session, {
   status = null, stage = null, priority = null, sourceId = null, serviceId = null,
   assignedTo = null, country = null, search = null, tag = null,
   createdFrom = null, createdTo = null, followupFrom = null, followupTo = null,
+  customFieldFilters = null,
 } = {}) {
   const { where: rlsWhere, params: rlsParams } = await getVisibleLeadFilter(session);
   const where = [`l.${NOT_DELETED}`, rlsWhere];
@@ -158,6 +174,7 @@ export async function listAllLeadIds(session, {
   if (createdTo) { where.push("l.created_at <= ?"); params.push(`${createdTo} 23:59:59`); }
   if (followupFrom) { where.push("l.next_follow_up >= ?"); params.push(followupFrom); }
   if (followupTo) { where.push("l.next_follow_up <= ?"); params.push(`${followupTo} 23:59:59`); }
+  applyCustomFieldFilters(where, params, customFieldFilters, session.is_child_company);
   if (search) {
     const customFieldSearch = session.is_child_company
       ? ` OR EXISTS (

@@ -30,6 +30,16 @@ export default async function LeadManagementPage({ searchParams }) {
   // to GVE directly, labeled Direct Lead — instead of a separate "Leads
   // Overview" page; this IS "Leads" for GVE. See listAggregatedSchoolLeads.
   const isAggregated = !isChildCompany && !!session.can_create_child_companies;
+  // ?cf_<field_key>=<value> — one URL param per Student Information
+  // filter (Stream/Class/Predicted Grade/District/…), built dynamically
+  // in LeadFilters from this same company's own custom field list rather
+  // than a hardcoded set, so a field added later is filterable with no
+  // code change here. Schools only — GVE's combined view doesn't offer
+  // these (each school has its own separate custom field rows, same
+  // reasoning Stage/Source/Service filtering already follows there).
+  const customFieldFilters = isChildCompany
+    ? Object.fromEntries(Object.entries(sp || {}).filter(([k]) => k.startsWith("cf_")).map(([k, v]) => [k.slice(3), v]))
+    : null;
 
   const [result, stages, stageCountRows, sourceRows, serviceRows, tags, counsellorsResult, canCreate, canAssign, canUpdate, canImportExport, canManageNotes, customFields] = await Promise.all([
     isAggregated
@@ -46,6 +56,7 @@ export default async function LeadManagementPage({ searchParams }) {
           assignedTo: sp?.assignedTo || null, country: sp?.country || null, tag: sp?.tag || null,
           createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
           followupFrom: sp?.followupFrom || null, followupTo: sp?.followupTo || null,
+          customFieldFilters,
           sort: sp?.sort || "created_at", dir: sp?.dir || "DESC",
           page: sp?.page || 1, pageSize: 20,
         }),
@@ -113,6 +124,7 @@ export default async function LeadManagementPage({ searchParams }) {
         counsellors={isAggregated ? [] : counsellorsResult.users}
         tags={tags} allowImportExport={canImportExport} stages={stages} isChildCompany={isChildCompany}
         aggregated={isAggregated} schools={result.schools || []}
+        customFields={customFields}
       />
       <LeadsTable
         leads={result.leads}

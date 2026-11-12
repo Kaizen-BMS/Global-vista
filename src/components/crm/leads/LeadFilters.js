@@ -20,7 +20,7 @@ const FILTER_KEYS = ["school", "stage", "priority", "sourceId", "serviceId", "as
  * selects plus a separate stacked quick-tabs row. All the same URL params
  * as before — this only changes how they're presented.
  */
-export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true, stages = LEAD_STAGES, isChildCompany = false, aggregated = false, schools = [] }) {
+export default function LeadFilters({ sources = [], services = [], counsellors = [], tags = [], allowImportExport = true, stages = LEAD_STAGES, isChildCompany = false, aggregated = false, schools = [], customFields = [] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -51,9 +51,17 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
     setSavedOpen(false);
   }
 
+  // Every select/radio Student Information field (Stream, Class,
+  // Predicted Grade, District, …) gets its own ?cf_<field_key> filter —
+  // built from this company's own custom field list, not a hardcoded
+  // set, so a field added later in Settings is filterable immediately,
+  // no code change here. Schools only.
+  const customFilterFields = isChildCompany ? customFields.filter((f) => f.field_type === "select" || f.field_type === "radio") : [];
+  const customFilterKeys = customFilterFields.map((f) => `cf_${f.field_key}`);
+
   function clearFilters() {
     const params = new URLSearchParams(searchParams.toString());
-    for (const k of FILTER_KEYS) params.delete(k);
+    for (const k of [...FILTER_KEYS, ...customFilterKeys]) params.delete(k);
     params.delete("page");
     router.push(`${pathname}?${params.toString()}`);
   }
@@ -72,7 +80,7 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
     if (res.ok) { toast.success("Filter deleted."); loadSavedFilters(); } else { toast.error("Failed to delete filter."); }
   }
 
-  const activeFilterCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
+  const activeFilterCount = [...FILTER_KEYS, ...customFilterKeys].filter((k) => searchParams.get(k)).length;
   const hasAnyFilter = activeFilterCount > 0 || !!searchParams.get("search");
   const assignedActive = searchParams.get("assignedTo") || "";
 
@@ -196,6 +204,15 @@ export default function LeadFilters({ sources = [], services = [], counsellors =
                 <label className="block text-xs text-muted-foreground mb-1">Follow-up To</label>
                 <input type="date" defaultValue={searchParams.get("followupTo") || ""} onChange={(e) => setParam("followupTo", e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm" />
               </div>
+              {customFilterFields.map((f) => (
+                <div key={f.id}>
+                  <label className="block text-xs text-muted-foreground mb-1">{f.label}</label>
+                  <select defaultValue={searchParams.get(`cf_${f.field_key}`) || ""} onChange={(e) => setParam(`cf_${f.field_key}`, e.target.value)} className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground text-sm cursor-pointer">
+                    <option value="">All {f.label}</option>
+                    {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
             </div>
             <div className="flex justify-end mt-3 pt-3 border-t border-border">
               <button type="button" onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-muted-foreground hover:text-foreground text-xs transition cursor-pointer">

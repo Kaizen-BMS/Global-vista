@@ -15,6 +15,9 @@ export const GET = withErrorHandling(async (request) => {
   const session = await getSession();
   if (!(await can(session, "leads.view"))) return forbidden();
   const { searchParams } = new URL(request.url);
+  const customFieldFilters = Object.fromEntries(
+    [...searchParams.entries()].filter(([k]) => k.startsWith("cf_")).map(([k, v]) => [k.slice(3), v])
+  );
   const ids = session.can_create_child_companies
     ? await listAllAggregatedLeadIds(session, {
         schoolId: searchParams.get("school") || null, search: searchParams.get("q") || searchParams.get("search") || null,
@@ -30,6 +33,7 @@ export const GET = withErrorHandling(async (request) => {
         tag: searchParams.get("tag") || null,
         createdFrom: searchParams.get("createdFrom") || null, createdTo: searchParams.get("createdTo") || null,
         followupFrom: searchParams.get("followupFrom") || null, followupTo: searchParams.get("followupTo") || null,
+        customFieldFilters,
       });
   return ok({ ids });
 });
