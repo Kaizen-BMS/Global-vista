@@ -354,7 +354,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   // to this instead of a fresh block of near-identical JSX.
   function inlineSelectColumn(fieldKey, label, field, width = 150) {
     return {
-      key: fieldKey, label, width,
+      key: fieldKey, label, width, sortable: true,
       render: (l) => {
         const saving = savingCellKey === `${l.id}:${fieldKey}`;
         return (
@@ -377,10 +377,10 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   }
 
   const columns = [
-    { key: "lead_number", label: `${terms.singular} #`, width: 110, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
+    { key: "lead_number", label: `${terms.singular} #`, width: 110, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
     ...(isChildCompany ? [{ key: "student_code", label: "Student ID", width: 130, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{l.student_code || "—"}</span> }] : []),
     {
-      key: "name", label: "Name", width: 200, sortable: !aggregated, hideable: false,
+      key: "name", label: "Name", width: 200, sortable: true, hideable: false,
       render: (l) => (
         <span className="flex items-center gap-2 min-w-0">
           {aggregated ? (
@@ -393,17 +393,17 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       ),
     },
     ...(aggregated ? [{
-      key: "school_name", label: "School", width: 170,
+      key: "school_name", label: "School", width: 170, sortable: true,
       render: (l) => l.school_name ? (
         <span className="flex items-center gap-1.5 text-foreground min-w-0"><Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" /><span className="truncate">{l.school_name}</span></span>
       ) : (
         <span className="px-2 py-0.5 rounded-full text-[11px] border bg-indigo-500/10 text-indigo-400 border-indigo-500/30">Direct Lead</span>
       ),
     }] : []),
-    { key: "phone", label: "Phone", width: 140, render: (l) => l.phone },
-    { key: "country", label: "Country", width: 120, render: (l) => l.country || "—" },
+    { key: "phone", label: "Phone", width: 140, sortable: true, render: (l) => l.phone },
+    { key: "country", label: "Country", width: 120, sortable: true, render: (l) => l.country || "—" },
     {
-      key: "source_name", label: "Source", width: 160,
+      key: "source_name", label: "Source", width: 160, sortable: true,
       render: (l) => (
         <span className="flex flex-col min-w-0">
           <span className="truncate">{l.source_name}</span>
@@ -412,7 +412,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       ),
     },
     {
-      key: "created_by_name", label: "Created By", width: 140,
+      key: "created_by_name", label: "Created By", width: 140, sortable: true,
       // created_by is only ever a real staff member for manually-created
       // leads — public-form and future automated-import leads never set
       // it, so they must read as "System", never blank (which could look
@@ -420,7 +420,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       render: (l) => l.created_by_name || (l.source_form_name ? "System (Form)" : "—"),
     },
     {
-      key: "assigned_name", label: "Assigned", width: 170,
+      key: "assigned_name", label: "Assigned", width: 170, sortable: true,
       render: (l) => {
         if (!l.assigned_to) {
           return canClaim ? (
@@ -459,7 +459,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
     ...((isChildCompany || aggregated) && streamField ? [inlineSelectColumn("stream", "Stream", streamField, 140)] : []),
     ...((isChildCompany || aggregated) && predictedGradeField ? [inlineSelectColumn("predicted_grade", "Predicted Grade", predictedGradeField, 170)] : []),
     ...((isChildCompany || aggregated) && previousYearPercentageField ? [{
-      key: "previous_year_percentage", label: "Previous Year %", width: 150,
+      key: "previous_year_percentage", label: "Previous Year %", width: 150, sortable: true,
       render: (l) => {
         const saving = savingCellKey === `${l.id}:previous_year_percentage`;
         return (
@@ -656,7 +656,7 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
           rows={leads}
           sortKey={sortKey}
           sortDir={sortDir}
-          onSort={aggregated ? undefined : handleSort}
+          onSort={handleSort}
           onRowClick={openLead}
           leadingColumn={{
             width: 36,

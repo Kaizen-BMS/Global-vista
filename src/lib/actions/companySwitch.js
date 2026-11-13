@@ -4,7 +4,7 @@ import { logActivity } from "@/lib/activityLog";
 import { isSuperAdminAccount, can } from "@/lib/helpers/permissions";
 import { canViewAllRecords } from "@/lib/modules/crm/rls";
 import { paginate } from "@/lib/helpers/db";
-import { claimLead, releaseLead, buildInlineCustomFieldSql } from "@/lib/modules/crm/actions/leads";
+import { claimLead, releaseLead, buildInlineCustomFieldSql, resolveSortColumn } from "@/lib/modules/crm/actions/leads";
 import { listLeadCustomFields, saveLeadCustomFieldValues } from "@/lib/modules/crm/actions/leadCustomFields";
 import { hasLeadNoteTypeColumn } from "@/lib/db/schemaFlags";
 
@@ -456,6 +456,7 @@ export async function listAggregatedSchoolLeads(session, {
   schoolId = null, search = null, priority = null, assignedTo = null, tag = null,
   sourceName = null, serviceName = null, createdFrom = null, createdTo = null,
   customFieldFilters = null,
+  sort = "created_at", dir = "DESC",
   page = 1, pageSize = 20,
 } = {}) {
   // Not gated on isSuperAdminAccount — the Leads page (its only caller
@@ -555,6 +556,12 @@ export async function listAggregatedSchoolLeads(session, {
      JOIN services sv ON sv.id = l.service_id
      LEFT JOIN companies co ON co.id = l.company_id
      ${inlineJoin}`;
+  // Same sortKey -> expression map listLeads uses (shared, see
+  // resolveSortColumn's own comment), plus this view's own "school_name"
+  // alias — inline custom fields are always safe to sort by here since
+  // the join above is unconditional, unlike listLeads's schools-only one.
+  const sortExpr = resolveSortColumn(sort, { extra: { school_name: "school_name" } });
+  const sortDir = dir === "ASC" ? "ASC" : "DESC";
   const [rows] = await pool.query(
     `SELECT l.*, s.name AS source_name, sv.name AS service_name, u.name AS assigned_name, cu.name AS created_by_name,
             (CASE WHEN l.company_id = ? THEN NULL ELSE co.name END) AS school_name
@@ -563,7 +570,7 @@ export async function listAggregatedSchoolLeads(session, {
      LEFT JOIN users u ON u.id = l.assigned_to
      LEFT JOIN users cu ON cu.id = l.created_by
      ${whereSql}
-     ORDER BY l.created_at DESC
+     ORDER BY ${sortExpr} ${sortDir}
      LIMIT ? OFFSET ?`,
     [session.company_id, ...params, limit, offset]
   );

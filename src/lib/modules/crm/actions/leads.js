@@ -34,6 +34,30 @@ export function buildInlineCustomFieldSql() {
   return { joinSql, selectSql };
 }
 
+// What a sort key is allowed to resolve to — real `leads` columns need
+// the l. prefix to disambiguate from same-named columns on joined
+// tables (users.name, companies.name); every joined/computed column
+// already has its own unique SELECT alias, so those are referenced bare
+// (MySQL allows ORDER BY a SELECT-list alias). Shared by listLeads and
+// listAggregatedSchoolLeads (companySwitch.js) so both support sorting
+// by the same full set of columns, including the inline custom fields —
+// callers pass their own extra aliases (e.g. aggregated's "school_name")
+// on top of this shared base instead of duplicating it.
+export const BASE_SORT_COLUMNS = {
+  lead_number: "l.lead_number", student_code: "l.student_code", name: "l.name", phone: "l.phone",
+  email: "l.email", country: "l.country", status: "l.status", stage: "l.stage", priority: "l.priority",
+  created_at: "l.created_at", next_follow_up: "l.next_follow_up",
+  source_name: "source_name", service_name: "service_name", assigned_name: "assigned_name", created_by_name: "created_by_name",
+};
+// `includeInline` gates class/stream/predicted_grade/previous_year_
+// percentage — only ever safe to sort by when the caller's own SELECT
+// actually joined them in (buildInlineCustomFieldSql, schools-only for
+// listLeads); otherwise those aliases don't exist and MySQL would error.
+export function resolveSortColumn(sort, { extra = {}, includeInline = true } = {}) {
+  const map = { ...BASE_SORT_COLUMNS, ...(includeInline ? Object.fromEntries(INLINE_CUSTOM_FIELD_KEYS.map((k) => [k, k])) : {}), ...extra };
+  return map[sort] || BASE_SORT_COLUMNS.created_at;
+}
+
 // Correlated subquery, not a JOIN: a lead can have more than one
 // lead_form_submissions row (a repeat submitter gets linked to their
 // existing lead rather than spawning a duplicate — see submitPublicLeadForm),
@@ -144,8 +168,7 @@ export async function listLeads(session, {
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const { limit, offset, page: p, pageSize: size } = paginate({ page, pageSize });
 
-  const SORTABLE = new Set(["created_at", "next_follow_up", "priority", "name", "stage", "student_code"]);
-  const sortCol = SORTABLE.has(sort) ? sort : "created_at";
+  const sortExpr = resolveSortColumn(sort, { includeInline: session.is_child_company });
   const sortDir = dir === "ASC" ? "ASC" : "DESC";
 
   // Schools only — see buildInlineCustomFieldSql's own comment.
@@ -163,7 +186,7 @@ export async function listLeads(session, {
      LEFT JOIN users cu ON cu.id = l.created_by
      ${inlineJoin}
      ${whereSql}
-     ORDER BY l.${sortCol} ${sortDir}
+     ORDER BY ${sortExpr} ${sortDir}
      LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );

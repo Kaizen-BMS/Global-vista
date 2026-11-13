@@ -100,7 +100,7 @@ export default function DataTable({
                         <span className="truncate">{c.label}</span>
                         {sortKey === c.key
                           ? (sortDir === "ASC" ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />)
-                          : <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-0 group-hover/th:opacity-40" />}
+                          : <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40 group-hover/th:opacity-70" />}
                       </button>
                     ) : (
                       <div className="flex items-center gap-1">

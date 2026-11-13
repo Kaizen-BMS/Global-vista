@@ -49,6 +49,7 @@ export default async function LeadManagementPage({ searchParams }) {
           sourceName: sp?.sourceId || null, serviceName: sp?.serviceId || null,
           createdFrom: sp?.createdFrom || null, createdTo: sp?.createdTo || null,
           customFieldFilters,
+          sort: sp?.sort || "created_at", dir: sp?.dir || "DESC",
           page: sp?.page || 1, pageSize: 20,
         })
       : listLeads(session, {
