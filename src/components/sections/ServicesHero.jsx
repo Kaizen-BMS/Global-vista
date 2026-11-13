@@ -64,8 +64,6 @@ export default function ServicesHero() {
         "Tailored career counselling for students, parents, and educators.",
         "Personalized guidance to identify career paths and select suitable universities.",
         "Comprehensive support for exploring national & international education opportunities.",
-        // "Explore national and international education opportunities",
-        "Hands-on assistance with university applications, admission processes, and scholarship acquisition.",
       ],
       icon: "🎓",
       button: "Watch Introduction Video",

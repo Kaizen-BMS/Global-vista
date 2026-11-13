@@ -1,15 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  Award,
-  GraduationCap,
-  UserCheck,
-  Briefcase,
-  Rocket,
-  Globe2,
-  HeartHandshake,
-} from "lucide-react";
+import { Award, UserCheck, Globe2 } from "lucide-react";
 import SectionLabel from "@/components/ui/SectionLabel";
 import GlassCard from "@/components/ui/GlassCard";
 import { fadeUp } from "@/animations/fadeUp";
@@ -18,45 +10,21 @@ import { staggerContainer, staggerItem } from "@/animations/staggerContainer";
 const benefits = [
   {
     icon: Award,
-    title: "Academic Excellence",
+    title: "Academic Excellence & International University Expertise",
     description:
-      "Delivering world-class academic standards inspired by leading international education systems.",
-  },
-  {
-    icon: GraduationCap,
-    title: "International University Expertise",
-    description:
-      "Guidance and support from educators and mentors with global academic experience.",
+      "Delivering world-class academic standards inspired by leading international education systems, with guidance and support from educators and mentors with global academic experience.",
   },
   {
     icon: UserCheck,
-    title: "Personalised Mentoring",
+    title: "Personalised Mentoring & Career-Focused Guidance",
     description:
-      "Individual attention and tailored learning pathways designed for every student.",
-  },
-  {
-    icon: Briefcase,
-    title: "Career-Focused Guidance",
-    description:
-      "Helping students align their education with future careers and opportunities.",
-  },
-  {
-    icon: Rocket,
-    title: "Future Skills Development",
-    description:
-      "Building leadership, critical thinking, communication, and problem-solving skills.",
+      "Individual attention and tailored learning pathways for every student, helping them align their education with future careers and opportunities.",
   },
   {
     icon: Globe2,
-    title: "Global Exposure Opportunities",
+    title: "Global Exposure & Student-Centred Approach",
     description:
-      "Connecting students with international perspectives and educational pathways.",
-  },
-  {
-    icon: HeartHandshake,
-    title: "Student-Centred Approach",
-    description:
-      "Every decision and learning experience is designed around student success.",
+      "Connecting students with international perspectives and educational pathways, with every decision and learning experience designed around student success.",
   },
 ];
 
@@ -73,7 +41,7 @@ export default function BenefitsSection() {
 
         <motion.div
           {...staggerContainer(0.12)}
-          className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
         >
           {benefits.map((b) => (
             <motion.div key={b.title} variants={staggerItem}>
