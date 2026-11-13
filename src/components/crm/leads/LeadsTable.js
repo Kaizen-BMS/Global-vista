@@ -631,7 +631,14 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
       <div className="hidden md:block">
         <DataTable
-          tableId={isChildCompany ? "students" : "leads"}
+          // Bumped to -v2: some browsers had already saved a
+          // column-visibility list from before Predicted Grade/Previous
+          // Year % existed, and a saved list is never retroactively
+          // reconciled against newly added columns (see DataTable.js's
+          // own comment) — a fresh key means everyone gets a clean
+          // slate where both new columns start visible, in both schools
+          // and GVE's combined view.
+          tableId={isChildCompany ? "students-v2" : "leads-v2"}
           defaultHiddenColumns={isChildCompany ? ["country", "source_name", "created_by_name"] : []}
           columns={columns}
           rows={leads}
