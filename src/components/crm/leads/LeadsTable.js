@@ -46,7 +46,9 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const [savingCellKey, setSavingCellKey] = useState(null);
   const predictedGradeField = customFields.find((f) => f.field_key === "predicted_grade");
   const previousYearPercentageField = customFields.find((f) => f.field_key === "previous_year_percentage");
-  const streamOptions = customFields.find((f) => f.field_key === "stream")?.options || [];
+  const classField = customFields.find((f) => f.field_key === "class");
+  const streamField = customFields.find((f) => f.field_key === "stream");
+  const streamOptions = streamField?.options || [];
   const selectedCount = selectAllMatching ? (totalCount ?? selected.length) : selected.length;
 
   function clearSelection() { setSelected([]); setSelectAllMatching(false); }
@@ -346,6 +348,34 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
   if (leads.length === 0) return <EmptyState icon={Contact2} title={`No ${terms.pluralLower} found`} description={`Try adjusting your filters or add a new ${terms.singularLower}.`} />;
 
+  // Shared by every select-type inline-editable custom-field column
+  // (Predicted Grade, Class, Stream, …) — one dropdown cell bound to
+  // updateInlineCustomField, so adding another one is just another call
+  // to this instead of a fresh block of near-identical JSX.
+  function inlineSelectColumn(fieldKey, label, field, width = 150) {
+    return {
+      key: fieldKey, label, width,
+      render: (l) => {
+        const saving = savingCellKey === `${l.id}:${fieldKey}`;
+        return (
+          <span className="flex items-center gap-1.5">
+            <select
+              value={l[fieldKey] || ""}
+              disabled={saving}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => { e.stopPropagation(); updateInlineCustomField(l.id, fieldKey, field.id, e.target.value); }}
+              className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-60"
+            >
+              <option value="">Not set</option>
+              {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+            {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+          </span>
+        );
+      },
+    };
+  }
+
   const columns = [
     { key: "lead_number", label: `${terms.singular} #`, width: 110, render: (l) => <span className="text-muted-foreground text-xs">{l.lead_number}</span> },
     ...(isChildCompany ? [{ key: "student_code", label: "Student ID", width: 130, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{l.student_code || "—"}</span> }] : []),
@@ -425,27 +455,9 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
       },
     },
     { key: "stage", label: "Stage", width: 130, sortable: true, render: (l) => <StageBadge stage={l.stage} /> },
-    ...((isChildCompany || aggregated) && predictedGradeField ? [{
-      key: "predicted_grade", label: "Predicted Grade", width: 170,
-      render: (l) => {
-        const saving = savingCellKey === `${l.id}:predicted_grade`;
-        return (
-          <span className="flex items-center gap-1.5">
-            <select
-              value={l.predicted_grade || ""}
-              disabled={saving}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => { e.stopPropagation(); updateInlineCustomField(l.id, "predicted_grade", predictedGradeField.id, e.target.value); }}
-              className="w-full px-2 py-1 rounded-md bg-muted border border-border text-foreground text-xs cursor-pointer disabled:opacity-60"
-            >
-              <option value="">Not set</option>
-              {predictedGradeField.options.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-            {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
-          </span>
-        );
-      },
-    }] : []),
+    ...((isChildCompany || aggregated) && classField ? [inlineSelectColumn("class", "Class", classField, 110)] : []),
+    ...((isChildCompany || aggregated) && streamField ? [inlineSelectColumn("stream", "Stream", streamField, 140)] : []),
+    ...((isChildCompany || aggregated) && predictedGradeField ? [inlineSelectColumn("predicted_grade", "Predicted Grade", predictedGradeField, 170)] : []),
     ...((isChildCompany || aggregated) && previousYearPercentageField ? [{
       key: "previous_year_percentage", label: "Previous Year %", width: 150,
       render: (l) => {

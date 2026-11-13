@@ -14,7 +14,7 @@ import { enforceLeadLimit } from "@/lib/platform/tenant";
 // Excel) — pulled straight into the row here so LeadsTable.js doesn't
 // need a second round trip per row just to know each student's current
 // value. Hardcoded, not user input, so safe to inline into SQL directly.
-export const INLINE_CUSTOM_FIELD_KEYS = ["predicted_grade", "previous_year_percentage"];
+export const INLINE_CUSTOM_FIELD_KEYS = ["predicted_grade", "previous_year_percentage", "class", "stream"];
 
 /** One LEFT JOIN pair + two SELECT columns per key in
  * INLINE_CUSTOM_FIELD_KEYS, aliased by position so multiple keys never
