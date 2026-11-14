@@ -11,6 +11,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import DataTable from "@/components/shared/DataTable";
 import { apiFetch } from "@/components/shared/apiClient";
 import { getCrmTerms } from "@/lib/helpers/crmTerms";
+import { formatDate } from "@/lib/helpers/dateFormat";
 import BulkNoteModal from "@/components/crm/leads/BulkNoteModal";
 import NotesPopover from "@/components/crm/leads/NotesPopover";
 import BulkPreviewEditModal from "@/components/crm/leads/BulkPreviewEditModal";
@@ -48,6 +49,14 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   const previousYearPercentageField = customFields.find((f) => f.field_key === "previous_year_percentage");
   const classField = customFields.find((f) => f.field_key === "class");
   const streamField = customFields.find((f) => f.field_key === "stream");
+  const academicYearField = customFields.find((f) => f.field_key === "academic_year");
+  const districtField = customFields.find((f) => f.field_key === "district");
+  // Distinct from the "School" column below (the real company a row
+  // belongs to, aggregated-only) — this is the Student Information
+  // custom field of the same name, filterable via the Filters panel like
+  // District/Academic Year, hence "cf_school_name" everywhere it's read
+  // from a row (see INLINE_ALIAS_OVERRIDES in leads.js).
+  const schoolNameField = customFields.find((f) => f.field_key === "school_name");
   const streamOptions = streamField?.options || [];
   const selectedCount = selectAllMatching ? (totalCount ?? selected.length) : selected.length;
 
@@ -352,15 +361,15 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
   // (Predicted Grade, Class, Stream, …) — one dropdown cell bound to
   // updateInlineCustomField, so adding another one is just another call
   // to this instead of a fresh block of near-identical JSX.
-  function inlineSelectColumn(fieldKey, label, field, width = 150) {
+  function inlineSelectColumn(fieldKey, label, field, width = 150, columnKey = fieldKey) {
     return {
-      key: fieldKey, label, width, sortable: true,
+      key: columnKey, label, width, sortable: true,
       render: (l) => {
         const saving = savingCellKey === `${l.id}:${fieldKey}`;
         return (
           <span className="flex items-center gap-1.5">
             <select
-              value={l[fieldKey] || ""}
+              value={l[columnKey] || ""}
               disabled={saving}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => { e.stopPropagation(); updateInlineCustomField(l.id, fieldKey, field.id, e.target.value); }}
@@ -411,6 +420,11 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
         </span>
       ),
     },
+    // Service/Tag/Created/Next Follow-up all have a Filters-panel
+    // dropdown or date range (LeadFilters.js) — every filterable field
+    // needs its own column so the filtered-by value is actually visible
+    // here, not just usable as a search criterion.
+    { key: "service_name", label: "Service", width: 160, sortable: true, render: (l) => l.service_name || "—" },
     {
       key: "created_by_name", label: "Created By", width: 140, sortable: true,
       // created_by is only ever a real staff member for manually-created
@@ -483,6 +497,21 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
         );
       },
     }] : []),
+    ...((isChildCompany || aggregated) && academicYearField ? [inlineSelectColumn("academic_year", "Academic Year", academicYearField, 140)] : []),
+    ...((isChildCompany || aggregated) && districtField ? [inlineSelectColumn("district", "District", districtField, 140)] : []),
+    ...((isChildCompany || aggregated) && schoolNameField ? [inlineSelectColumn("school_name", "School (Field)", schoolNameField, 150, "cf_school_name")] : []),
+    {
+      key: "tags", label: "Tags", width: 160, sortable: true,
+      render: (l) => l.tags ? (
+        <span className="flex flex-wrap gap-1 min-w-0">
+          {l.tags.split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
+            <span key={t} className="px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground truncate">{t}</span>
+          ))}
+        </span>
+      ) : "—",
+    },
+    { key: "created_at", label: "Created", width: 120, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{formatDate(l.created_at)}</span> },
+    { key: "next_follow_up", label: "Next Follow-up", width: 140, sortable: true, render: (l) => <span className="text-muted-foreground text-xs">{formatDate(l.next_follow_up)}</span> },
     ...(isChildCompany ? [{
       key: "stage_status", label: "Stage Status", width: 190,
       render: (l) => {
@@ -643,14 +672,13 @@ export default function LeadsTable({ leads, canBulkAssign, canBulkUpdate, canCla
 
       <div className="hidden md:block">
         <DataTable
-          // Bumped to -v2: some browsers had already saved a
-          // column-visibility list from before Predicted Grade/Previous
-          // Year % existed, and a saved list is never retroactively
+          // Bumped to -v3: same reasoning as the earlier -v2 bump — a
+          // saved column-visibility list is never retroactively
           // reconciled against newly added columns (see DataTable.js's
-          // own comment) — a fresh key means everyone gets a clean
-          // slate where both new columns start visible, in both schools
-          // and GVE's combined view.
-          tableId={isChildCompany ? "students-v2" : "leads-v2"}
+          // own comment), so each round of new columns (now Service/
+          // Tags/Created/Next Follow-up/Academic Year/District/School
+          // Field) needs a fresh key to start visible for everyone.
+          tableId={isChildCompany ? "students-v3" : "leads-v3"}
           defaultHiddenColumns={isChildCompany ? ["country", "source_name", "created_by_name"] : []}
           columns={columns}
           rows={leads}

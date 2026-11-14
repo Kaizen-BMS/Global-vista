@@ -13,8 +13,20 @@ import { enforceLeadLimit } from "@/lib/platform/tenant";
 // (every other custom field only ever shows on Lead Detail/Bulk Edit/
 // Excel) — pulled straight into the row here so LeadsTable.js doesn't
 // need a second round trip per row just to know each student's current
-// value. Hardcoded, not user input, so safe to inline into SQL directly.
-export const INLINE_CUSTOM_FIELD_KEYS = ["predicted_grade", "previous_year_percentage", "class", "stream"];
+// value. General rule: every select/radio custom field that's offered
+// as a Filters-panel dropdown (see LeadFilters.js's customFilterFields)
+// must also appear as a column here, so a filter's result is actually
+// visible — hence Academic Year/District/School alongside the original
+// three. Hardcoded, not user input, so safe to inline into SQL directly.
+export const INLINE_CUSTOM_FIELD_KEYS = ["predicted_grade", "previous_year_percentage", "class", "stream", "academic_year", "district", "school_name"];
+
+// "school_name" is also the SELECT alias listAggregatedSchoolLeads
+// already uses for the real company name shown in GVE's "School" column
+// (companySwitch.js) — reusing that bare alias for this custom field
+// would silently overwrite that company name with the (usually blank)
+// custom-field value when mysql2 collapses duplicate column names.
+// Give it a distinct alias here; only this one key needs an override.
+const INLINE_ALIAS_OVERRIDES = { school_name: "cf_school_name" };
 
 /** One LEFT JOIN pair + two SELECT columns per key in
  * INLINE_CUSTOM_FIELD_KEYS, aliased by position so multiple keys never
@@ -27,9 +39,10 @@ export function buildInlineCustomFieldSql() {
   let selectSql = "";
   INLINE_CUSTOM_FIELD_KEYS.forEach((key, i) => {
     const f = `icf${i}f`, v = `icf${i}v`;
+    const alias = INLINE_ALIAS_OVERRIDES[key] || key;
     joinSql += ` LEFT JOIN lead_custom_fields ${f} ON ${f}.company_id = l.company_id AND ${f}.field_key = '${key}' AND ${f}.is_deleted = 0
        LEFT JOIN lead_custom_field_values ${v} ON ${v}.lead_id = l.id AND ${v}.custom_field_id = ${f}.id`;
-    selectSql += `, ${f}.id AS ${key}_field_id, ${v}.value AS ${key}`;
+    selectSql += `, ${f}.id AS ${key}_field_id, ${v}.value AS ${alias}`;
   });
   return { joinSql, selectSql };
 }
@@ -46,15 +59,19 @@ export function buildInlineCustomFieldSql() {
 export const BASE_SORT_COLUMNS = {
   lead_number: "l.lead_number", student_code: "l.student_code", name: "l.name", phone: "l.phone",
   email: "l.email", country: "l.country", status: "l.status", stage: "l.stage", priority: "l.priority",
-  created_at: "l.created_at", next_follow_up: "l.next_follow_up",
+  created_at: "l.created_at", next_follow_up: "l.next_follow_up", tags: "l.tags",
   source_name: "source_name", service_name: "service_name", assigned_name: "assigned_name", created_by_name: "created_by_name",
 };
 // `includeInline` gates class/stream/predicted_grade/previous_year_
-// percentage — only ever safe to sort by when the caller's own SELECT
-// actually joined them in (buildInlineCustomFieldSql, schools-only for
-// listLeads); otherwise those aliases don't exist and MySQL would error.
+// percentage/academic_year/district/school_name — only ever safe to sort
+// by when the caller's own SELECT actually joined them in
+// (buildInlineCustomFieldSql, schools-only for listLeads); otherwise
+// those aliases don't exist and MySQL would error. Sort by each one's
+// own SELECT alias (INLINE_ALIAS_OVERRIDES for school_name), matching
+// exactly what LeadsTable.js's column `key` sends as `sort`.
 export function resolveSortColumn(sort, { extra = {}, includeInline = true } = {}) {
-  const map = { ...BASE_SORT_COLUMNS, ...(includeInline ? Object.fromEntries(INLINE_CUSTOM_FIELD_KEYS.map((k) => [k, k])) : {}), ...extra };
+  const inlineMap = Object.fromEntries(INLINE_CUSTOM_FIELD_KEYS.map((k) => { const alias = INLINE_ALIAS_OVERRIDES[k] || k; return [alias, alias]; }));
+  const map = { ...BASE_SORT_COLUMNS, ...(includeInline ? inlineMap : {}), ...extra };
   return map[sort] || BASE_SORT_COLUMNS.created_at;
 }
 
